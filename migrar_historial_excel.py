@@ -19,102 +19,27 @@ Uso:
 """
 
 import os
-import sys
 import argparse
 
-from openpyxl import load_workbook
-
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "app_auto"))
-
-from logic import (  # noqa: E402
+from logic import (
     EXPECTED_HEADERS,
     CAMPOS_OBLIGATORIOS,
     CAMPOS_EXCLUIR_IMAGEN,
-    limpiar_fila,
     FACTURAS_DIR,
+    leer_historial_bloques,
+    leer_historial_plano,
+    fila_desde_dict,
 )
-from sql_historial import guardar_factura_examinada_sql  # noqa: E402
+from sql_historial import guardar_factura_examinada_sql
 
 HISTORIAL_DIR = os.path.join(FACTURAS_DIR, "historial")
 PATH_AUTO = os.path.join(HISTORIAL_DIR, "historial_facturas_auto.xlsx")
 PATH_CORREGIDAS = os.path.join(HISTORIAL_DIR, "facturas_corregidas.xlsx")
 
 
-def _fila_desde_dict(datos):
-    fila = [
-        "-" if datos.get(campo) is None else str(datos.get(campo))
-        for campo in EXPECTED_HEADERS
-    ]
-    return limpiar_fila(fila)
-
-
-def leer_bloques(path):
-    """
-    Lee un Excel con el formato de guardar_historial(): bloques repetidos
-    de [título de lote] [cabecera] [una o varias filas de datos].
-    La cabecera puede variar de un bloque a otro (el esquema de campos
-    ha evolucionado con el tiempo), así que se relee en cada bloque.
-    """
-    if not os.path.exists(path):
-        print(f"(no existe, se omite: {path})")
-        return []
-
-    wb = load_workbook(path, read_only=True)
-    ws = wb.active
-
-    filas = []
-    cabecera_actual = None
-
-    for row in ws.iter_rows(values_only=True):
-        if not row or row[0] is None:
-            continue
-
-        primera = str(row[0]).strip()
-
-        if primera.startswith("Extracci"):  # "Extracción facturas | Fecha: ..."
-            cabecera_actual = None
-            continue
-
-        if primera == "Archivo":
-            cabecera_actual = [str(c).strip() if c is not None else "" for c in row]
-            continue
-
-        if cabecera_actual is None:
-            continue
-
-        datos = dict(zip(cabecera_actual, row))
-        filas.append(_fila_desde_dict(datos))
-
-    wb.close()
-    return filas
-
-
-def leer_tabla_plana(path):
-    """Lee un Excel de tabla simple (una cabecera, filas de datos)."""
-    if not os.path.exists(path):
-        print(f"(no existe, se omite: {path})")
-        return []
-
-    wb = load_workbook(path, read_only=True)
-    ws = wb.active
-
-    filas_iter = ws.iter_rows(values_only=True)
-    cabecera = [str(c).strip() if c is not None else "" for c in next(filas_iter)]
-
-    filas = []
-    for row in filas_iter:
-        if not row or row[0] is None:
-            continue
-        datos = dict(zip(cabecera, row))
-        filas.append(_fila_desde_dict(datos))
-
-    wb.close()
-    return filas
-
-
 def clasificar_por_campos(fila):
     """
-    Misma lógica que clasificar_factura() en app_auto/logic.py, pero sin
+    Misma lógica que clasificar_factura() en logic.py, pero sin
     la comprobación de facturas_corregidas.xlsx (eso se trata aparte,
     dándole prioridad como fuente definitiva de "examinada").
     """
@@ -149,12 +74,14 @@ def recopilar_examinadas():
     resultado = {}
 
     print(f"Leyendo extracción automática: {PATH_AUTO}")
-    for fila in leer_bloques(PATH_AUTO):
+    for datos in leer_historial_bloques(PATH_AUTO):
+        fila = fila_desde_dict(datos)
         if clasificar_por_campos(fila) == "examinada":
             resultado[fila[0]] = (fila, "auto")
 
     print(f"Leyendo correcciones manuales: {PATH_CORREGIDAS}")
-    for fila in leer_tabla_plana(PATH_CORREGIDAS):
+    for datos in leer_historial_plano(PATH_CORREGIDAS):
+        fila = fila_desde_dict(datos)
         resultado[fila[0]] = (fila, "manual")
 
     return resultado

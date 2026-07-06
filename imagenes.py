@@ -18,29 +18,14 @@ import csv
 import base64
 import shutil
 import time
-import importlib.util
 from io import StringIO
 from datetime import datetime
 
 import fitz  # PyMuPDF
 
-_ROOT = os.path.dirname(os.path.abspath(__file__))
-
-
-def _cargar_modulo(nombre, ruta):
-    spec = importlib.util.spec_from_file_location(nombre, ruta)
-    modulo = importlib.util.module_from_spec(spec)
-    sys.modules[nombre] = modulo
-    spec.loader.exec_module(modulo)
-    return modulo
-
-
 # Reutiliza toda la lógica ya existente (prompt, cliente OpenAI, CSV,
 # clasificación, historial, guardado en SQL...) en vez de duplicarla.
-auto_logic = _cargar_modulo(
-    "app_auto_logic",
-    os.path.join(_ROOT, "app_auto", "logic.py"),
-)
+import logic as auto_logic
 
 FACTURAS_DIR = auto_logic.FACTURAS_DIR
 CARPETA_IMAGENES = os.path.join(FACTURAS_DIR, "imagenes")
