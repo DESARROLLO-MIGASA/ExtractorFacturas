@@ -1,7 +1,16 @@
 import os
+import sys
 import asyncio
 from contextlib import asynccontextmanager
 from concurrent.futures import ThreadPoolExecutor
+
+# En Windows la consola suele quedar en cp1252, que no puede codificar
+# muchos caracteres Unicode (emojis, flechas, tildes exóticas de nombres de
+# archivo que llegan por correo...). Sin esto, un simple print() con uno de
+# esos caracteres tumba la petición entera con un UnicodeEncodeError.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse

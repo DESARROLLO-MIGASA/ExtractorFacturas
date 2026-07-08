@@ -154,7 +154,7 @@ def mover_pdf_imagen(pdf_path, tipo):
     vez de volver a "imagenes", para no reprocesarlo en cada pasada.
     """
     carpetas = {
-        "examinada":       os.path.join(FACTURAS_DIR, "examinadas"),
+        "completada":      auto_logic.COMPLETADAS_DIR,
         "manual":          os.path.join(FACTURAS_DIR, "corregir_manualmente"),
         "reenviar_pedido": os.path.join(FACTURAS_DIR, "reenviar_falta_pedidocliente"),
         "imagen":          CARPETA_SIN_DATOS,
@@ -209,7 +209,7 @@ def procesar_carpeta_imagenes():
             mover_pdf_imagen(pdf_path, tipo)
             auto_logic.guardar_historial(result_csv, "imagenes")
 
-            if tipo == "examinada":
+            if tipo == "completada":
                 auto_logic.guardar_factura_examinada_sql(fila, "imagenes")
 
             resultados.append({"archivo": archivo, "estado": tipo})

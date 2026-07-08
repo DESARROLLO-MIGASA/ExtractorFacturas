@@ -12,6 +12,63 @@ body {
     background: #F3F6F4;
 }
 
+/* LAYOUT DIVIDIDO: contenido a la izquierda, PDF a la derecha */
+#layoutPrincipal {
+    display: flex;
+    align-items: stretch;
+}
+
+#columnaContenido {
+    flex: 1;
+    min-width: 0;
+}
+
+.panel-pdf {
+    width: 46vw;
+    min-width: 380px;
+    max-width: 820px;
+    flex-shrink: 0;
+    flex-direction: column;
+    background: white;
+    border-left: 1px solid #DCE3DD;
+    box-shadow: -4px 0 14px rgba(0,0,0,0.08);
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    align-self: flex-start;
+}
+
+.panel-pdf-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 14px;
+    border-bottom: 1px solid #DCE3DD;
+    background: #FAFBFA;
+}
+
+.panel-pdf-header span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+    font-weight: 600;
+    color: #1F6F43;
+}
+
+.panel-pdf-header .panel-pdf-acciones {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.panel-pdf iframe {
+    flex: 1;
+    border: none;
+    width: 100%;
+}
+
 .header {
     padding: 18px 40px;
     font-size: 20px;
@@ -58,7 +115,7 @@ body {
 }
 
 .tab-panel {
-    max-width: 1300px;
+    max-width: 1500px;
     margin: 30px auto;
     padding: 0 20px;
 }
@@ -79,6 +136,7 @@ body {
     display: flex;
     align-items: center;
     gap: 12px;
+    flex-wrap: wrap;
 }
 
 .badge {
@@ -105,10 +163,6 @@ body {
     vertical-align: middle;
 }
 
-.item-pendiente.urgente {
-    border-left: 3px solid #C62828;
-}
-
 /* SUBIR FACTURA */
 .barra-subida {
     display: flex;
@@ -131,124 +185,7 @@ body {
     cursor: pointer;
 }
 
-/* LAYOUT DOS COLUMNAS */
-.layout-dos {
-    display: flex;
-    gap: 20px;
-    min-height: 400px;
-}
-
-/* LISTA PENDIENTES */
-.panel-lista {
-    width: 280px;
-    flex-shrink: 0;
-    border: 1px solid #DCE3DD;
-    border-radius: 8px;
-    overflow-y: auto;
-    max-height: 520px;
-    background: #FAFBFA;
-}
-
-.item-pendiente {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 14px;
-    border-bottom: 1px solid #E8EDE8;
-    font-size: 13px;
-    color: #333;
-    transition: background 0.15s;
-}
-
-.item-pendiente:hover {
-    background: #EEF5F0;
-}
-
-.item-pendiente-nombre {
-    flex: 1;
-    min-width: 0;
-    cursor: pointer;
-    word-break: break-all;
-}
-
-.btn-papelera {
-    flex-shrink: 0;
-    background: none;
-    border: none;
-    cursor: pointer;
-    padding: 2px 6px;
-    font-size: 13px;
-    opacity: 0.5;
-    border-radius: 4px;
-}
-
-.btn-papelera:hover {
-    opacity: 1;
-    background: rgba(198, 40, 40, 0.1);
-}
-
-.item-pendiente.selected {
-    background: #1F6F43;
-    color: white;
-    font-weight: 600;
-}
-
-.item-pendiente.examinada {
-    background: #E8F5E9;
-    color: #388E3C;
-    font-style: italic;
-}
-
-.item-pendiente.examinada .item-pendiente-nombre {
-    cursor: default;
-}
-
-.item-pendiente.examinada .btn-papelera {
-    display: none;
-}
-
-/* PANEL DATOS */
-.panel-datos {
-    flex: 1;
-    min-width: 0;
-}
-
-.panel-toolbar {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 10px;
-}
-
-.btn-descartar {
-    background: #FDEBEE;
-    color: #C62828;
-}
-
-.btn-descartar:hover {
-    background: #F8D7DC;
-}
-
-.panel-datos-inner {
-    border: 1px solid #DCE3DD;
-    border-radius: 8px;
-    overflow: hidden;
-}
-
-.panel-datos-placeholder {
-    padding: 40px 20px;
-    text-align: center;
-    color: #9E9E9E;
-    font-size: 14px;
-}
-
-.panel-datos-placeholder.aviso {
-    color: #A15C00;
-    background: #FFF8E1;
-    text-align: left;
-    font-weight: 600;
-}
-
-/* TABLA VERTICAL */
+/* TABLA VERTICAL (modal de edición) */
 table.tabla-campos {
     width: 100%;
     border-collapse: collapse;
@@ -311,11 +248,6 @@ table.tabla-campos td.campo-readonly {
     color: #333;
 }
 
-.valor-guion {
-    color: #BDBDBD;
-    font-style: italic;
-}
-
 /* BOTONES */
 button {
     padding: 9px 16px;
@@ -354,9 +286,6 @@ button {
 .btn-confirmar {
     background: #2E7D32;
     color: white;
-    margin-top: 14px;
-    padding: 10px 22px;
-    font-size: 14px;
 }
 
 .btn-confirmar:hover:not(:disabled) {
@@ -369,13 +298,145 @@ button {
     cursor: not-allowed;
 }
 
-.barra-accion {
-    padding: 12px 16px;
-    background: #F9FAF9;
-    border-top: 1px solid #DCE3DD;
+.btn-enviar-correo {
+    background: #E8F0FE;
+    color: #1A56C4;
+}
+
+.btn-enviar-correo:hover {
+    background: #D7E4FC;
+}
+
+.btn-descartar {
+    background: #FDEBEE;
+    color: #C62828;
+}
+
+.btn-descartar:hover {
+    background: #F8D7DC;
+}
+
+/* ACCIONES EN TABLA */
+.btn-accion-tabla {
+    padding: 4px 9px;
+    font-size: 13px;
+    margin-right: 4px;
+    background: #F3F4F3;
+    color: #333;
+}
+
+.btn-accion-tabla:hover {
+    background: #E6E8E6;
+}
+
+.btn-accion-tabla.activo {
+    background: #E8F5E9;
+    color: #2E7D32;
+}
+
+.celda-acciones {
+    white-space: nowrap;
+}
+
+/* Columna de acciones fija a la derecha al hacer scroll horizontal */
+table.tabla-historial td.celda-acciones,
+table.tabla-historial th.th-acciones {
+    position: sticky;
+    right: 0;
+    z-index: 2;
+    box-shadow: -3px 0 6px rgba(0,0,0,0.10);
+}
+
+table.tabla-historial td.celda-acciones {
+    background: white;
+}
+
+table.tabla-historial th.th-acciones {
+    background: #EDF6F1;
+    z-index: 3;
+}
+
+/* MODALES (enviar correo / editar factura) */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
     display: flex;
     align-items: center;
-    gap: 12px;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.modal-box {
+    background: white;
+    border-radius: 10px;
+    padding: 22px;
+    width: 440px;
+    max-width: 90vw;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.25);
+}
+
+.modal-box-ancho {
+    width: 640px;
+    max-height: 85vh;
+    overflow-y: auto;
+}
+
+.modal-titulo {
+    font-weight: 600;
+    font-size: 15px;
+    color: #1F6F43;
+    margin-bottom: 10px;
+}
+
+.modal-label {
+    display: block;
+    font-size: 13px;
+    color: #333;
+    margin: 12px 0 6px;
+}
+
+.modal-label select {
+    display: block;
+    width: 100%;
+    margin-top: 6px;
+    padding: 7px 8px;
+    border: 1px solid #DCE3DD;
+    border-radius: 6px;
+    font-size: 13px;
+    font-family: inherit;
+    box-sizing: border-box;
+}
+
+#modalCorreoTextoLibre {
+    width: 100%;
+    box-sizing: border-box;
+    min-height: 80px;
+    margin-top: 4px;
+    padding: 8px;
+    border: 1px solid #DCE3DD;
+    border-radius: 6px;
+    font-size: 13px;
+    font-family: inherit;
+    resize: vertical;
+}
+
+.modal-acciones {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 10px;
+    margin-top: 16px;
+}
+
+.badge-motivo {
+    background: #E8F0FE;
+    color: #1A56C4;
+    border-radius: 8px;
+    padding: 1px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    margin-left: 6px;
 }
 
 .estado-msg {
@@ -435,7 +496,7 @@ button {
     to { transform: rotate(360deg); }
 }
 
-/* HISTORIAL */
+/* TABLAS DE DATOS (corregir / revisar) */
 .scroll-x {
     overflow-x: auto;
 }
@@ -461,10 +522,25 @@ table.tabla-historial td {
     white-space: nowrap;
 }
 
+table.tabla-historial td.celda-vacia {
+    color: #BDBDBD;
+    font-style: italic;
+}
+
+a.link-abrir-pdf {
+    color: #1A56C4;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+a.link-abrir-pdf:hover {
+    text-decoration: underline;
+}
+
 /* DASHBOARD AUTOMÁTICO */
 .grid {
     display: grid;
-    grid-template-columns: repeat(7, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
     gap: 15px;
     margin-top: 20px;
 }
@@ -474,6 +550,14 @@ table.tabla-historial td {
     padding: 20px;
     border-radius: 8px;
     text-align: center;
+}
+
+.kpi.error {
+    background: #FDECEA;
+}
+
+.kpi.error .kpi-num {
+    color: #C62828;
 }
 
 .kpi-num {
@@ -487,22 +571,102 @@ table.tabla-historial td {
     color: #666;
 }
 
-table.tabla-resultado {
-    width: 100%;
-    border-collapse: collapse;
-    margin-top: 20px;
+/* ALERTAS GRANDES */
+.alertas-container {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 20px;
 }
 
-table.tabla-resultado th {
-    background: #EDF6F1;
-    padding: 10px;
+.alerta {
+    padding: 18px 24px;
+    border-radius: 10px;
+    border-left: 6px solid;
+    font-size: 17px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.alerta-icono {
+    font-size: 26px;
+    line-height: 1;
+}
+
+.alerta.manual {
+    background: #FFF3E0;
+    border-color: #E65100;
+    color: #B34700;
+    cursor: pointer;
+}
+
+.alerta.manual:hover {
+    background: #FFE8CC;
+}
+
+.alerta.reenviar {
+    background: #E3F2FD;
+    border-color: #1565C0;
+    color: #0D47A1;
+}
+
+.alerta.error {
+    background: #FDECEA;
+    border-color: #C62828;
+    color: #B71C1C;
+}
+
+/* FILTROS */
+.filtro-fecha {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+    font-size: 13px;
+    color: #333;
+}
+
+.filtro-fecha label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.filtro-fecha input[type="date"] {
+    padding: 6px 8px;
     border: 1px solid #DCE3DD;
+    border-radius: 6px;
+    font-size: 13px;
+    font-family: inherit;
 }
 
-table.tabla-resultado td {
-    padding: 8px;
-    border: 1px solid #E3E8E3;
-    text-align: center;
+.filtro-fecha input[type="text"] {
+    padding: 6px 8px;
+    border: 1px solid #DCE3DD;
+    border-radius: 6px;
+    font-size: 13px;
+    font-family: inherit;
+    width: 140px;
+}
+
+/* LISTA REENVIAR AL PROVEEDOR / ENVIAR CORREO */
+.item-reenviar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-bottom: 1px solid #E8EDE8;
+    font-size: 13px;
+    color: #333;
+}
+
+.item-reenviar span {
+    flex: 1;
+    min-width: 0;
+    word-break: break-all;
 }
 
 </style>
@@ -512,28 +676,40 @@ table.tabla-resultado td {
 
 <div id="toastContainer"></div>
 
+<div id="layoutPrincipal">
+<div id="columnaContenido">
+
 <div class="header">
     <img src="/static/img/logo_migasa.png">
     Extractor de facturas
     <div class="tabs">
         <button class="tab-btn active" data-tab="auto" onclick="cambiarTab('auto')">Visualización automática</button>
-        <button class="tab-btn" data-tab="manual" onclick="cambiarTab('manual')">Corregir manualmente</button>
+        <button class="tab-btn" data-tab="manual" onclick="cambiarTab('manual')">Corregir manualmente <span id="badgePendientesTab" class="badge vacio">0</span></button>
+        <button class="tab-btn" data-tab="revisar" onclick="cambiarTab('revisar')">Revisar facturas</button>
         <button class="tab-btn" data-tab="subir" onclick="cambiarTab('subir')">Subir facturas</button>
+        <button class="tab-btn" data-tab="correo" onclick="cambiarTab('correo')">Enviar correo <span id="badgeSolicitudesCorreoTab" class="badge vacio">0</span></button>
     </div>
 </div>
 
 <!-- ========================================================= -->
-<!-- PESTAÑA 1: VISUALIZACIÓN AUTOMÁTICA                        -->
+<!-- PESTAÑA 1: VISUALIZACIÓN AUTOMÁTICA (solo carpetas y avisos) -->
 <!-- ========================================================= -->
 <div class="tab-panel" id="tab-auto">
 
+    <div id="alertas" class="alertas-container"></div>
+
     <div class="card">
 
-        <button class="btn-primary" onclick="procesar()">
+        <button class="btn-primary" id="btnProcesar" onclick="procesar()">
             Procesar carpeta entrada
         </button>
 
         <div class="grid">
+
+            <div class="kpi error">
+                <div id="error" class="kpi-num">0</div>
+                <div class="kpi-text">Error</div>
+            </div>
 
             <div class="kpi">
                 <div id="entrada" class="kpi-num">0</div>
@@ -556,8 +732,8 @@ table.tabla-resultado td {
             </div>
 
             <div class="kpi">
-                <div id="examinadas" class="kpi-num">0</div>
-                <div class="kpi-text">Examinadas</div>
+                <div id="completadas" class="kpi-num">0</div>
+                <div class="kpi-text">Completadas</div>
             </div>
 
             <div class="kpi">
@@ -570,84 +746,100 @@ table.tabla-resultado td {
                 <div class="kpi-text">Reenviar (falta pedido cliente)</div>
             </div>
 
+            <div class="kpi">
+                <div id="reenviadas_pedido" class="kpi-num">0</div>
+                <div class="kpi-text">Reenviadas (falta pedido cliente)</div>
+            </div>
+
         </div>
 
     </div>
 
     <div class="card">
-        <h3>Última ejecución</h3>
-
-        <div id="resultado">
-            Sin ejecutar
+        <div class="section-title">
+            Pendientes de reenviar al proveedor
+            <span id="badgeReenviarPedido" class="badge vacio">0</span>
+            <button class="btn-secondary" style="margin-left:auto" onclick="cargarReenviarPedido()">Actualizar lista</button>
+        </div>
+        <p class="help">Facturas a las que les falta el número de pedido de cliente. No se envía nada automáticamente: revísalas y pulsa "Enviar correo" para pedirlo. El archivo desaparece de esta lista solo cuando Power Automate lo gestiona (la app nunca lo mueve).</p>
+        <div id="listaReenviarPedido">
+            <span class="help">Cargando...</span>
         </div>
     </div>
 
 </div>
 
 <!-- ========================================================= -->
-<!-- PESTAÑA 2: CORREGIR MANUALMENTE                            -->
+<!-- PESTAÑA 2: CORREGIR MANUALMENTE (tabla filtrable)          -->
 <!-- ========================================================= -->
 <div class="tab-panel" id="tab-manual" style="display:none">
 
-    <!-- PENDIENTES -->
     <div class="card">
         <div class="section-title">
             Facturas pendientes de corrección
             <span id="badgePendientes" class="badge vacio">0</span>
-            <button class="btn-secondary" style="margin-left:auto" onclick="cargarPendientes()">Actualizar lista</button>
+            <button class="btn-secondary" style="margin-left:auto" onclick="cargarPendientesCompleto()">Actualizar lista</button>
         </div>
 
-        <div class="layout-dos">
-
-            <!-- LISTA -->
-            <div class="panel-lista" id="listaPendientes">
-                <div class="panel-datos-placeholder help">Cargando...</div>
-            </div>
-
-            <!-- DATOS -->
-            <div class="panel-datos">
-                <div class="panel-toolbar" id="panelToolbar" style="display:none">
-                    <a class="btn-secondary" id="linkAbrirPdf" href="#" target="_blank" rel="noopener">📄 Abrir PDF</a>
-                    <button class="btn-descartar" id="btnDescartar" onclick="descartarPendienteActual()">🗑️ No es factura </button>
-                </div>
-                <div class="panel-datos-inner" id="panelDatosWrapper">
-                    <div class="panel-datos-placeholder help" id="panelPlaceholder">
-                        Selecciona una factura de la lista para revisar sus datos.
-                    </div>
-                    <div id="panelDatos" style="display:none"></div>
-                </div>
-
-                <div id="barraAccion" style="display:none">
-                    <button
-                        class="btn-confirmar"
-                        id="btnConfirmar"
-                        disabled
-                        onclick="confirmarFactura()">
-                        Confirmar y mover a examinadas
-                    </button>
-                    <span class="estado-msg" id="estadoMsg"></span>
-                </div>
-            </div>
-
+        <div class="filtro-fecha">
+            <label>Desde <input type="date" id="pendFechaDesde" onchange="filtrarPendientes()"></label>
+            <label>Hasta <input type="date" id="pendFechaHasta" onchange="filtrarPendientes()"></label>
+            <label>Buyer <input type="text" id="pendFiltroBuyer" oninput="filtrarPendientes()" placeholder="CIF/NIF comprador"></label>
+            <label>Empresa <input type="text" id="pendFiltroEmpresa" oninput="filtrarPendientes()" placeholder="Empresa"></label>
+            <label>Nombre proveedor <input type="text" id="pendFiltroNombreProveedor" oninput="filtrarPendientes()" placeholder="Nombre proveedor"></label>
+            <label>Nº factura <input type="text" id="pendFiltroNumeroFactura" oninput="filtrarPendientes()" placeholder="Nº factura"></label>
+            <label>Pedido cliente <input type="text" id="pendFiltroPedidoCliente" oninput="filtrarPendientes()" placeholder="Pedido cliente"></label>
+            <label>Proveedor <input type="text" id="pendFiltroProveedor" oninput="filtrarPendientes()" placeholder="CIF/NIF proveedor"></label>
+            <button class="btn-secondary" onclick="limpiarFiltroPendientes()">Limpiar filtro</button>
+            <span class="help">Haz clic en el nombre del archivo para abrir el PDF. El filtro de fechas busca por fecha de procesamiento (FEscaneo).</span>
         </div>
-    </div>
 
-    <!-- HISTORIAL -->
-    <div class="card">
-        <div class="section-title">
-            Historial completo
-            <button class="btn-secondary" style="margin-left:auto" id="btnActHistorial" onclick="cargarHistorial()">Actualizar historial</button>
-            <button class="btn-secondary" id="btnDescHistorial" onclick="descargarHistorial()">Descargar historial</button>
-        </div>
-        <div class="scroll-x" id="tablaHistorial">
-            <span class="help">Pulsa "Actualizar historial" para ver todo lo procesado (automático, visión y correcciones manuales).</span>
+        <div class="scroll-x" id="tablaPendientes">
+            <span class="help">Cargando...</span>
         </div>
     </div>
 
 </div>
 
 <!-- ========================================================= -->
-<!-- PESTAÑA 3: SUBIR FACTURAS                                  -->
+<!-- PESTAÑA 3: REVISAR FACTURAS (tabla filtrable)              -->
+<!-- ========================================================= -->
+<div class="tab-panel" id="tab-revisar" style="display:none">
+
+    <div class="card">
+        <div class="section-title">
+            Facturas completadas
+            <span id="badgeCompletadas" class="badge vacio">0</span>
+            <button class="btn-secondary" style="margin-left:auto" onclick="cargarFacturasCompletadas()">Actualizar lista</button>
+            <button class="btn-secondary" onclick="descargarFacturasDefinitivas()">Descargar Excel definitivo</button>
+        </div>
+        <p class="help">
+            Revisión final de las facturas ya completadas (extraídas automáticamente sin problemas o corregidas a mano).
+            Marca ✅ cuando una factura esté 100% correcta: se añade al Excel definitivo aparte.
+        </p>
+
+        <div class="filtro-fecha">
+            <label>Desde <input type="date" id="revFechaDesde" onchange="filtrarCompletadas()"></label>
+            <label>Hasta <input type="date" id="revFechaHasta" onchange="filtrarCompletadas()"></label>
+            <label>Buyer <input type="text" id="revFiltroBuyer" oninput="filtrarCompletadas()" placeholder="CIF/NIF comprador"></label>
+            <label>Empresa <input type="text" id="revFiltroEmpresa" oninput="filtrarCompletadas()" placeholder="Empresa"></label>
+            <label>Nombre proveedor <input type="text" id="revFiltroNombreProveedor" oninput="filtrarCompletadas()" placeholder="Nombre proveedor"></label>
+            <label>Nº factura <input type="text" id="revFiltroNumeroFactura" oninput="filtrarCompletadas()" placeholder="Nº factura"></label>
+            <label>Pedido cliente <input type="text" id="revFiltroPedidoCliente" oninput="filtrarCompletadas()" placeholder="Pedido cliente"></label>
+            <label>Proveedor <input type="text" id="revFiltroProveedor" oninput="filtrarCompletadas()" placeholder="CIF/NIF proveedor"></label>
+            <button class="btn-secondary" onclick="limpiarFiltroCompletadas()">Limpiar filtro</button>
+            <span class="help">Haz clic en el nombre del archivo para abrir el PDF.</span>
+        </div>
+
+        <div class="scroll-x" id="tablaCompletadas">
+            <span class="help">Cargando...</span>
+        </div>
+    </div>
+
+</div>
+
+<!-- ========================================================= -->
+<!-- PESTAÑA 4: SUBIR FACTURAS                                  -->
 <!-- ========================================================= -->
 <div class="tab-panel" id="tab-subir" style="display:none">
 
@@ -667,6 +859,93 @@ table.tabla-resultado td {
         <p class="help">La factura se añade a la cola de "Corregir manualmente" (marcada como urgente si se indica).</p>
     </div>
 
+</div>
+
+<!-- ========================================================= -->
+<!-- PESTAÑA 5: ENVIAR CORREO POR OTROS MOTIVOS                 -->
+<!-- ========================================================= -->
+<div class="tab-panel" id="tab-correo" style="display:none">
+
+    <div class="card">
+        <div class="section-title">
+            Solicitudes de envío de correo pendientes
+            <span id="badgeSolicitudesCorreo" class="badge vacio">0</span>
+            <button class="btn-secondary" style="margin-left:auto" onclick="cargarSolicitudesCorreo()">Actualizar lista</button>
+        </div>
+        <p class="help">
+            Facturas en espera de que Power Automate envíe el correo de aclaración correspondiente (falta el pedido
+            de cliente, falta otro dato obligatorio, el PDF trae varias facturas juntas, u otro motivo redactado a
+            mano) y las archive. Esta lista es de solo lectura: un archivo desaparece de aquí en cuanto Power
+            Automate lo procesa, la app nunca lo mueve.
+        </p>
+        <div id="listaSolicitudesCorreo">
+            <span class="help">Cargando...</span>
+        </div>
+    </div>
+
+</div>
+
+</div>
+<!-- fin #columnaContenido -->
+
+<!-- ========================================================= -->
+<!-- PANEL DE PDF (visor a la derecha)                          -->
+<!-- ========================================================= -->
+<div class="panel-pdf" id="panelPdf" style="display:none">
+    <div class="panel-pdf-header">
+        <span id="panelPdfNombre"></span>
+        <div class="panel-pdf-acciones">
+            <a id="panelPdfAbrirNueva" class="btn-secondary" style="padding:4px 10px;font-size:12px" target="_blank" rel="noopener">↗ Nueva pestaña</a>
+            <button class="btn-secondary" style="padding:4px 10px;font-size:12px" onclick="cerrarPanelPdf()">✕ Cerrar</button>
+        </div>
+    </div>
+    <iframe id="panelPdfIframe" src="about:blank"></iframe>
+</div>
+
+</div>
+<!-- fin #layoutPrincipal -->
+
+<!-- ========================================================= -->
+<!-- MODAL: ENVIAR CORREO POR OTRO MOTIVO                       -->
+<!-- ========================================================= -->
+<div id="overlayEnviarCorreo" class="modal-overlay" style="display:none">
+    <div class="modal-box">
+        <div class="modal-titulo">Enviar correo</div>
+        <p class="help">Factura: <strong id="modalCorreoArchivoNombre"></strong></p>
+
+        <label class="modal-label">Motivo
+            <select id="modalCorreoMotivo" onchange="onCambioMotivoCorreo()"></select>
+        </label>
+
+        <label class="modal-label" id="grupoCampoObligatorio" style="display:none">Campo que falta
+            <select id="modalCorreoCampoObligatorio"></select>
+        </label>
+
+        <textarea id="modalCorreoTextoLibre" style="display:none" placeholder="Redacta el motivo del correo..."></textarea>
+
+        <div class="modal-acciones">
+            <button class="btn-secondary" onclick="cerrarModalEnviarCorreo()">Cancelar</button>
+            <button class="btn-primary" id="btnModalCorreoEnviar" onclick="confirmarEnvioCorreo()">Enviar</button>
+        </div>
+    </div>
+</div>
+
+<!-- ========================================================= -->
+<!-- MODAL: EDITAR FACTURA (pendientes y completadas)           -->
+<!-- ========================================================= -->
+<div id="overlayEditarFactura" class="modal-overlay" style="display:none">
+    <div class="modal-box modal-box-ancho">
+        <div class="modal-titulo" id="editarFacturaTitulo">Editar factura</div>
+        <p class="help">Archivo: <strong id="editarFacturaArchivoNombre"></strong></p>
+
+        <div id="editarFacturaCampos"></div>
+
+        <div class="modal-acciones">
+            <span class="estado-msg" id="estadoEdicionFactura" style="margin-right:auto"></span>
+            <button class="btn-secondary" onclick="cerrarModalEditarFactura()">Cancelar</button>
+            <button class="btn-confirmar" id="btnGuardarEdicionFactura" onclick="guardarEdicionFactura()">Guardar</button>
+        </div>
+    </div>
 </div>
 
 <script>
@@ -703,200 +982,513 @@ function mostrarToast(mensaje, tipo) {
 async function cargarEstadisticas(){
 
     const res = await fetch("/estadisticas");
-
     const data = await res.json();
 
-    document.getElementById("entrada").innerText =
-        data.entrada || 0;
+    document.getElementById("error").innerText = data.error || 0;
+    document.getElementById("entrada").innerText = data.entrada || 0;
+    document.getElementById("procesadas").innerText = data.procesadas || 0;
+    document.getElementById("imagenes").innerText = data.imagenes || 0;
+    document.getElementById("manual").innerText = data.manual || 0;
+    document.getElementById("completadas").innerText = data.completadas || 0;
+    document.getElementById("no_es_factura").innerText = data.no_es_factura || 0;
+    document.getElementById("reenviar_pedido").innerText = data.reenviar_pedido || 0;
+    document.getElementById("reenviadas_pedido").innerText = data.reenviadas_pedido || 0;
 
-    document.getElementById("procesadas").innerText =
-        data.procesadas || 0;
+    actualizarAlertas(data);
+}
 
-    document.getElementById("imagenes").innerText =
-        data.imagenes || 0;
+function actualizarAlertas(data) {
+    const cont = document.getElementById("alertas");
+    const alertas = [];
 
-    document.getElementById("manual").innerText =
-        data.manual || 0;
+    const manual = data.manual || 0;
+    const reenviar = data.reenviar_pedido || 0;
+    const error = data.error || 0;
 
-    document.getElementById("examinadas").innerText =
-        data.examinadas || 0;
+    if (manual > 0) {
+        alertas.push(`
+            <div class="alerta manual" onclick="cambiarTab('manual')" title="Ir a Corregir manualmente">
+                <span class="alerta-icono">⚠️</span>
+                <span>Hay ${manual} factura${manual === 1 ? "" : "s"} pendiente${manual === 1 ? "" : "s"} de revisión manual</span>
+            </div>
+        `);
+    }
 
-    document.getElementById("no_es_factura").innerText =
-        data.no_es_factura || 0;
+    if (reenviar > 0) {
+        alertas.push(`
+            <div class="alerta reenviar">
+                <span class="alerta-icono">📋</span>
+                <span>Hay ${reenviar} factura${reenviar === 1 ? "" : "s"} a ${reenviar === 1 ? "la que le falta" : "las que les falta"} el número de pedido de cliente</span>
+            </div>
+        `);
+    }
 
-    document.getElementById("reenviar_pedido").innerText =
-        data.reenviar_pedido || 0;
+    if (error > 0) {
+        alertas.push(`
+            <div class="alerta error">
+                <span class="alerta-icono">❌</span>
+                <span>Hay ${error} factura${error === 1 ? "" : "s"} con error de procesamiento</span>
+            </div>
+        `);
+    }
+
+    cont.innerHTML = alertas.join("");
 }
 
 async function procesar(){
+    const btn = document.getElementById("btnProcesar");
+    btn.disabled = true;
+    btn.textContent = "Procesando...";
 
-    document.getElementById("resultado").innerHTML =
-        "Procesando...";
-
-    const res = await fetch(
-        "/procesar",
-        {
-            method:"POST"
-        }
-    );
-
-    const data = await res.json();
-
-    let html = `
-        <table class="tabla-resultado">
-            <tr>
-                <th>Archivo</th>
-                <th>Estado</th>
-            </tr>
-    `;
-
-    data.resultados.forEach(r => {
-
-        html += `
-            <tr>
-                <td>${r.archivo}</td>
-                <td>${r.estado}</td>
-            </tr>
-        `;
-    });
-
-    html += "</table>";
-
-    document.getElementById("resultado").innerHTML =
-        html;
-
-    cargarEstadisticas();
+    try {
+        const res = await fetch("/procesar", { method: "POST" });
+        const data = await res.json();
+        const n = (data.resultados || []).length;
+        mostrarToast(n > 0 ? `✓ Procesadas ${n} factura${n === 1 ? "" : "s"}.` : "No había nada nuevo que procesar.", "ok");
+        cargarEstadisticas();
+    } catch (e) {
+        mostrarToast("Error al procesar la carpeta de entrada.", "error");
+    } finally {
+        btn.disabled = false;
+        btn.textContent = "Procesar carpeta entrada";
+    }
 }
 
 // =========================================================
-// PESTAÑA 2: CORREGIR MANUALMENTE
+// UTILIDADES COMUNES DE TABLA/FILTROS
+// (compartidas por "Corregir manualmente" y "Revisar facturas")
 // =========================================================
 
-let archivoPendienteActual = null;
-let datosActuales = [];
-let editsPendientes = {};   // { colIndex: nuevoValor }
+// Convierte "DD/MM/AAAA HH:MM:SS" (formato de FEscaneo) a "AAAA-MM-DD"
+// para poder compararlo como texto con un <input type="date">.
+function parseFechaEscaneo(valor) {
+    const m = /^(\d{2})\/(\d{2})\/(\d{4})/.exec(valor || "");
+    if (!m) return null;
+    return `${m[3]}-${m[2]}-${m[1]}`;
+}
 
-async function cargarPendientes() {
-    const lista = document.getElementById("listaPendientes");
-    lista.innerHTML = "<div class='panel-datos-placeholder help'><span class='spinner'></span>Cargando...</div>";
+function formatearNombreArchivo(archivo) {
+    let nombre = archivo || "";
+    let urgente = false;
+    if (nombre.startsWith("URGENTE__")) {
+        urgente = true;
+        nombre = nombre.slice("URGENTE__".length);
+    }
+    nombre = nombre.replace(/__EMAIL__.*?__ENDMAIL__/, "");
+    return (urgente ? "<span class='badge-urgente'>URGENTE</span>" : "") + nombre;
+}
+
+function escaparAttr(v) {
+    return (v ?? "").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// =========================================================
+// PANEL DE PDF (visor a la derecha, en vez de pestaña nueva)
+// =========================================================
+
+function abrirPanelPdf(archivo) {
+    const url = "/pdf-factura/" + encodeURIComponent(archivo);
+    document.getElementById("panelPdfNombre").textContent = archivo;
+    document.getElementById("panelPdfIframe").src = url;
+    document.getElementById("panelPdfAbrirNueva").href = url;
+    document.getElementById("panelPdf").style.display = "flex";
+}
+
+function cerrarPanelPdf() {
+    document.getElementById("panelPdf").style.display = "none";
+    document.getElementById("panelPdfIframe").src = "about:blank";
+}
+
+// config: { fechaDesdeId, fechaHastaId, columnaFecha, textos: [{id, columna}] }
+function aplicarFiltros(tabla, config) {
+    const headers = tabla[0];
+    let filas = tabla.slice(1);
+
+    const desde = document.getElementById(config.fechaDesdeId).value;
+    const hasta = document.getElementById(config.fechaHastaId).value;
+    const idxFecha = headers.indexOf(config.columnaFecha);
+
+    if ((desde || hasta) && idxFecha !== -1) {
+        filas = filas.filter(row => {
+            const fecha = parseFechaEscaneo(row[idxFecha]);
+            if (!fecha) return false;
+            if (desde && fecha < desde) return false;
+            if (hasta && fecha > hasta) return false;
+            return true;
+        });
+    }
+
+    const filtrosTexto = (config.textos || [])
+        .map(f => ({ idx: headers.indexOf(f.columna), valor: document.getElementById(f.id).value.trim().toLowerCase() }))
+        .filter(f => f.idx !== -1 && f.valor !== "");
+
+    if (filtrosTexto.length > 0) {
+        filas = filas.filter(row => filtrosTexto.every(f =>
+            (row[f.idx] ?? "").toString().toLowerCase().includes(f.valor)
+        ));
+    }
+
+    return [headers, ...filas];
+}
+
+function limpiarInputsFiltro(ids) {
+    ids.forEach(id => { document.getElementById(id).value = ""; });
+}
+
+const FILTROS_TEXTO_FACTURA = [
+    { id: null, columna: "Buyer" },
+    { id: null, columna: "Empresa" },
+    { id: null, columna: "NombreProveedor" },
+    { id: null, columna: "NumeroFactura" },
+    { id: null, columna: "PedidoCliente" },
+    { id: null, columna: "Proveedor" },
+];
+
+function filtrosTextoConPrefijo(prefijo) {
+    return FILTROS_TEXTO_FACTURA.map(f => ({ id: `${prefijo}Filtro${f.columna}`, columna: f.columna }));
+}
+
+// Renderizador genérico de tabla con columna de acciones opcional.
+// opciones: { archivoClickable: bool, acciones: [{ titulo, icono(row), onClick(row, headers) }] }
+function renderTablaGenerica(tabla, containerId, mensajeVacio, opciones) {
+    opciones = opciones || {};
+    const cont = document.getElementById(containerId);
+
+    if (!tabla || tabla.length <= 1) {
+        cont.innerHTML = `<span class="help">${mensajeVacio}</span>`;
+        return;
+    }
+
+    const headers = tabla[0];
+    const rows = tabla.slice(1);
+    const idxArchivo = headers.indexOf("Archivo");
+    const acciones = opciones.acciones || [];
+
+    let html = "<table class='tabla-historial'><tr>";
+    headers.forEach(h => { html += `<th>${h ?? ""}</th>`; });
+    if (acciones.length > 0) html += "<th class='th-acciones'>Acciones</th>";
+    html += "</tr>";
+
+    rows.forEach((row, i) => {
+        html += "<tr>";
+        row.forEach((c, ci) => {
+            if (ci === idxArchivo && opciones.archivoClickable) {
+                html += `<td><a href="#" class="link-abrir-pdf" data-row-idx="${i}">${formatearNombreArchivo(c ?? "")}</a></td>`;
+                return;
+            }
+            const esVacio = (c ?? "").toString().trim() === "-" || (c ?? "").toString().trim() === "";
+            html += `<td class="${esVacio ? "celda-vacia" : ""}">${c ?? ""}</td>`;
+        });
+        if (acciones.length > 0) {
+            html += "<td class='celda-acciones'>";
+            acciones.forEach((accion, ai) => {
+                html += `<button class="btn-accion-tabla" data-row-idx="${i}" data-accion-idx="${ai}" title="${accion.titulo}">${accion.icono(row, headers)}</button>`;
+            });
+            html += "</td>";
+        }
+        html += "</tr>";
+    });
+
+    html += "</table>";
+    cont.innerHTML = html;
+
+    if (opciones.archivoClickable && idxArchivo !== -1) {
+        cont.querySelectorAll(".link-abrir-pdf").forEach(a => {
+            const idx = parseInt(a.dataset.rowIdx, 10);
+            const archivo = rows[idx][idxArchivo];
+            a.onclick = (e) => {
+                e.preventDefault();
+                abrirPanelPdf(archivo);
+            };
+        });
+    }
+
+    if (acciones.length > 0) {
+        cont.querySelectorAll(".btn-accion-tabla").forEach(btn => {
+            const idx = parseInt(btn.dataset.rowIdx, 10);
+            const ai = parseInt(btn.dataset.accionIdx, 10);
+            btn.onclick = () => acciones[ai].onClick(rows[idx], headers);
+        });
+    }
+}
+
+// =========================================================
+// PENDIENTES DE REENVIAR AL PROVEEDOR (falta pedido cliente)
+// =========================================================
+
+async function cargarReenviarPedido() {
+    const lista = document.getElementById("listaReenviarPedido");
+    lista.innerHTML = "<span class='help'><span class='spinner'></span>Cargando...</span>";
 
     try {
-        const res = await fetch("/pendientes-lista");
+        const res = await fetch("/reenviar-pedido-lista");
         const data = await res.json();
         const archivos = data.archivos || [];
 
-        const badge = document.getElementById("badgePendientes");
+        const badge = document.getElementById("badgeReenviarPedido");
         badge.textContent = archivos.length;
         badge.className = "badge" + (archivos.length === 0 ? " vacio" : "");
 
-        lista.innerHTML = "";
-
         if (archivos.length === 0) {
-            lista.innerHTML = "<div class='panel-datos-placeholder help'>No hay facturas pendientes.</div>";
+            lista.innerHTML = "<span class='help'>No hay facturas pendientes de reenviar al proveedor.</span>";
             return;
         }
 
+        lista.innerHTML = "";
         archivos.forEach(archivo => {
-            const esUrgente = archivo.startsWith("URGENTE__");
-            const nombreVisible = esUrgente ? archivo.slice("URGENTE__".length) : archivo;
-
             const item = document.createElement("div");
-            item.className = "item-pendiente" + (esUrgente ? " urgente" : "");
-            item.dataset.archivo = archivo;
+            item.className = "item-reenviar";
             item.innerHTML = `
-                <span class="item-pendiente-nombre">${esUrgente ? "<span class='badge-urgente'>URGENTE</span>" : ""}${nombreVisible}</span>
-                <button class="btn-papelera" title="No es una factura: mover a 'No es factura'">🗑️</button>
+                <a href="#" class="link-abrir-pdf">${formatearNombreArchivo(archivo)}</a>
+                <button class="btn-enviar-correo" title="Pedir por correo el número de pedido de cliente">✉️ Enviar correo</button>
             `;
-            item.querySelector(".item-pendiente-nombre").onclick = () => seleccionarPendiente(archivo, item);
-            item.querySelector(".btn-papelera").onclick = (e) => {
-                e.stopPropagation();
-                descartarPendiente(archivo);
-            };
+            item.querySelector("a").onclick = (e) => { e.preventDefault(); abrirPanelPdf(archivo); };
+            item.querySelector("button").onclick = () => abrirModalEnviarCorreo(archivo, "falta_pedido_cliente");
             lista.appendChild(item);
         });
 
     } catch (e) {
-        lista.innerHTML = "<div class='panel-datos-placeholder help'>Error al cargar la lista.</div>";
+        lista.innerHTML = "<span class='help'>Error al cargar la lista.</span>";
     }
 }
 
-async function seleccionarPendiente(archivo, elemento) {
+// =========================================================
+// ENVIAR CORREO POR OTROS MOTIVOS (revisión manual)
+// =========================================================
 
-    document.querySelectorAll(".item-pendiente").forEach(el => el.classList.remove("selected"));
-    elemento.classList.add("selected");
+let motivosEnvioCorreoCache = null;
+let camposObligatoriosCache = null;
+let archivoModalCorreo = null;
 
-    archivoPendienteActual = archivo;
-    editsPendientes = {};
-    datosActuales = [];
+async function obtenerMotivosEnvioCorreo() {
+    if (motivosEnvioCorreoCache) {
+        return { motivos: motivosEnvioCorreoCache, campos: camposObligatoriosCache };
+    }
+    const res = await fetch("/motivos-envio-correo");
+    const data = await res.json();
+    motivosEnvioCorreoCache = data.motivos || [];
+    camposObligatoriosCache = data.campos_obligatorios || [];
+    return { motivos: motivosEnvioCorreoCache, campos: camposObligatoriosCache };
+}
 
-    const placeholder = document.getElementById("panelPlaceholder");
-    const panelDatos  = document.getElementById("panelDatos");
-    const barraAccion = document.getElementById("barraAccion");
-    const btnConfirmar = document.getElementById("btnConfirmar");
-    const panelToolbar = document.getElementById("panelToolbar");
-    const linkAbrirPdf = document.getElementById("linkAbrirPdf");
+async function abrirModalEnviarCorreo(archivo, motivoPreseleccionado) {
+    archivoModalCorreo = archivo;
+    document.getElementById("modalCorreoArchivoNombre").textContent = archivo;
 
-    linkAbrirPdf.href = "/pdf-pendiente/" + encodeURIComponent(archivo);
-    panelToolbar.style.display = "flex";
+    const textarea = document.getElementById("modalCorreoTextoLibre");
+    textarea.style.display = "none";
+    textarea.value = "";
 
-    placeholder.classList.remove("aviso");
-    placeholder.style.display = "block";
-    placeholder.innerHTML = "<span class='spinner'></span>Cargando datos...";
-    panelDatos.style.display = "none";
-    barraAccion.style.display = "none";
-    btnConfirmar.disabled = true;
+    document.getElementById("grupoCampoObligatorio").style.display = "none";
+
+    const select = document.getElementById("modalCorreoMotivo");
+    select.innerHTML = "<option>Cargando...</option>";
+    document.getElementById("overlayEnviarCorreo").style.display = "flex";
 
     try {
-        const res = await fetch("/extraer-pendiente", {
+        const { motivos, campos } = await obtenerMotivosEnvioCorreo();
+        select.innerHTML = motivos.map(m => `<option value="${m.clave}">${m.etiqueta}</option>`).join("");
+
+        const selectCampo = document.getElementById("modalCorreoCampoObligatorio");
+        selectCampo.innerHTML = `<option value="">-- Selecciona el campo --</option>` +
+            campos.map(c => `<option value="${c}">${c}</option>`).join("");
+
+        if (motivoPreseleccionado) {
+            select.value = motivoPreseleccionado;
+        }
+
+        onCambioMotivoCorreo();
+    } catch (e) {
+        select.innerHTML = "<option>Error al cargar motivos</option>";
+    }
+}
+
+function onCambioMotivoCorreo() {
+    const select = document.getElementById("modalCorreoMotivo");
+    const textarea = document.getElementById("modalCorreoTextoLibre");
+    const grupoCampo = document.getElementById("grupoCampoObligatorio");
+
+    textarea.style.display = select.value === "otros" ? "block" : "none";
+    grupoCampo.style.display = select.value === "falta_dato_obligatorio" ? "block" : "none";
+}
+
+function cerrarModalEnviarCorreo() {
+    document.getElementById("overlayEnviarCorreo").style.display = "none";
+    archivoModalCorreo = null;
+}
+
+async function confirmarEnvioCorreo() {
+    if (!archivoModalCorreo) return;
+
+    const motivo = document.getElementById("modalCorreoMotivo").value;
+    const motivoOtro = document.getElementById("modalCorreoTextoLibre").value.trim();
+    const campoObligatorio = document.getElementById("modalCorreoCampoObligatorio").value;
+
+    if (motivo === "otros" && !motivoOtro) {
+        mostrarToast("Redacta el motivo antes de enviar.", "error");
+        return;
+    }
+
+    if (motivo === "falta_dato_obligatorio" && !campoObligatorio) {
+        mostrarToast("Selecciona el campo obligatorio que falta.", "error");
+        return;
+    }
+
+    const btn = document.getElementById("btnModalCorreoEnviar");
+    btn.disabled = true;
+    btn.textContent = "Enviando...";
+
+    try {
+        const res = await fetch("/solicitar-envio-correo", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ archivo })
+            body: JSON.stringify({
+                archivo: archivoModalCorreo,
+                motivo,
+                motivo_otro: motivoOtro,
+                campo_obligatorio: campoObligatorio,
+            })
         });
 
         if (!res.ok) {
             const err = await res.json();
-            mostrarToast(err.detail || "Error al extraer datos.", "error");
-            placeholder.innerHTML = "Error al extraer datos.";
+            mostrarToast(err.detail || "Error al preparar el envío.", "error");
             return;
         }
 
-        const data = await res.json();
-
-        if (data.es_no_factura) {
-            placeholder.classList.add("aviso");
-            placeholder.innerHTML = "⚠️ Este documento no parece una factura (albarán, ticket de báscula, CMR, parte de horas...). Revísalo manualmente fuera de la app.";
-            return;
-        }
-
-        const headers = data.tabla[0];
-        const fila    = data.tabla[1];
-
-        datosActuales = [...fila];
-
-        pintarTablaCampos(headers, fila);
-
-        placeholder.style.display = "none";
-        panelDatos.style.display = "block";
-        barraAccion.style.display = "block";
-        btnConfirmar.disabled = false;
-        const msg = document.getElementById("estadoMsg");
-        msg.textContent = data.fuente === "api"
-            ? "⚠️ Extraído con IA (no estaba en historial)"
-            : "";
+        mostrarToast(`✓ ${archivoModalCorreo} añadida a la cola de envío de correo.`, "ok");
+        cerrarModalEnviarCorreo();
+        cargarSolicitudesCorreo();
 
     } catch (e) {
         mostrarToast("Error de conexión.", "error");
-        placeholder.innerHTML = "Error de conexión.";
+    } finally {
+        btn.disabled = false;
+        btn.textContent = "Enviar";
     }
 }
 
 // =========================================================
-// PAPELERA: MOVER UN PENDIENTE A "NO ES FACTURA"
+// SOLICITUDES DE ENVÍO DE CORREO PENDIENTES (solo lectura)
 // =========================================================
 
-function descartarPendienteActual() {
-    if (!archivoPendienteActual) return;
-    descartarPendiente(archivoPendienteActual);
+function formatearNombreSolicitudCorreo(archivo) {
+    let nombre = archivo;
+    let motivo = null;
+
+    const mMotivo = /^(.*)__MOTIVOENVIO__(.*)__ENDMOTIVOENVIO__(\.[^.]+)$/.exec(nombre);
+    if (mMotivo) {
+        nombre = mMotivo[1] + mMotivo[3];
+        motivo = mMotivo[2];
+    }
+
+    const mEmail = /__EMAIL__(.*)__ENDMAIL__/.exec(nombre);
+    const email = mEmail ? mEmail[1] : null;
+    nombre = nombre.replace(/__EMAIL__.*__ENDMAIL__/, "");
+
+    let html = formatearNombreArchivo(nombre);
+    if (motivo) html += `<span class="badge-motivo">${motivo}</span>`;
+    if (email) html += ` <span class="help">(${email})</span>`;
+    return html;
+}
+
+async function cargarSolicitudesCorreo() {
+    const lista = document.getElementById("listaSolicitudesCorreo");
+    lista.innerHTML = "<span class='help'><span class='spinner'></span>Cargando...</span>";
+
+    try {
+        const res = await fetch("/solicitudes-envio-correo-lista");
+        const data = await res.json();
+        const archivos = data.archivos || [];
+
+        [document.getElementById("badgeSolicitudesCorreo"), document.getElementById("badgeSolicitudesCorreoTab")].forEach(badge => {
+            badge.textContent = archivos.length;
+            badge.className = "badge" + (archivos.length === 0 ? " vacio" : "");
+        });
+
+        if (archivos.length === 0) {
+            lista.innerHTML = "<span class='help'>No hay solicitudes de envío de correo pendientes.</span>";
+            return;
+        }
+
+        lista.innerHTML = "";
+        archivos.forEach(archivo => {
+            const item = document.createElement("div");
+            item.className = "item-reenviar";
+            item.innerHTML = `<span>${formatearNombreSolicitudCorreo(archivo)}</span>`;
+            lista.appendChild(item);
+        });
+
+    } catch (e) {
+        lista.innerHTML = "<span class='help'>Error al cargar la lista.</span>";
+    }
+}
+
+// =========================================================
+// PESTAÑA 2: CORREGIR MANUALMENTE (tabla filtrable)
+// =========================================================
+
+let pendientesCompletoCache = null;
+
+async function cargarPendientesCompleto() {
+    document.getElementById("tablaPendientes").innerHTML = "<span class='help'><span class='spinner'></span>Cargando...</span>";
+
+    try {
+        const res = await fetch("/pendientes-completo-json");
+        const data = await res.json();
+        pendientesCompletoCache = data.tabla || [];
+        actualizarBadgePendientes();
+        filtrarPendientes();
+    } catch (e) {
+        document.getElementById("tablaPendientes").innerHTML = "<span class='help'>Error al cargar las facturas pendientes.</span>";
+    }
+}
+
+function actualizarBadgePendientes() {
+    const n = pendientesCompletoCache ? Math.max(pendientesCompletoCache.length - 1, 0) : 0;
+    [document.getElementById("badgePendientes"), document.getElementById("badgePendientesTab")].forEach(b => {
+        b.textContent = n;
+        b.className = "badge" + (n === 0 ? " vacio" : "");
+    });
+}
+
+function filtrarPendientes() {
+    if (!pendientesCompletoCache) return;
+
+    const tabla = aplicarFiltros(pendientesCompletoCache, {
+        fechaDesdeId: "pendFechaDesde",
+        fechaHastaId: "pendFechaHasta",
+        columnaFecha: "FEscaneo",
+        textos: filtrosTextoConPrefijo("pend"),
+    });
+
+    renderTablaGenerica(tabla, "tablaPendientes", "No hay facturas pendientes que coincidan con el filtro.", {
+        archivoClickable: true,
+        acciones: [
+            {
+                titulo: "Editar / completar campos",
+                icono: () => "✏️",
+                onClick: (row, headers) => abrirModalEditarFactura(row, headers, "pendiente"),
+            },
+            {
+                titulo: "Enviar correo",
+                icono: () => "✉️",
+                onClick: (row, headers) => abrirModalEnviarCorreo(row[headers.indexOf("Archivo")]),
+            },
+            {
+                titulo: "No es factura",
+                icono: () => "🗑️",
+                onClick: (row, headers) => descartarPendiente(row[headers.indexOf("Archivo")]),
+            },
+        ],
+    });
+}
+
+function limpiarFiltroPendientes() {
+    document.getElementById("pendFechaDesde").value = "";
+    document.getElementById("pendFechaHasta").value = "";
+    limpiarInputsFiltro(filtrosTextoConPrefijo("pend").map(f => f.id));
+    filtrarPendientes();
 }
 
 async function descartarPendiente(archivo) {
@@ -919,36 +1511,190 @@ async function descartarPendiente(archivo) {
         }
 
         mostrarToast(`✓ ${archivo} movido a "No es factura".`, "ok");
-
-        const item = document.querySelector(`.item-pendiente[data-archivo="${CSS.escape(archivo)}"]`);
-        if (item) item.remove();
-
-        if (archivoPendienteActual === archivo) {
-            archivoPendienteActual = null;
-            datosActuales = [];
-            editsPendientes = {};
-
-            document.getElementById("panelToolbar").style.display = "none";
-            document.getElementById("panelDatos").style.display = "none";
-            document.getElementById("barraAccion").style.display = "none";
-
-            const placeholder = document.getElementById("panelPlaceholder");
-            placeholder.classList.remove("aviso");
-            placeholder.style.display = "block";
-            placeholder.innerHTML = "Selecciona una factura de la lista para revisar sus datos.";
-        }
-
-        const pendientesRestantes = document.querySelectorAll(".item-pendiente:not(.examinada)").length;
-        const badge = document.getElementById("badgePendientes");
-        badge.textContent = pendientesRestantes;
-        if (pendientesRestantes === 0) badge.className = "badge vacio";
+        await cargarPendientesCompleto();
+        cargarEstadisticas();
 
     } catch (e) {
         mostrarToast("Error de conexión.", "error");
     }
 }
 
-function pintarTablaCampos(headers, fila) {
+// =========================================================
+// PESTAÑA 3: REVISAR FACTURAS (tabla filtrable)
+// =========================================================
+
+let completadasCache = null;
+
+async function cargarFacturasCompletadas() {
+    document.getElementById("tablaCompletadas").innerHTML = "<span class='help'><span class='spinner'></span>Cargando...</span>";
+
+    try {
+        const res = await fetch("/facturas-completadas-json");
+        const data = await res.json();
+        completadasCache = data.tabla || [];
+        actualizarBadgeCompletadas();
+        filtrarCompletadas();
+    } catch (e) {
+        document.getElementById("tablaCompletadas").innerHTML = "<span class='help'>Error al cargar las facturas completadas.</span>";
+    }
+}
+
+function actualizarBadgeCompletadas() {
+    const n = completadasCache ? Math.max(completadasCache.length - 1, 0) : 0;
+    const b = document.getElementById("badgeCompletadas");
+    b.textContent = n;
+    b.className = "badge" + (n === 0 ? " vacio" : "");
+}
+
+function filtrarCompletadas() {
+    if (!completadasCache) return;
+
+    const tabla = aplicarFiltros(completadasCache, {
+        fechaDesdeId: "revFechaDesde",
+        fechaHastaId: "revFechaHasta",
+        columnaFecha: "FEscaneo",
+        textos: filtrosTextoConPrefijo("rev"),
+    });
+
+    renderTablaGenerica(tabla, "tablaCompletadas", "No hay facturas completadas que coincidan con el filtro.", {
+        archivoClickable: true,
+        acciones: [
+            {
+                titulo: "Editar",
+                icono: () => "✏️",
+                onClick: (row, headers) => abrirModalEditarFactura(row, headers, "completada"),
+            },
+            {
+                titulo: "Enviar correo",
+                icono: () => "✉️",
+                onClick: (row, headers) => abrirModalEnviarCorreo(row[headers.indexOf("Archivo")]),
+            },
+            {
+                titulo: "No es factura",
+                icono: () => "🗑️",
+                onClick: (row, headers) => descartarFacturaCompletada(row[headers.indexOf("Archivo")]),
+            },
+            {
+                titulo: "Marcar/desmarcar como 100% definitiva",
+                icono: (row, headers) => row[headers.indexOf("Definitiva")] === "Sí" ? "✅" : "☐",
+                onClick: (row, headers) => alternarDefinitiva(row, headers),
+            },
+        ],
+    });
+}
+
+function limpiarFiltroCompletadas() {
+    document.getElementById("revFechaDesde").value = "";
+    document.getElementById("revFechaHasta").value = "";
+    limpiarInputsFiltro(filtrosTextoConPrefijo("rev").map(f => f.id));
+    filtrarCompletadas();
+}
+
+async function alternarDefinitiva(row, headers) {
+    const archivo = row[headers.indexOf("Archivo")];
+    const nuevoEstado = row[headers.indexOf("Definitiva")] !== "Sí";
+
+    try {
+        const res = await fetch("/marcar-factura-definitiva", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ archivo, definitiva: nuevoEstado, usuario: "marqueros" }),
+        });
+
+        if (!res.ok) {
+            const err = await res.json();
+            mostrarToast(err.detail || "Error al actualizar el estado.", "error");
+            return;
+        }
+
+        mostrarToast(
+            nuevoEstado ? `✓ ${archivo} marcada como 100% definitiva.` : `${archivo} desmarcada como definitiva.`,
+            "ok"
+        );
+        await cargarFacturasCompletadas();
+
+    } catch (e) {
+        mostrarToast("Error de conexión.", "error");
+    }
+}
+
+async function descartarFacturaCompletada(archivo) {
+    const confirmado = confirm(
+        `¿Mover "${archivo}" a la carpeta "No es factura"?\n\nSe quitará de "Revisar facturas" (y del Excel definitivo, si estaba marcada).`
+    );
+    if (!confirmado) return;
+
+    try {
+        const res = await fetch("/descartar-factura-completada", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ archivo }),
+        });
+
+        if (!res.ok) {
+            const err = await res.json();
+            mostrarToast(err.detail || "Error al descartar la factura.", "error");
+            return;
+        }
+
+        mostrarToast(`✓ ${archivo} movida a "No es factura".`, "ok");
+        await cargarFacturasCompletadas();
+        cargarEstadisticas();
+
+    } catch (e) {
+        mostrarToast("Error de conexión.", "error");
+    }
+}
+
+async function descargarFacturasDefinitivas() {
+    const res = await fetch("/descargar-facturas-definitivas");
+    if (!res.ok) { mostrarToast("Todavía no hay ninguna factura marcada como definitiva.", "error"); return; }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "facturas_100_definitivas.xlsx";
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+// =========================================================
+// MODAL COMPARTIDO: EDITAR FACTURA (pendiente o completada)
+// =========================================================
+
+let edicionFactura = null; // { archivo, tipo, origen, headers, fila, edits }
+
+const COLUMNAS_META_NO_EDITABLES = new Set(["Origen", "Definitiva", "UsuarioDefinitiva", "FechaDefinitiva"]);
+
+function extraerCamposFactura(headers, row) {
+    const idxs = headers.map((h, i) => i).filter(i => !COLUMNAS_META_NO_EDITABLES.has(headers[i]));
+    return {
+        headers: idxs.map(i => headers[i]),
+        fila: idxs.map(i => row[i]),
+    };
+}
+
+function abrirModalEditarFactura(rowCompleta, headersCompletos, tipo) {
+    const { headers, fila } = extraerCamposFactura(headersCompletos, rowCompleta);
+    const archivo = fila[headers.indexOf("Archivo")];
+    const origen = tipo === "completada" ? rowCompleta[headersCompletos.indexOf("Origen")] : null;
+
+    edicionFactura = { archivo, tipo, origen, headers, fila: [...fila], edits: {} };
+
+    document.getElementById("editarFacturaTitulo").textContent =
+        tipo === "pendiente" ? "Completar factura pendiente" : "Editar factura completada";
+    document.getElementById("editarFacturaArchivoNombre").textContent = archivo;
+    document.getElementById("estadoEdicionFactura").textContent = "";
+
+    const btnGuardar = document.getElementById("btnGuardarEdicionFactura");
+    btnGuardar.textContent = tipo === "pendiente" ? "Guardar y mover a completadas" : "Guardar cambios";
+    btnGuardar.disabled = false;
+
+    pintarCamposEdicion(headers, fila);
+    document.getElementById("overlayEditarFactura").style.display = "flex";
+}
+
+function pintarCamposEdicion(headers, fila) {
     const camposReadonly = new Set(["Archivo", "FEscaneo"]);
 
     let html = "<table class='tabla-campos'>";
@@ -970,7 +1716,7 @@ function pintarTablaCampos(headers, fila) {
                             type="text"
                             data-col="${i}"
                             placeholder="—  vacío"
-                            oninput="registrarEdit(${i}, this.value)"
+                            oninput="registrarEditFactura(${i}, this.value)"
                         >
                      </td>`;
         } else {
@@ -981,7 +1727,7 @@ function pintarTablaCampos(headers, fila) {
                             data-col="${i}"
                             value="${escaparAttr(val)}"
                             style="display:none;width:100%;box-sizing:border-box;border:1px solid #1F6F43;border-radius:4px;padding:4px 7px;font-size:13px"
-                            oninput="registrarEdit(${i}, this.value)"
+                            oninput="registrarEditFactura(${i}, this.value)"
                             onblur="cerrarEditInline(this)"
                         >
                         <button
@@ -996,15 +1742,12 @@ function pintarTablaCampos(headers, fila) {
     });
 
     html += "</table>";
-    document.getElementById("panelDatos").innerHTML = html;
+    document.getElementById("editarFacturaCampos").innerHTML = html;
 }
 
-function escaparAttr(v) {
-    return v.replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
-function registrarEdit(colIndex, valor) {
-    editsPendientes[colIndex] = valor.trim() || "-";
+function registrarEditFactura(colIndex, valor) {
+    if (!edicionFactura) return;
+    edicionFactura.edits[colIndex] = valor.trim() || "-";
 }
 
 function abrirEditInline(btn) {
@@ -1026,141 +1769,100 @@ function cerrarEditInline(input) {
     input.style.display = "none";
 }
 
-async function confirmarFactura() {
-    if (!archivoPendienteActual) return;
+function cerrarModalEditarFactura() {
+    document.getElementById("overlayEditarFactura").style.display = "none";
+    edicionFactura = null;
+}
 
-    const btnConfirmar = document.getElementById("btnConfirmar");
-    const estadoMsg    = document.getElementById("estadoMsg");
+async function guardarEdicionFactura() {
+    if (!edicionFactura) return;
 
-    // Combinar datos originales con edits
-    const filaFinal = [...datosActuales];
-    for (const [col, val] of Object.entries(editsPendientes)) {
+    const filaFinal = [...edicionFactura.fila];
+    for (const [col, val] of Object.entries(edicionFactura.edits)) {
         filaFinal[parseInt(col)] = val;
     }
 
-    // Verificar que no queden campos vacíos obligatorios
-    const camposObl = [1,3,4,6,8,9,10,11,12,13,14,17]; // índices en EXPECTED_HEADERS
-    const nombresObl = ["BaseImp","Buyer","Empresa","FFactura","ImporIVA","Moneda",
-                        "NombreProveedor","NumeroFactura","PedidoCliente","Proveedor",
-                        "TipoIVA","TotalFact"];
-
-    const vacios = camposObl.filter((ci, ii) => {
-        const v = String(filaFinal[ci] ?? "-").trim();
-        return v === "-" || v === "";
-    });
-
-    if (vacios.length > 0) {
-        const faltantes = vacios.map((ci, ii) => nombresObl[ii] || ci).join(", ");
-        estadoMsg.textContent = `⚠ Faltan campos: ${faltantes}`;
-        estadoMsg.style.color = "#C62828";
-    }
-
-    btnConfirmar.disabled = true;
-    btnConfirmar.textContent = "Guardando...";
+    const estadoMsg = document.getElementById("estadoEdicionFactura");
     estadoMsg.textContent = "";
 
+    if (edicionFactura.tipo === "pendiente") {
+        const camposObl = [1, 3, 4, 6, 8, 9, 10, 11, 12, 13, 14, 17]; // índices en EXPECTED_HEADERS
+        const nombresObl = ["BaseImp", "Buyer", "Empresa", "FFactura", "ImporIVA", "Moneda",
+            "NombreProveedor", "NumeroFactura", "PedidoCliente", "Proveedor", "TipoIVA", "TotalFact"];
+
+        const faltantes = camposObl
+            .map((ci, ii) => ({ ci, nombre: nombresObl[ii] }))
+            .filter(({ ci }) => String(filaFinal[ci] ?? "-").trim() === "-")
+            .map(({ nombre }) => nombre);
+
+        if (faltantes.length > 0) {
+            estadoMsg.textContent = `⚠ Faltan campos: ${faltantes.join(", ")}`;
+            estadoMsg.style.color = "#C62828";
+        }
+    }
+
+    const btn = document.getElementById("btnGuardarEdicionFactura");
+    btn.disabled = true;
+    const textoOriginalBtn = btn.textContent;
+    btn.textContent = "Guardando...";
+
     try {
-        const res = await fetch("/confirmar-factura", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                archivo: archivoPendienteActual,
-                fila_completa: filaFinal,
-                usuario: "marqueros"
-            })
-        });
+        let res;
+        if (edicionFactura.tipo === "pendiente") {
+            res = await fetch("/confirmar-factura", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    archivo: edicionFactura.archivo,
+                    fila_completa: filaFinal,
+                    usuario: "marqueros",
+                }),
+            });
+        } else {
+            res = await fetch("/actualizar-factura-completada", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    archivo: edicionFactura.archivo,
+                    fila_completa: filaFinal,
+                    origen: edicionFactura.origen || "manual",
+                    usuario: "marqueros",
+                }),
+            });
+        }
 
         if (!res.ok) {
             const err = await res.json();
-            mostrarToast(err.detail || "Error al confirmar.", "error");
-            btnConfirmar.disabled = false;
-            btnConfirmar.textContent = "Confirmar y mover a examinadas";
+            mostrarToast(err.detail || "Error al guardar.", "error");
             return;
         }
 
-        mostrarToast(`✓ ${archivoPendienteActual} movida a examinadas.`, "ok");
+        const tipo = edicionFactura.tipo;
+        mostrarToast(
+            tipo === "pendiente"
+                ? `✓ ${edicionFactura.archivo} movida a completadas.`
+                : `✓ ${edicionFactura.archivo} actualizada.`,
+            "ok"
+        );
+        cerrarModalEditarFactura();
 
-        // Marcar en lista y limpiar panel
-        const item = document.querySelector(`.item-pendiente[data-archivo="${CSS.escape(archivoPendienteActual)}"]`);
-        if (item) {
-            const nombreVisible = archivoPendienteActual.startsWith("URGENTE__")
-                ? archivoPendienteActual.slice("URGENTE__".length)
-                : archivoPendienteActual;
-            item.classList.remove("selected");
-            item.classList.add("examinada");
-            item.textContent = "✓ " + nombreVisible;
-            item.onclick = null;
+        if (tipo === "pendiente") {
+            await cargarPendientesCompleto();
+        } else {
+            await cargarFacturasCompletadas();
         }
-
-        // Actualizar contador
-        const pendientesRestantes = document.querySelectorAll(".item-pendiente:not(.examinada)").length;
-        const badge = document.getElementById("badgePendientes");
-        badge.textContent = pendientesRestantes;
-        if (pendientesRestantes === 0) badge.className = "badge vacio";
-
-        archivoPendienteActual = null;
-        datosActuales = [];
-        editsPendientes = {};
-
-        document.getElementById("panelToolbar").style.display = "none";
-        document.getElementById("panelDatos").style.display = "none";
-        document.getElementById("barraAccion").style.display = "none";
-        document.getElementById("panelPlaceholder").style.display = "block";
-        document.getElementById("panelPlaceholder").innerHTML = "Selecciona una factura de la lista para revisar sus datos.";
+        cargarEstadisticas();
 
     } catch (e) {
         mostrarToast("Error de conexión.", "error");
-        btnConfirmar.disabled = false;
-        btnConfirmar.textContent = "Confirmar y mover a examinadas";
+    } finally {
+        btn.disabled = false;
+        btn.textContent = textoOriginalBtn;
     }
-}
-
-async function cargarHistorial() {
-    try {
-        const res = await fetch("/historial-json");
-        const data = await res.json();
-        const contenedor = document.getElementById("tablaHistorial");
-
-        if (!data.tabla || data.tabla.length === 0) {
-            contenedor.innerHTML = "<span class='help'>No hay historial todavía.</span>";
-            return;
-        }
-
-        const headers = data.tabla[0];
-        const rows    = data.tabla.slice(1);
-
-        let html = "<table class='tabla-historial'><tr>";
-        headers.forEach(h => { html += `<th>${h ?? ""}</th>`; });
-        html += "</tr>";
-
-        rows.forEach(row => {
-            html += "<tr>";
-            row.forEach(c => { html += `<td>${c ?? ""}</td>`; });
-            html += "</tr>";
-        });
-
-        html += "</table>";
-        contenedor.innerHTML = html;
-
-    } catch (e) {
-        mostrarToast("Error cargando historial.", "error");
-    }
-}
-
-async function descargarHistorial() {
-    const res = await fetch("/historial");
-    if (!res.ok) { mostrarToast("No hay historial todavía.", "error"); return; }
-    const blob = await res.blob();
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement("a");
-    a.href = url;
-    a.download = "historial_completo.xlsx";
-    a.click();
-    URL.revokeObjectURL(url);
 }
 
 // =========================================================
-// PESTAÑA 3: SUBIR FACTURAS
+// PESTAÑA 4: SUBIR FACTURAS
 // =========================================================
 
 async function subirFactura() {
@@ -1195,7 +1897,7 @@ async function subirFactura() {
         document.getElementById("chkUrgente").checked = false;
 
         cambiarTab("manual");
-        cargarPendientes();
+        cargarPendientesCompleto();
 
     } catch (e) {
         mostrarToast("Error de conexión al subir la factura.", "error");
@@ -1210,7 +1912,10 @@ async function subirFactura() {
 // =========================================================
 
 cargarEstadisticas();
-cargarPendientes();
+cargarReenviarPedido();
+cargarPendientesCompleto();
+cargarFacturasCompletadas();
+cargarSolicitudesCorreo();
 
 </script>
 </body>

@@ -6,7 +6,7 @@ Sistema que extrae automáticamente los datos estructurados de facturas en PDF u
 - **`logic.py`** — extracción de PDF, llamada al LLM, clasificación, Excel, historial. Toda la lógica de negocio consolidada en un solo módulo.
 - **`routers/`** — endpoints agrupados por área: `auto.py` (procesamiento automático) y `manual.py` (corrección manual, subida, historial).
 - **`imagenes.py`** — segunda pasada con visión (GPT vision) para los PDFs escaneados o fotografiados que no tienen texto extraíble.
-- **`sql_historial.py`** — guarda cada factura "examinada" (ya sea automática o corregida a mano) en una base de datos (SQL Server o SQLite), como complemento del histórico en Excel.
+- **`sql_historial.py`** — guarda cada factura completada (ya sea automática o corregida a mano) en una base de datos (SQL Server o SQLite), como complemento del histórico en Excel.
 - **`migrar_historial_excel.py`** — migración puntual y segura de re-ejecutar del histórico Excel acumulado hacia SQL Server.
 
 ---
@@ -21,17 +21,22 @@ Sistema que extrae automáticamente los datos estructurados de facturas en PDF u
 - **Segunda pasada con visión** (`imagenes.py`) para PDFs escaneados/fotografiados sin texto extraíble, reutilizando toda la lógica de extracción, clasificación e historial de `logic.py`
 - **Clasificación automática de PDFs** en carpetas según el resultado de la extracción:
   - `procesadas` — copia maestra de todo lo que pasa por el flujo automático
-  - `examinadas` — extracción correcta (automática o corregida manualmente)
+  - `completadas` — extracción correcta (automática o corregida manualmente)
   - `corregir_manualmente` — falta algún campo obligatorio
   - `imagenes` — PDF sin texto extraíble, pendiente de la segunda pasada con visión
   - `imagenes_sin_datos` — tampoco se pudo leer con visión
   - `no_es_factura` — el documento no es una factura (albarán, ticket de báscula/pesaje, documento de transporte/CMR, parte de horas, etc.)
   - `reenviar_falta_pedidocliente` — todo correcto salvo el número de pedido de cliente
+  - `reenviada_al_proveedor` — ya se le ha pedido al proveedor que reenvíe la factura con el número de pedido (marcado manual desde "Visualización automática")
   - `error` — fallo de procesamiento
-- **Corrección manual**: vista web para completar los campos que faltan en `corregir_manualmente`, confirmar y mover la factura a `examinadas`
+- **Alertas grandes** en "Visualización automática" cuando hay facturas pendientes de revisión manual, sin número de pedido de cliente, o con error de procesamiento
+- **Todas las extracciones con filtro de fecha**: en "Visualización automática", una tabla con todo lo extraído hasta la fecha, filtrable por fecha de procesamiento, útil para buscar una factura concreta ante una incidencia
+- **Corrección manual**: vista web para completar los campos que faltan en `corregir_manualmente`, confirmar y mover la factura a `completadas`
+- **Papelera de corrección manual**: si un PDF de la cola de `corregir_manualmente` resulta no ser una factura, se puede apartar a `no_es_factura` con un clic, sin borrarlo
+- **Ver el PDF sin salir de la app**: cada pendiente de corrección se puede abrir directamente en el navegador, sin ir a buscarlo a la carpeta
 - **Subida manual**: vista para añadir una factura directamente a la cola de corrección manual, con opción de marcarla como urgente (prioridad en la lista)
-- **Historial diario en Excel**, acumulado por fecha con marca de hora
-- **Persistencia en base de datos** de las facturas "examinada" (tabla `FacturasExaminadas`), con upsert por nombre de archivo — no rompe el flujo si la conexión falla
+- **Historial completo**: una vista combina todo lo procesado (extracción automática, segunda pasada con visión y correcciones manuales) en una sola tabla consultable y descargable
+- **Persistencia en base de datos** de las facturas completadas (tabla `FacturasExaminadas`), con upsert por nombre de archivo — no rompe el flujo si la conexión falla
 
 ---
 
@@ -71,11 +76,11 @@ Power Automate ──POST /upload-pdf──▶ main.py
                                         │                                      │
                               extracción con LLM                    clasifica igual que el flujo automático
                                         │                                      │
-                                 clasificar_factura                           mueve a examinadas /
+                                 clasificar_factura                           mueve a completadas /
                                         │                                corregir_manualmente / etc.
                     ┌───────────────────┼────────────────────┐
                     ▼                   ▼                    ▼
-              examinadas       corregir_manualmente      reenviar_falta_pedidocliente / error
+             completadas       corregir_manualmente      reenviar_falta_pedidocliente / error
                     │                   │
           guardar_historial      vista "Corregir manualmente" revisa y confirma
                     │                   │
@@ -124,7 +129,7 @@ OPENAI_MODEL=gpt-4.1
 # OPENAI_BASE_URL=https://...
 
 # --- Rutas y vigilancia ---
-FACTURAS_DIR=C:\ruta\a\facturas          # carpeta base con entrada/procesadas/examinadas/...
+FACTURAS_DIR=C:\ruta\a\facturas          # carpeta base con entrada/procesadas/completadas/...
 INTERVALO_VIGILANCIA=30                  # segundos entre pasadas del vigilante
 
 # --- Segunda pasada con visión (imagenes.py) ---
@@ -132,7 +137,7 @@ INTERVALO_VIGILANCIA=30                  # segundos entre pasadas del vigilante
 # DPI_IMAGENES=200
 # INTERVALO_VIGILANCIA_IMAGENES=300      # solo si se lanza con --watch
 
-# --- Base de datos (guardado de facturas "examinada") ---
+# --- Base de datos (guardado de facturas completadas) ---
 SQL_ENGINE=sqlserver                     # "sqlserver" (por defecto) o "sqlite"
 
 # SQL Server (Trusted Connection, no hace falta usuario/contraseña)
@@ -180,10 +185,11 @@ python migrar_historial_excel.py             # migra de verdad
 ### Flujo de uso (vista "Corregir manualmente")
 
 1. Abre el navegador en `http://localhost:8000` y pulsa "Corregir manualmente"
-2. Revisa las facturas pendientes en `corregir_manualmente`
+2. Revisa las facturas pendientes en `corregir_manualmente`; puedes abrir el PDF de cualquiera con "📄 Abrir PDF" antes de decidir
 3. Completa o corrige los campos que falten (si el PDF no parece una factura, se avisa en vez de mostrar un formulario vacío)
-4. Confirma: la factura se guarda en el historial y en SQL, y se mueve a `examinadas`
-5. En la vista "Subir facturas" puedes añadir una factura suelta a la cola, marcándola como urgente si necesita prioridad
+4. Si el documento no es realmente una factura, pulsa "🗑️ No es factura" (o el icono de papelera de la lista) para apartarlo a `no_es_factura` sin borrarlo
+5. Confirma: la factura se guarda en el historial y en SQL, y se mueve a `completadas`
+6. En la vista "Subir facturas" puedes añadir una factura suelta a la cola, marcándola como urgente si necesita prioridad
 
 ---
 
@@ -193,12 +199,12 @@ python migrar_historial_excel.py             # migra de verdad
 ├── main.py                   # App FastAPI única: vigilante, CORS, /static, incluye los routers
 ├── logic.py                  # Extracción PDF, llamada al LLM, clasificación, Excel, historial
 ├── routers/
-│   ├── auto.py                # /upload-pdf, /procesar, /estadisticas
+│   ├── auto.py                # /upload-pdf, /procesar, /estadisticas, /reenviar-pedido-lista, /marcar-reenviada
 │   └── manual.py               # /pendientes-lista, /subir-factura, /extraer-pendiente, /confirmar-factura, /extraer, /historial*
 ├── templates/
 │   └── index.html             # Shell con las 3 vistas (pestañas)
 ├── imagenes.py                # Segunda pasada con visión para PDFs escaneados
-├── sql_historial.py           # Guardado en SQL Server / SQLite de facturas "examinada"
+├── sql_historial.py           # Guardado en SQL Server / SQLite de facturas completadas
 ├── migrar_historial_excel.py  # Migración puntual del histórico Excel a SQL Server
 ├── sql/
 │   └── crear_tabla_facturas_examinadas.sql   # DDL opcional de la tabla FacturasExaminadas
@@ -218,13 +224,17 @@ python migrar_historial_excel.py             # migra de verdad
 | `POST` | `/upload-pdf` | Recibe un PDF (p. ej. desde Power Automate), lo extrae, clasifica y mueve |
 | `POST` | `/procesar` | Lanza manualmente el procesado de la carpeta `entrada` |
 | `GET` | `/estadisticas` | Nº de PDFs por carpeta de destino |
+| `GET` | `/reenviar-pedido-lista` | Lista los PDFs en `reenviar_falta_pedidocliente` |
+| `POST` | `/marcar-reenviada` | Marca un PDF como ya reenviado al proveedor, moviéndolo a `reenviada_al_proveedor` |
 | `GET` | `/pendientes-lista` | Lista los PDFs en `corregir_manualmente` |
 | `POST` | `/subir-factura` | Sube un PDF directamente a la cola de corrección manual (opción "urgente") |
 | `POST` | `/extraer-pendiente` | Extrae (o recupera del historial) los datos de un PDF pendiente; avisa si no parece una factura |
-| `POST` | `/confirmar-factura` | Guarda la corrección, la persiste en SQL y mueve el PDF a `examinadas` |
+| `POST` | `/confirmar-factura` | Guarda la corrección, la persiste en SQL y mueve el PDF a `completadas` |
+| `POST` | `/descartar-pendiente` | Aparta un PDF de `corregir_manualmente` a `no_es_factura` sin borrarlo |
+| `GET` | `/pdf-pendiente/{archivo}` | Sirve el PDF de un pendiente para verlo directamente en el navegador |
 | `POST` | `/extraer` | Extrae datos de uno o varios PDFs sueltos (flujo secundario, sin UI asociada) |
-| `GET` | `/historial` | Descarga el historial Excel del día actual |
-| `GET` | `/historial-json` | Devuelve el historial del día en formato JSON |
+| `GET` | `/historial` | Descarga el historial completo (auto + visión + correcciones) en Excel |
+| `GET` | `/historial-json` | Devuelve el historial completo en formato JSON |
 
 ---
 

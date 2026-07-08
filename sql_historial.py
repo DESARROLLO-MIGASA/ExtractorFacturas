@@ -96,6 +96,13 @@ def _crear_tabla_si_no_existe(cursor):
                 UNIQUE([Archivo])
             )
         """)
+        columnas_existentes = {row[1] for row in cursor.execute(f"PRAGMA table_info({TABLA})").fetchall()}
+        if "Definitiva" not in columnas_existentes:
+            cursor.execute(f"ALTER TABLE {TABLA} ADD COLUMN Definitiva INTEGER DEFAULT 0")
+        if "UsuarioDefinitiva" not in columnas_existentes:
+            cursor.execute(f"ALTER TABLE {TABLA} ADD COLUMN UsuarioDefinitiva TEXT")
+        if "FechaDefinitiva" not in columnas_existentes:
+            cursor.execute(f"ALTER TABLE {TABLA} ADD COLUMN FechaDefinitiva TEXT")
         return
 
     columnas_sql = ",\n".join(f"[{c}] NVARCHAR(255) NULL" for c in COLUMNAS)
@@ -109,6 +116,18 @@ def _crear_tabla_si_no_existe(cursor):
             FechaInsercion DATETIME NOT NULL DEFAULT GETDATE(),
             CONSTRAINT UQ_{TABLA}_Archivo UNIQUE (Archivo)
         )
+    """)
+    cursor.execute(f"""
+        IF COL_LENGTH('{TABLA}', 'Definitiva') IS NULL
+        ALTER TABLE {TABLA} ADD Definitiva BIT NOT NULL DEFAULT 0
+    """)
+    cursor.execute(f"""
+        IF COL_LENGTH('{TABLA}', 'UsuarioDefinitiva') IS NULL
+        ALTER TABLE {TABLA} ADD UsuarioDefinitiva NVARCHAR(100) NULL
+    """)
+    cursor.execute(f"""
+        IF COL_LENGTH('{TABLA}', 'FechaDefinitiva') IS NULL
+        ALTER TABLE {TABLA} ADD FechaDefinitiva DATETIME NULL
     """)
 
 
@@ -158,4 +177,69 @@ def guardar_factura_examinada_sql(fila, origen):
 
     except Exception as e:
         print(f"AVISO: no se pudo guardar la factura en {MOTOR} ({origen}): {e}")
+        return False
+
+
+def listar_facturas_examinadas_sql():
+    """
+    Devuelve todas las filas de FacturasExaminadas como lista de dicts
+    (una factura "completada", ya sea auto o confirmada manualmente).
+    Incluye Origen, Definitiva, UsuarioDefinitiva y FechaDefinitiva.
+    Devuelve [] si la consulta falla (no propaga excepciones).
+    """
+    columnas_todas = COLUMNAS + ["Origen", "Definitiva", "UsuarioDefinitiva", "FechaDefinitiva"]
+    try:
+        with _conectar() as conn:
+            cursor = conn.cursor()
+            _crear_tabla_si_no_existe(cursor)
+            conn.commit()
+
+            columnas_sql = ", ".join(f"[{c}]" for c in columnas_todas)
+            cursor.execute(f"SELECT {columnas_sql} FROM {TABLA}")
+            filas = cursor.fetchall()
+
+        return [dict(zip(columnas_todas, fila)) for fila in filas]
+
+    except Exception as e:
+        print(f"AVISO: no se pudieron listar las facturas examinadas ({MOTOR}): {e}")
+        return []
+
+
+def marcar_factura_definitiva_sql(archivo, definitiva, usuario):
+    """Marca (o desmarca) una factura de FacturasExaminadas como 100% definitiva."""
+    try:
+        with _conectar() as conn:
+            cursor = conn.cursor()
+            _crear_tabla_si_no_existe(cursor)
+            conn.commit()
+
+            cursor.execute(
+                f"UPDATE {TABLA} SET Definitiva = ?, UsuarioDefinitiva = ?, "
+                f"FechaDefinitiva = {FECHA_ACTUAL_SQL} WHERE Archivo = ?",
+                (1 if definitiva else 0, usuario, archivo),
+            )
+            conn.commit()
+
+        return True
+
+    except Exception as e:
+        print(f"AVISO: no se pudo marcar la factura como definitiva ({MOTOR}): {e}")
+        return False
+
+
+def eliminar_factura_examinada_sql(archivo):
+    """Elimina una factura de FacturasExaminadas (p.ej. al descartarla como 'no es factura')."""
+    try:
+        with _conectar() as conn:
+            cursor = conn.cursor()
+            _crear_tabla_si_no_existe(cursor)
+            conn.commit()
+
+            cursor.execute(f"DELETE FROM {TABLA} WHERE Archivo = ?", (archivo,))
+            conn.commit()
+
+        return True
+
+    except Exception as e:
+        print(f"AVISO: no se pudo eliminar la factura de {MOTOR}: {e}")
         return False

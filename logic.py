@@ -2,6 +2,7 @@ import os
 import re
 import sys
 import csv
+import tempfile
 from io import StringIO
 from datetime import datetime
 import httpx
@@ -18,19 +19,47 @@ from dotenv import load_dotenv
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from sql_historial import guardar_factura_examinada_sql
+from sql_historial import (
+    guardar_factura_examinada_sql,
+    listar_facturas_examinadas_sql,
+    marcar_factura_definitiva_sql,
+    eliminar_factura_examinada_sql,
+)
 
 _fallback = os.path.join(os.path.dirname(os.path.abspath(__file__)), "facturas")
 FACTURAS_DIR = os.getenv("FACTURAS_DIR", _fallback).strip('"').strip("'")
 
-CORREGIR_DIR    = os.path.join(FACTURAS_DIR, "corregir_manualmente")
-EXAMINADAS_DIR  = os.path.join(FACTURAS_DIR, "examinadas")
-HISTORIAL_DIR   = os.path.join(FACTURAS_DIR, "historial")
-NO_FACTURA_DIR  = os.path.join(FACTURAS_DIR, "no_es_factura")
+CORREGIR_DIR         = os.path.join(FACTURAS_DIR, "corregir_manualmente")
+COMPLETADAS_DIR      = os.path.join(FACTURAS_DIR, "completadas")
+HISTORIAL_DIR        = os.path.join(FACTURAS_DIR, "historial")
+NO_FACTURA_DIR       = os.path.join(FACTURAS_DIR, "no_es_factura")
+REENVIAR_PEDIDO_DIR  = os.path.join(FACTURAS_DIR, "reenviar_falta_pedidocliente")
+REENVIADAS_PEDIDO_DIR = os.path.join(FACTURAS_DIR, "reenviadas_falta_pedidocliente")
+REENVIAR_OTRO_MOTIVO_DIR   = os.path.join(FACTURAS_DIR, "reenviar_otro_motivo")
+REENVIADAS_OTRO_MOTIVO_DIR = os.path.join(FACTURAS_DIR, "reenviadas_otro_motivo")
 
 # Prefijo con el que se marcan en disco las facturas subidas como urgentes,
 # para que aparezcan primero en la lista de pendientes sin necesitar una tabla aparte.
 PRIORIDAD_PREFIX = "URGENTE__"
+
+# Motivos seleccionables para pedir por correo una aclaración de la factura.
+# Ninguno se envía solo: siempre hace falta que una persona revise la factura
+# y elija el motivo antes de que se copie a la carpeta que vigila Power Automate.
+MOTIVOS_ENVIO_CORREO = {
+    "falta_pedido_cliente":  "Falta el número de pedido de cliente",
+    "falta_dato_obligatorio": "Falta otro dato obligatorio de la factura (distinto del pedido de cliente)",
+    "varias_facturas_pdf":   "El documento contiene varias facturas en el mismo PDF",
+    "otros":                 "Otros",
+}
+
+# Campos obligatorios de una factura (mismo listado que valida la pantalla de
+# corrección manual antes de poder confirmar una factura). Se ofrecen como
+# lista para elegir uno solo cuando el motivo de envío es "falta_dato_obligatorio".
+CAMPOS_OBLIGATORIOS_FACTURA = [
+    "BaseImp", "Buyer", "Empresa", "FFactura", "ImporIVA", "Moneda",
+    "NombreProveedor", "NumeroFactura", "PedidoCliente", "Proveedor",
+    "TipoIVA", "TotalFact",
+]
 
 
 # =========================================================
@@ -86,6 +115,8 @@ Reglas generales:
 - No añadas unidades ni símbolos de moneda salvo que formen parte inseparable del dato.
 - Para importes, devuelve solo el número, usando coma decimal si aparece así en el documento.
 - Para fechas, devuelve el formato que aparezca en el documento. Si puedes normalizar con seguridad, usa DD/MM/AAAA.
+- La línea de cabecera tiene 18 campos. La línea de datos debe tener EXACTAMENTE 18 valores separados por "|", uno por cada campo, en el mismo orden que la cabecera.
+- Nunca omitas un campo ni lo fusiones con otro, aunque su valor sea "-". Antes de responder, cuenta los valores de la línea de datos y verifica que son 18.
 
 Definición de campos:
 
@@ -103,9 +134,24 @@ BaseIRPF:
 - Si no existe devuelve "-".
 
 Buyer:
-- CIF/NIF/VAT del comprador.
+- CIF/NIF/VAT del comprador/cliente (nunca del proveedor/vendedor que emite la factura).
+- Puede aparecer bajo etiquetas como:
+  NIF
+  CIF
+  VAT
+  VAT Number
+  Tax ID
+  Tax Number
+  N° TVA
+  Nº Contribuinte
+  V/ Nº Contribuinte
+  Vosso Contribuinte
+  Partita IVA
+  USt-IdNr
+  BTW-nummer
 - Devuelve únicamente el identificador fiscal.
 - Nunca devuelvas el nombre de la empresa.
+- Si no aparece claramente devuelve "-".
 
 Empresa:
 - Nombre de la empresa compradora.
@@ -165,21 +211,41 @@ PedidoCliente:
 - Si no existe devuelve "-".
 
 Proveedor:
-- CIF/NIF/VAT del proveedor.
+- CIF/NIF/VAT del proveedor/vendedor que emite la factura (nunca del comprador/cliente).
+- Puede aparecer bajo etiquetas como:
+  NIF
+  CIF
+  VAT
+  VAT Number
+  Tax ID
+  Tax Number
+  N° TVA
+  Nº Contribuinte
+  Partita IVA
+  USt-IdNr
+  BTW-nummer
+- Suele aparecer junto al nombre y dirección del vendedor en la cabecera, o en el pie de página junto a los datos legales/registrales de la empresa emisora (registro mercantil, capital social, etc.).
 - Devuelve únicamente el identificador fiscal.
+- Si no aparece claramente devuelve "-".
 
 TipoIVA:
+- Porcentaje de IVA aplicado a la factura (por ejemplo: 21, 10, 4).
+- Devuelve únicamente el número del porcentaje, sin el símbolo %.
 - Si la factura indica exención, inversión del sujeto pasivo o impuesto 0%, devuelve 0.
 - No devuelvas "-" cuando pueda determinarse que el IVA es cero.
+- Si no se puede determinar ningún porcentaje, devuelve "-".
 
 TipoIVA2:
-- Segundo tipo IVA si existe.
+- Segundo tipo de IVA (porcentaje) si la factura desglosa un segundo tipo distinto al de TipoIVA.
+- Si no existe un segundo tipo de IVA, devuelve "-". No omitas esta columna bajo ningún concepto.
 
 TipoIVA3:
-- Tercer tipo IVA si existe.
+- Tercer tipo de IVA (porcentaje) si la factura desglosa un tercer tipo distinto a los anteriores.
+- Si no existe un tercer tipo de IVA, devuelve "-". No omitas esta columna bajo ningún concepto.
 
 TotalFact:
-- Importe total final de la factura.
+- Importe total final de la factura, impuestos incluidos.
+- Es un importe en dinero, nunca un porcentaje de IVA.
 
 
 IMPORTANTE:
@@ -707,13 +773,34 @@ def export_to_excel(csv_text, path):
 # HISTORIAL
 # =========================================================
 
+def _guardar_excel_atomico(wb, path):
+    """Guarda un Workbook primero en un archivo temporal del mismo directorio
+    y luego lo renombra sobre el destino con os.replace() (operación atómica
+    en el mismo volumen). Estos .xlsx viven en una carpeta sincronizada con
+    OneDrive y se reescriben muy a menudo; guardar directamente sobre el
+    archivo final deja una ventana en la que OneDrive (u otro proceso) puede
+    leerlo a medio escribir, corrompiendo el .zip interno del xlsx."""
+    directorio = os.path.dirname(path) or "."
+    fd, tmp_path = tempfile.mkstemp(suffix=".xlsx", dir=directorio)
+    os.close(fd)
+    try:
+        wb.save(tmp_path)
+        os.replace(tmp_path, path)
+    except Exception:
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+        raise
+
+
 def guardar_historial(csv_text, user_id):
     os.makedirs(HISTORIAL_DIR, exist_ok=True)
 
     rows = csv_to_matrix(csv_text)
 
     if not rows or len(rows) < 2:
-        print("⚠ CSV inválido, no se guarda historial")
+        print("AVISO: CSV invalido, no se guarda historial")
         return
 
     fecha = datetime.now().strftime("%Y-%m-%d")
@@ -798,7 +885,7 @@ def guardar_historial(csv_text, user_id):
 
         ws.column_dimensions[col_letter].width = min(max_len + 2, 40)
 
-    wb.save(path)
+    _guardar_excel_atomico(wb, path)
 
 
 def guardar_factura_corregida_completa(fila_completa, usuario):
@@ -822,7 +909,7 @@ def guardar_factura_corregida_completa(fila_completa, usuario):
 
         ws.append(headers)
 
-        wb.save(path)
+        _guardar_excel_atomico(wb, path)
 
     wb = load_workbook(path)
     ws = wb.active
@@ -875,7 +962,157 @@ def guardar_factura_corregida_completa(fila_completa, usuario):
         "%d/%m/%Y %H:%M:%S"
     )
 
-    wb.save(path)
+    _guardar_excel_atomico(wb, path)
+
+
+# =========================================================
+# EXCEL "100% DEFINITIVO"
+# Espejo, en un Excel aparte, de las facturas de "Revisar facturas" que un
+# humano ha marcado explícitamente como definitivas. FacturasExaminadas (SQL)
+# es la fuente de verdad del estado (columna Definitiva); este Excel es solo
+# una copia de conveniencia para exportar/consultar sin acceso a la BD.
+# =========================================================
+
+EXCEL_DEFINITIVO_PATH = os.path.join(HISTORIAL_DIR, "facturas_100_definitivas.xlsx")
+HEADERS_DEFINITIVO = EXPECTED_HEADERS + ["Origen", "UsuarioDefinitiva", "FechaDefinitiva"]
+
+
+def _abrir_o_crear_excel_definitivo():
+    if os.path.exists(EXCEL_DEFINITIVO_PATH):
+        wb = load_workbook(EXCEL_DEFINITIVO_PATH)
+        return wb, wb.active
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "FacturasDefinitivas"
+    ws.append(HEADERS_DEFINITIVO)
+    return wb, ws
+
+
+def agregar_o_actualizar_factura_definitiva(fila_completa, origen, usuario):
+    os.makedirs(HISTORIAL_DIR, exist_ok=True)
+    wb, ws = _abrir_o_crear_excel_definitivo()
+
+    archivo = str(fila_completa[0]).strip()
+
+    fila_objetivo = None
+    for fila_idx in range(2, ws.max_row + 1):
+        if str(ws.cell(fila_idx, 1).value or "").strip() == archivo:
+            fila_objetivo = fila_idx
+            break
+
+    if fila_objetivo is None:
+        fila_objetivo = ws.max_row + 1
+
+    valores = ["-" if str(x).strip() == "" else str(x).strip() for x in fila_completa]
+    while len(valores) < len(EXPECTED_HEADERS):
+        valores.append("-")
+    valores = valores[:len(EXPECTED_HEADERS)]
+
+    for col, valor in enumerate(valores, start=1):
+        ws.cell(row=fila_objetivo, column=col).value = valor
+
+    ws.cell(row=fila_objetivo, column=len(EXPECTED_HEADERS) + 1).value = origen
+    ws.cell(row=fila_objetivo, column=len(EXPECTED_HEADERS) + 2).value = usuario
+    ws.cell(row=fila_objetivo, column=len(EXPECTED_HEADERS) + 3).value = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+
+    _guardar_excel_atomico(wb, EXCEL_DEFINITIVO_PATH)
+
+
+def quitar_factura_definitiva(archivo):
+    if not os.path.exists(EXCEL_DEFINITIVO_PATH):
+        return
+
+    wb = load_workbook(EXCEL_DEFINITIVO_PATH)
+    ws = wb.active
+
+    for fila_idx in range(2, ws.max_row + 1):
+        if str(ws.cell(fila_idx, 1).value or "").strip() == archivo:
+            ws.delete_rows(fila_idx)
+            _guardar_excel_atomico(wb, EXCEL_DEFINITIVO_PATH)
+            return
+
+
+# =========================================================
+# REVISAR FACTURAS (facturas ya completadas, en FacturasExaminadas)
+# =========================================================
+
+HEADERS_FACTURAS_COMPLETADAS = EXPECTED_HEADERS + ["Origen", "Definitiva"]
+
+
+def _es_definitiva(fila_dict):
+    return str(fila_dict.get("Definitiva") or "0").strip() in ("1", "True", "true")
+
+
+def listar_facturas_completadas():
+    """[headers, *filas] de todas las facturas de FacturasExaminadas (SQL),
+    para la pestaña "Revisar facturas". No incluye las pendientes de corregir."""
+    filas_dict = listar_facturas_examinadas_sql()
+
+    filas = []
+    for d in filas_dict:
+        fila = [str(d.get(c, "-") or "-") for c in EXPECTED_HEADERS]
+        origen = str(d.get("Origen") or "-")
+        definitiva = "Sí" if _es_definitiva(d) else "No"
+        filas.append(fila + [origen, definitiva])
+
+    return [HEADERS_FACTURAS_COMPLETADAS] + filas
+
+
+def marcar_factura_definitiva(archivo, definitiva, usuario):
+    """Marca/desmarca en SQL una factura examinada como 100% definitiva y
+    refleja el cambio en el Excel definitivo aparte."""
+    ok = marcar_factura_definitiva_sql(archivo, definitiva, usuario)
+    if not ok:
+        raise RuntimeError("No se pudo actualizar el estado en la base de datos.")
+
+    if definitiva:
+        filas_dict = listar_facturas_examinadas_sql()
+        fila_dict = next((f for f in filas_dict if f.get("Archivo") == archivo), None)
+        if fila_dict is None:
+            raise FileNotFoundError(archivo)
+        fila_completa = [fila_dict.get(c, "-") for c in EXPECTED_HEADERS]
+        agregar_o_actualizar_factura_definitiva(fila_completa, fila_dict.get("Origen", "-"), usuario)
+    else:
+        quitar_factura_definitiva(archivo)
+
+
+def actualizar_factura_completada(fila_completa, origen, usuario):
+    """Corrige los datos de una factura ya examinada (acción "Editar" en
+    "Revisar facturas"). Si ya estaba marcada como definitiva, actualiza
+    también su copia en el Excel definitivo para que no quede desfasada."""
+    ok = guardar_factura_examinada_sql(fila_completa, origen)
+    if not ok:
+        raise RuntimeError("No se pudo actualizar la factura en la base de datos.")
+
+    archivo = str(fila_completa[0]).strip()
+    filas_dict = listar_facturas_examinadas_sql()
+    fila_dict = next((f for f in filas_dict if f.get("Archivo") == archivo), None)
+    if fila_dict and _es_definitiva(fila_dict):
+        agregar_o_actualizar_factura_definitiva(fila_completa, origen, usuario)
+
+
+def descartar_factura_completada(archivo):
+    """Papelera de "Revisar facturas": quita la factura de FacturasExaminadas
+    y del Excel definitivo (si estaba ahí), y mueve el PDF a no_es_factura."""
+    ok = eliminar_factura_examinada_sql(archivo)
+    if not ok:
+        raise RuntimeError("No se pudo eliminar la factura de la base de datos.")
+
+    quitar_factura_definitiva(archivo)
+
+    src = buscar_pdf_por_nombre(archivo)
+    if src is None:
+        raise FileNotFoundError(archivo)
+
+    os.makedirs(NO_FACTURA_DIR, exist_ok=True)
+    dest = os.path.join(NO_FACTURA_DIR, archivo)
+
+    if os.path.exists(dest):
+        base, ext = os.path.splitext(archivo)
+        dest = os.path.join(NO_FACTURA_DIR, f"{base}_{datetime.now().strftime('%Y%m%d%H%M%S')}{ext}")
+
+    shutil.move(src, dest)
 
 
 CAMPOS_EXCLUIR_IMAGEN = {"Archivo", "FEscaneo", "ImporIVA"}
@@ -901,7 +1138,7 @@ def clasificar_factura(fila):
     """
     Devuelve:
 
-    examinada  → extracción correcta, todos los campos obligatorios presentes
+    completada → extracción correcta, todos los campos obligatorios presentes
     imagen     → PDF sin texto legible (todos los campos "-" salvo Archivo, FEscaneo e ImporIVA)
     manual     → extracción parcial, algún campo obligatorio falta
     """
@@ -909,7 +1146,7 @@ def clasificar_factura(fila):
     archivo = str(fila[0]).strip()
 
     # ==========================================
-    # YA EXAMINADA (corregida manualmente)
+    # YA COMPLETADA (corregida manualmente)
     # ==========================================
 
     path_corregidas = os.path.join(HISTORIAL_DIR, "facturas_corregidas.xlsx")
@@ -927,7 +1164,7 @@ def clasificar_factura(fila):
 
             if archivo_excel == archivo:
 
-                return "examinada"
+                return "completada"
 
     datos = dict(zip(EXPECTED_HEADERS, fila))
 
@@ -968,10 +1205,10 @@ def clasificar_factura(fila):
         return "reenviar_pedido"
 
     # ==========================================
-    # EXAMINADA: extracción correcta
+    # COMPLETADA: extracción correcta
     # ==========================================
 
-    return "examinada"
+    return "completada"
 
 
 PATRONES_ALBARAN_TITULO = [
@@ -1056,11 +1293,11 @@ def mover_pdf(pdf_path, tipo):
     import time
 
     carpetas = {
-        "examinada":       os.path.join(FACTURAS_DIR, "examinadas"),
+        "completada":      COMPLETADAS_DIR,
         "manual":          os.path.join(FACTURAS_DIR, "corregir_manualmente"),
         "imagen":          os.path.join(FACTURAS_DIR, "imagenes"),
         "no_es_factura":   NO_FACTURA_DIR,
-        "reenviar_pedido": os.path.join(FACTURAS_DIR, "reenviar_falta_pedidocliente"),
+        "reenviar_pedido": REENVIAR_PEDIDO_DIR,
         "error":           os.path.join(FACTURAS_DIR, "error"),
     }
 
@@ -1164,7 +1401,7 @@ def procesar_carpeta():
                 "auto"
             )
 
-            if tipo == "examinada":
+            if tipo == "completada":
                 guardar_factura_examinada_sql(fila, "auto")
 
         except Exception as e:
@@ -1251,12 +1488,44 @@ def cargar_pdf_pendiente_individual(archivo):
     return None, "api", False
 
 
+def listar_pendientes_lista():
+    if not os.path.exists(CORREGIR_DIR):
+        return []
+    return sorted(
+        (f for f in os.listdir(CORREGIR_DIR) if f.lower().endswith(".pdf")),
+        key=lambda f: (0 if f.startswith(PRIORIDAD_PREFIX) else 1, f.lower()),
+    )
+
+
+def listar_pendientes_completo():
+    """
+    [headers, *filas] con los datos ya extraídos de cada factura pendiente de
+    corregir, para pintar "Corregir manualmente" como tabla filtrable (igual
+    que "todas las extracciones"). Reutiliza cargar_pdf_pendiente_individual,
+    que casi siempre lee del historial ya existente; solo llama al LLM para
+    PDFs subidos a mano que todavía no se hayan extraído nunca.
+    """
+    filas = []
+    for archivo in listar_pendientes_lista():
+        fila, _fuente, es_no_factura_flag = cargar_pdf_pendiente_individual(archivo)
+
+        if fila is None:
+            fila = [archivo] + ["-"] * (len(EXPECTED_HEADERS) - 1)
+        else:
+            fila = (list(fila) + ["-"] * len(EXPECTED_HEADERS))[:len(EXPECTED_HEADERS)]
+            fila[0] = archivo
+
+        filas.append(fila)
+
+    return [EXPECTED_HEADERS] + filas
+
+
 def confirmar_y_mover_factura(archivo, fila_completa, usuario):
     guardar_factura_corregida_completa(fila_completa=fila_completa, usuario=usuario)
     guardar_factura_examinada_sql(fila_completa, "manual")
     src = os.path.join(CORREGIR_DIR, archivo)
-    os.makedirs(EXAMINADAS_DIR, exist_ok=True)
-    dest = os.path.join(EXAMINADAS_DIR, archivo)
+    os.makedirs(COMPLETADAS_DIR, exist_ok=True)
+    dest = os.path.join(COMPLETADAS_DIR, archivo)
     shutil.move(src, dest)
 
 
@@ -1280,6 +1549,121 @@ def descartar_pendiente(archivo):
         dest = os.path.join(NO_FACTURA_DIR, f"{base}_{datetime.now().strftime('%Y%m%d%H%M%S')}{ext}")
 
     shutil.move(src, dest)
+
+
+def listar_reenviar_pedido():
+    """
+    Lista de solo lectura de REENVIAR_PEDIDO_DIR. La app nunca mueve nada de
+    aquí a REENVIADAS_PEDIDO_DIR: ese traslado es responsabilidad exclusiva
+    del flujo de Power Automate una vez gestiona (envía y archiva) la
+    solicitud, para evitar que la app y Power Automate compitan moviendo el
+    mismo archivo.
+    """
+    if not os.path.exists(REENVIAR_PEDIDO_DIR):
+        return []
+    return sorted(f for f in os.listdir(REENVIAR_PEDIDO_DIR) if f.lower().endswith(".pdf"))
+
+
+# =========================================================
+# SOLICITUDES DE ENVÍO DE CORREO POR OTROS MOTIVOS
+# (fallo del reenvío automático, falta de otro dato obligatorio,
+# varias facturas en un mismo PDF, u otro motivo redactado a mano).
+#
+# A diferencia de "reenviar_pedido", aquí el PDF puede venir de
+# cualquier punto del flujo (pendiente de corregir, ya completada...),
+# así que se localiza por nombre y se COPIA (no se mueve) a la carpeta
+# de salida, dejando intacto el original en su carpeta de origen.
+# El destinatario se reutiliza del marcador __EMAIL__...__ENDMAIL__ que
+# ya trae el nombre del archivo desde la ingesta original; el motivo se
+# codifica en el nombre con el mismo estilo para que el flujo de Power
+# Automate que vigile esta carpeta pueda redactar el correo adecuado.
+# =========================================================
+
+_CARACTERES_INVALIDOS_ARCHIVO = re.compile(r'[\\/:*?"<>|\r\n]+')
+
+
+def _sanear_motivo_para_archivo(texto):
+    texto = _CARACTERES_INVALIDOS_ARCHIVO.sub(" ", texto).strip()
+    texto = re.sub(r"\s+", " ", texto)
+    return texto[:120]
+
+
+def _carpetas_busqueda_pdf():
+    return [
+        CORREGIR_DIR,
+        COMPLETADAS_DIR,
+        os.path.join(FACTURAS_DIR, "procesadas"),
+        NO_FACTURA_DIR,
+        REENVIAR_PEDIDO_DIR,
+        REENVIADAS_PEDIDO_DIR,
+        REENVIAR_OTRO_MOTIVO_DIR,
+        REENVIADAS_OTRO_MOTIVO_DIR,
+    ]
+
+
+def buscar_pdf_por_nombre(archivo):
+    """Busca `archivo` en todas las carpetas del flujo y devuelve su ruta completa,
+    o None si no se encuentra en ninguna."""
+    for carpeta in _carpetas_busqueda_pdf():
+        ruta = os.path.join(carpeta, archivo)
+        if os.path.exists(ruta):
+            return ruta
+    return None
+
+
+def solicitar_envio_correo(archivo, motivo, motivo_otro=None, campo_obligatorio=None):
+    """
+    Copia el PDF (sin moverlo de donde esté) a REENVIAR_OTRO_MOTIVO_DIR,
+    codificando el motivo elegido en el nombre de archivo para que el flujo
+    de Power Automate que vigile esa carpeta pueda redactar el correo con el
+    motivo adecuado. Devuelve el nombre final generado.
+    """
+    if motivo not in MOTIVOS_ENVIO_CORREO:
+        raise ValueError(f"Motivo no reconocido: {motivo}")
+
+    if motivo == "otros":
+        texto_motivo = (motivo_otro or "").strip()
+        if not texto_motivo:
+            raise ValueError("Debes redactar el motivo cuando seleccionas 'Otros'.")
+    elif motivo == "falta_dato_obligatorio":
+        campo_obligatorio = (campo_obligatorio or "").strip()
+        if campo_obligatorio not in CAMPOS_OBLIGATORIOS_FACTURA:
+            raise ValueError("Debes seleccionar el campo obligatorio que falta.")
+        texto_motivo = f"{MOTIVOS_ENVIO_CORREO[motivo]}: {campo_obligatorio}"
+    else:
+        texto_motivo = MOTIVOS_ENVIO_CORREO[motivo]
+
+    texto_motivo = _sanear_motivo_para_archivo(texto_motivo)
+
+    src = buscar_pdf_por_nombre(archivo)
+    if src is None:
+        raise FileNotFoundError(archivo)
+
+    base, ext = os.path.splitext(archivo)
+    nuevo_nombre = f"{base}__MOTIVOENVIO__{texto_motivo}__ENDMOTIVOENVIO__{ext}"
+
+    os.makedirs(REENVIAR_OTRO_MOTIVO_DIR, exist_ok=True)
+    dest = os.path.join(REENVIAR_OTRO_MOTIVO_DIR, nuevo_nombre)
+
+    if os.path.exists(dest):
+        sufijo = datetime.now().strftime("%Y%m%d%H%M%S")
+        nuevo_nombre = f"{base}__MOTIVOENVIO__{texto_motivo}__ENDMOTIVOENVIO__{sufijo}{ext}"
+        dest = os.path.join(REENVIAR_OTRO_MOTIVO_DIR, nuevo_nombre)
+
+    shutil.copy2(src, dest)
+    return nuevo_nombre
+
+
+def listar_solicitudes_envio_correo():
+    """
+    Lista de solo lectura de REENVIAR_OTRO_MOTIVO_DIR. Igual que con
+    reenviar_pedido, la app nunca mueve nada de aquí a REENVIADAS_OTRO_MOTIVO_DIR:
+    el archivo desaparece de esta lista solo cuando Power Automate lo procesa
+    (envía el correo) y lo archiva por su cuenta.
+    """
+    if not os.path.exists(REENVIAR_OTRO_MOTIVO_DIR):
+        return []
+    return sorted(f for f in os.listdir(REENVIAR_OTRO_MOTIVO_DIR) if f.lower().endswith(".pdf"))
 
 
 # =========================================================
@@ -1360,36 +1744,12 @@ def fila_desde_dict(datos):
     return limpiar_fila(fila)
 
 
-HISTORIAL_COMPLETO_HEADERS = EXPECTED_HEADERS + ["Origen", "UsuarioCorreccion", "FechaCorreccion"]
-
-
-def historial_completo():
-    """
-    Devuelve [cabecera, *filas] combinando los históricos completos que ya
-    existen en disco: extracción automática, segunda pasada con visión y
-    correcciones manuales. Si un mismo archivo aparece en más de uno, la
-    corrección manual tiene prioridad por ser la versión revisada por una
-    persona.
-    """
-    por_archivo = {}
-
-    for origen, nombre in [
-        ("auto", "historial_facturas_auto.xlsx"),
-        ("imagenes", "historial_facturas_imagenes.xlsx"),
-    ]:
-        path = os.path.join(HISTORIAL_DIR, nombre)
-        for datos in leer_historial_bloques(path):
-            fila = fila_desde_dict(datos)
-            por_archivo[fila[0]] = fila + [origen, "-", "-"]
-
-    path_corregidas = os.path.join(HISTORIAL_DIR, "facturas_corregidas.xlsx")
-    for datos in leer_historial_plano(path_corregidas):
-        fila = fila_desde_dict(datos)
-        usuario = str(datos.get("UsuarioUltimaModificacion") or "-")
-        fecha = str(datos.get("FechaUltimaModificacion") or "-")
-        por_archivo[fila[0]] = fila + ["manual", usuario, fecha]
-
-    return [HISTORIAL_COMPLETO_HEADERS] + list(por_archivo.values())
+def facturas_definitivas_tabla():
+    """[headers, *filas] leyendo el Excel "100% definitivo" ya escrito en
+    disco, para poder ofrecerlo como descarga con el formato/estilo habitual."""
+    filas_dict = leer_historial_plano(EXCEL_DEFINITIVO_PATH)
+    filas = [[str(d.get(c, "-") or "-") for c in HEADERS_DEFINITIVO] for d in filas_dict]
+    return [HEADERS_DEFINITIVO] + filas
 
 
 def tabla_a_pipe_csv(tabla):
