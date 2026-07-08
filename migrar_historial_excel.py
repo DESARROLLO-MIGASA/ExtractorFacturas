@@ -34,6 +34,7 @@ from sql_historial import guardar_factura_examinada_sql
 
 HISTORIAL_DIR = os.path.join(FACTURAS_DIR, "historial")
 PATH_AUTO = os.path.join(HISTORIAL_DIR, "historial_facturas_auto.xlsx")
+PATH_IMAGENES = os.path.join(HISTORIAL_DIR, "historial_facturas_imagenes.xlsx")
 PATH_CORREGIDAS = os.path.join(HISTORIAL_DIR, "facturas_corregidas.xlsx")
 
 
@@ -78,6 +79,12 @@ def recopilar_examinadas():
         fila = fila_desde_dict(datos)
         if clasificar_por_campos(fila) == "examinada":
             resultado[fila[0]] = (fila, "auto")
+
+    print(f"Leyendo segunda pasada con visión: {PATH_IMAGENES}")
+    for datos in leer_historial_bloques(PATH_IMAGENES):
+        fila = fila_desde_dict(datos)
+        if clasificar_por_campos(fila) == "examinada":
+            resultado[fila[0]] = (fila, "imagenes")
 
     print(f"Leyendo correcciones manuales: {PATH_CORREGIDAS}")
     for datos in leer_historial_plano(PATH_CORREGIDAS):

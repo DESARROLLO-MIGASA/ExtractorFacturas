@@ -21,7 +21,7 @@ CREATE TABLE FacturasExaminadas (
     [Moneda]            NVARCHAR(255) NULL,
     [NombreProveedor]   NVARCHAR(255) NULL,
     [NumeroFactura]     NVARCHAR(255) NULL,
-    [PedidoCliente]     NVARCHAR(255) NULL,
+    [PedidoCliente]     NVARCHAR(1000) NULL,  -- puede traer varios pedidos concatenados con ";"
     [Proveedor]         NVARCHAR(255) NULL,
     [TipoIVA]           NVARCHAR(255) NULL,
     [TipoIVA2]          NVARCHAR(255) NULL,
@@ -29,5 +29,8 @@ CREATE TABLE FacturasExaminadas (
     [TotalFact]         NVARCHAR(255) NULL,
     Origen              NVARCHAR(20) NULL,           -- 'auto' o 'manual'
     FechaInsercion      DATETIME NOT NULL DEFAULT GETDATE(),
+    Definitiva          BIT NOT NULL DEFAULT 0,       -- 1 = marcada como 100% revisada/definitiva
+    UsuarioDefinitiva   NVARCHAR(100) NULL,           -- usuario que la marcó/desmarcó
+    FechaDefinitiva     DATETIME NULL,                -- fecha del último marcado/desmarcado
     CONSTRAINT UQ_FacturasExaminadas_Archivo UNIQUE (Archivo)
 );

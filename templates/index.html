@@ -706,14 +706,14 @@ a.link-abrir-pdf:hover {
 
         <div class="grid">
 
-            <div class="kpi error">
-                <div id="error" class="kpi-num">0</div>
-                <div class="kpi-text">Error</div>
-            </div>
-
             <div class="kpi">
                 <div id="entrada" class="kpi-num">0</div>
                 <div class="kpi-text">Entrada</div>
+            </div>
+
+            <div class="kpi error">
+                <div id="error" class="kpi-num">0</div>
+                <div class="kpi-text">Error</div>
             </div>
 
             <div class="kpi">
@@ -734,6 +734,11 @@ a.link-abrir-pdf:hover {
             <div class="kpi">
                 <div id="completadas" class="kpi-num">0</div>
                 <div class="kpi-text">Completadas</div>
+            </div>
+
+            <div class="kpi">
+                <div id="revisadas" class="kpi-num">0</div>
+                <div class="kpi-text">Revisadas</div>
             </div>
 
             <div class="kpi">
@@ -810,12 +815,17 @@ a.link-abrir-pdf:hover {
         <div class="section-title">
             Facturas completadas
             <span id="badgeCompletadas" class="badge vacio">0</span>
-            <button class="btn-secondary" style="margin-left:auto" onclick="cargarFacturasCompletadas()">Actualizar lista</button>
+            <label style="margin-left:auto; font-weight:normal;">
+                <input type="checkbox" id="revMostrarDefinitivas" onchange="filtrarCompletadas()">
+                Mostrar definitivas
+            </label>
+            <button class="btn-secondary" onclick="cargarFacturasCompletadas()">Actualizar lista</button>
             <button class="btn-secondary" onclick="descargarFacturasDefinitivas()">Descargar Excel definitivo</button>
         </div>
         <p class="help">
             Revisión final de las facturas ya completadas (extraídas automáticamente sin problemas o corregidas a mano).
-            Marca ✅ cuando una factura esté 100% correcta: se añade al Excel definitivo aparte.
+            Marca ✅ cuando una factura esté 100% correcta: se añade al Excel definitivo aparte y desaparece de esta lista.
+            Activa "Mostrar definitivas" para volver a verlas.
         </p>
 
         <div class="filtro-fecha">
@@ -990,6 +1000,7 @@ async function cargarEstadisticas(){
     document.getElementById("imagenes").innerText = data.imagenes || 0;
     document.getElementById("manual").innerText = data.manual || 0;
     document.getElementById("completadas").innerText = data.completadas || 0;
+    document.getElementById("revisadas").innerText = data.revisadas || 0;
     document.getElementById("no_es_factura").innerText = data.no_es_factura || 0;
     document.getElementById("reenviar_pedido").innerText = data.reenviar_pedido || 0;
     document.getElementById("reenviadas_pedido").innerText = data.reenviadas_pedido || 0;
@@ -1444,6 +1455,18 @@ async function cargarPendientesCompleto() {
     }
 }
 
+function quitarDePendientesCache(archivo) {
+    if (!pendientesCompletoCache) return;
+    const headers = pendientesCompletoCache[0];
+    const idxArchivo = headers.indexOf("Archivo");
+    pendientesCompletoCache = [
+        headers,
+        ...pendientesCompletoCache.slice(1).filter(row => row[idxArchivo] !== archivo),
+    ];
+    actualizarBadgePendientes();
+    filtrarPendientes();
+}
+
 function actualizarBadgePendientes() {
     const n = pendientesCompletoCache ? Math.max(pendientesCompletoCache.length - 1, 0) : 0;
     [document.getElementById("badgePendientes"), document.getElementById("badgePendientesTab")].forEach(b => {
@@ -1511,7 +1534,7 @@ async function descartarPendiente(archivo) {
         }
 
         mostrarToast(`✓ ${archivo} movido a "No es factura".`, "ok");
-        await cargarPendientesCompleto();
+        quitarDePendientesCache(archivo);
         cargarEstadisticas();
 
     } catch (e) {
@@ -1532,15 +1555,29 @@ async function cargarFacturasCompletadas() {
         const res = await fetch("/facturas-completadas-json");
         const data = await res.json();
         completadasCache = data.tabla || [];
-        actualizarBadgeCompletadas();
         filtrarCompletadas();
     } catch (e) {
         document.getElementById("tablaCompletadas").innerHTML = "<span class='help'>Error al cargar las facturas completadas.</span>";
     }
 }
 
+function filasCompletadasVisibles() {
+    if (!completadasCache) return null;
+
+    const headers = completadasCache[0];
+    const idxDef = headers.indexOf("Definitiva");
+    const mostrarDefinitivas = document.getElementById("revMostrarDefinitivas").checked;
+
+    const filas = mostrarDefinitivas
+        ? completadasCache.slice(1)
+        : completadasCache.slice(1).filter(row => row[idxDef] !== "Sí");
+
+    return [headers, ...filas];
+}
+
 function actualizarBadgeCompletadas() {
-    const n = completadasCache ? Math.max(completadasCache.length - 1, 0) : 0;
+    const visibles = filasCompletadasVisibles();
+    const n = visibles ? visibles.length - 1 : 0;
     const b = document.getElementById("badgeCompletadas");
     b.textContent = n;
     b.className = "badge" + (n === 0 ? " vacio" : "");
@@ -1549,7 +1586,9 @@ function actualizarBadgeCompletadas() {
 function filtrarCompletadas() {
     if (!completadasCache) return;
 
-    const tabla = aplicarFiltros(completadasCache, {
+    actualizarBadgeCompletadas();
+
+    const tabla = aplicarFiltros(filasCompletadasVisibles(), {
         fechaDesdeId: "revFechaDesde",
         fechaHastaId: "revFechaHasta",
         columnaFecha: "FEscaneo",
@@ -1612,6 +1651,7 @@ async function alternarDefinitiva(row, headers) {
             "ok"
         );
         await cargarFacturasCompletadas();
+        cargarEstadisticas();
 
     } catch (e) {
         mostrarToast("Error de conexión.", "error");
@@ -1833,6 +1873,14 @@ async function guardarEdicionFactura() {
 
         if (!res.ok) {
             const err = await res.json();
+
+            if (res.status === 404 && edicionFactura.tipo === "pendiente") {
+                mostrarToast(`${edicionFactura.archivo} ya no está pendiente (se guardó antes). Se ha quitado de la lista.`, "error");
+                cerrarModalEditarFactura();
+                quitarDePendientesCache(edicionFactura.archivo);
+                return;
+            }
+
             mostrarToast(err.detail || "Error al guardar.", "error");
             return;
         }
@@ -1847,7 +1895,8 @@ async function guardarEdicionFactura() {
         cerrarModalEditarFactura();
 
         if (tipo === "pendiente") {
-            await cargarPendientesCompleto();
+            quitarDePendientesCache(edicionFactura.archivo);
+            await cargarFacturasCompletadas();
         } else {
             await cargarFacturasCompletadas();
         }

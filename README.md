@@ -7,7 +7,8 @@ Sistema que extrae automáticamente los datos estructurados de facturas en PDF u
 - **`routers/`** — endpoints agrupados por área: `auto.py` (procesamiento automático) y `manual.py` (corrección manual, subida, historial).
 - **`imagenes.py`** — segunda pasada con visión (GPT vision) para los PDFs escaneados o fotografiados que no tienen texto extraíble.
 - **`sql_historial.py`** — guarda cada factura completada (ya sea automática o corregida a mano) en una base de datos (SQL Server o SQLite), como complemento del histórico en Excel.
-- **`migrar_historial_excel.py`** — migración puntual y segura de re-ejecutar del histórico Excel acumulado hacia SQL Server.
+- **`migrar_historial_excel.py`** — migración puntual y segura de re-ejecutar del histórico Excel acumulado (auto, visión y correcciones) hacia SQL Server.
+- **`cargar_proveedores.py`** — utilidad independiente del circuito de facturas: carga `ProveedoresBC.xls` y `ProveedoresBCEnvasado.xls` en la tabla `ProveedoresClasificados` (CIF, nombre, Granel/Envasado, bloqueado).
 
 ---
 
@@ -182,6 +183,15 @@ python migrar_historial_excel.py --dry-run   # solo cuenta y lista, no escribe n
 python migrar_historial_excel.py             # migra de verdad
 ```
 
+### Proveedores clasificados (Granel / Envasado)
+
+Utilidad puntual, independiente del circuito de facturas, para volcar a SQL el listado de proveedores exportado desde Business Central (`ProveedoresBC.xls` = Granel, `ProveedoresBCEnvasado.xls` = Envasado) a la tabla `ProveedoresClasificados` (CIF, nombre, clasificación y si está bloqueado). Si un mismo CIF aparece en ambos ficheros, se guarda una fila por cada clasificación. Es seguro repetir la carga: hace upsert por CIF + Clasificación.
+
+```bash
+python cargar_proveedores.py --dry-run   # solo cuenta y lista, no escribe nada
+python cargar_proveedores.py             # carga de verdad
+```
+
 ### Flujo de uso (vista "Corregir manualmente")
 
 1. Abre el navegador en `http://localhost:8000` y pulsa "Corregir manualmente"
@@ -206,8 +216,10 @@ python migrar_historial_excel.py             # migra de verdad
 ├── imagenes.py                # Segunda pasada con visión para PDFs escaneados
 ├── sql_historial.py           # Guardado en SQL Server / SQLite de facturas completadas
 ├── migrar_historial_excel.py  # Migración puntual del histórico Excel a SQL Server
+├── cargar_proveedores.py      # Carga puntual de ProveedoresBC(.Envasado).xls a ProveedoresClasificados
 ├── sql/
-│   └── crear_tabla_facturas_examinadas.sql   # DDL opcional de la tabla FacturasExaminadas
+│   ├── crear_tabla_facturas_examinadas.sql       # DDL opcional de la tabla FacturasExaminadas
+│   └── crear_tabla_proveedores_clasificados.sql  # DDL opcional de la tabla ProveedoresClasificados
 ├── static/                    # Recursos estáticos (logo, etc.)
 ├── uploads/                   # Temporales de subida (flujo secundario /extraer)
 ├── requirements.txt

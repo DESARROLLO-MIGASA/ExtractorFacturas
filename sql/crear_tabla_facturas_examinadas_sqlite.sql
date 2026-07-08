@@ -26,5 +26,8 @@ CREATE TABLE IF NOT EXISTS FacturasExaminadas (
     [TotalFact]         TEXT,
     Origen              TEXT,                          -- 'auto' o 'manual'
     FechaInsercion      TEXT NOT NULL DEFAULT (datetime('now')),
+    Definitiva          INTEGER DEFAULT 0,              -- 1 = marcada como 100% revisada/definitiva
+    UsuarioDefinitiva   TEXT,                            -- usuario que la marcó/desmarcó
+    FechaDefinitiva     TEXT,                            -- fecha del último marcado/desmarcado
     UNIQUE([Archivo])
 );

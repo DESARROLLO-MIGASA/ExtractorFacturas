@@ -105,7 +105,11 @@ def _crear_tabla_si_no_existe(cursor):
             cursor.execute(f"ALTER TABLE {TABLA} ADD COLUMN FechaDefinitiva TEXT")
         return
 
-    columnas_sql = ",\n".join(f"[{c}] NVARCHAR(255) NULL" for c in COLUMNAS)
+    # PedidoCliente puede traer varios números de pedido concatenados con ";"
+    # (facturas que agrupan varios pedidos), así que necesita más margen que
+    # el resto de columnas.
+    ANCHOS = {"PedidoCliente": 1000}
+    columnas_sql = ",\n".join(f"[{c}] NVARCHAR({ANCHOS.get(c, 255)}) NULL" for c in COLUMNAS)
 
     cursor.execute(f"""
         IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = '{TABLA}')
@@ -116,6 +120,10 @@ def _crear_tabla_si_no_existe(cursor):
             FechaInsercion DATETIME NOT NULL DEFAULT GETDATE(),
             CONSTRAINT UQ_{TABLA}_Archivo UNIQUE (Archivo)
         )
+    """)
+    cursor.execute(f"""
+        IF COL_LENGTH('{TABLA}', 'PedidoCliente') IS NOT NULL AND COL_LENGTH('{TABLA}', 'PedidoCliente') < 1000
+        ALTER TABLE {TABLA} ALTER COLUMN [PedidoCliente] NVARCHAR(1000) NULL
     """)
     cursor.execute(f"""
         IF COL_LENGTH('{TABLA}', 'Definitiva') IS NULL

@@ -31,6 +31,7 @@ FACTURAS_DIR = os.getenv("FACTURAS_DIR", _fallback).strip('"').strip("'")
 
 CORREGIR_DIR         = os.path.join(FACTURAS_DIR, "corregir_manualmente")
 COMPLETADAS_DIR      = os.path.join(FACTURAS_DIR, "completadas")
+FACTURAS_REVISADAS_DIR = os.path.join(FACTURAS_DIR, "facturas_revisadas")
 HISTORIAL_DIR        = os.path.join(FACTURAS_DIR, "historial")
 NO_FACTURA_DIR       = os.path.join(FACTURAS_DIR, "no_es_factura")
 REENVIAR_PEDIDO_DIR  = os.path.join(FACTURAS_DIR, "reenviar_falta_pedidocliente")
@@ -1059,9 +1060,30 @@ def listar_facturas_completadas():
     return [HEADERS_FACTURAS_COMPLETADAS] + filas
 
 
+def _mover_pdf_definitiva(archivo, carpeta_destino):
+    """Mueve el PDF de `archivo` a `carpeta_destino` (buscándolo en cualquiera
+    de las carpetas del flujo), evitando colisiones de nombre."""
+    src = buscar_pdf_por_nombre(archivo)
+    if src is None:
+        raise FileNotFoundError(archivo)
+
+    if os.path.normpath(os.path.dirname(src)) == os.path.normpath(carpeta_destino):
+        return
+
+    os.makedirs(carpeta_destino, exist_ok=True)
+    dest = os.path.join(carpeta_destino, archivo)
+
+    if os.path.exists(dest):
+        base, ext = os.path.splitext(archivo)
+        dest = os.path.join(carpeta_destino, f"{base}_{datetime.now().strftime('%Y%m%d%H%M%S')}{ext}")
+
+    shutil.move(src, dest)
+
+
 def marcar_factura_definitiva(archivo, definitiva, usuario):
-    """Marca/desmarca en SQL una factura examinada como 100% definitiva y
-    refleja el cambio en el Excel definitivo aparte."""
+    """Marca/desmarca en SQL una factura examinada como 100% definitiva,
+    refleja el cambio en el Excel definitivo aparte y mueve el PDF entre
+    "completadas" y "facturas_revisadas"."""
     ok = marcar_factura_definitiva_sql(archivo, definitiva, usuario)
     if not ok:
         raise RuntimeError("No se pudo actualizar el estado en la base de datos.")
@@ -1073,8 +1095,10 @@ def marcar_factura_definitiva(archivo, definitiva, usuario):
             raise FileNotFoundError(archivo)
         fila_completa = [fila_dict.get(c, "-") for c in EXPECTED_HEADERS]
         agregar_o_actualizar_factura_definitiva(fila_completa, fila_dict.get("Origen", "-"), usuario)
+        _mover_pdf_definitiva(archivo, FACTURAS_REVISADAS_DIR)
     else:
         quitar_factura_definitiva(archivo)
+        _mover_pdf_definitiva(archivo, COMPLETADAS_DIR)
 
 
 def actualizar_factura_completada(fila_completa, origen, usuario):
@@ -1425,12 +1449,28 @@ def procesar_carpeta():
 # FLUJO MANUAL (corrección de pendientes)
 # =========================================================
 
-def _buscar_en_directorio_historial(archivo, directorio):
+_indice_historial_cache = {"firma": None, "indice": {}}
+
+
+def _indice_historial(directorio):
+    """Índice {archivo: fila} de todos los historial_facturas_*.xlsx de
+    `directorio`, cacheado en memoria. Se reconstruye solo si cambia el
+    conjunto de ficheros o su fecha de modificación, para no tener que
+    reabrir y re-escanear los Excel en cada búsqueda."""
     if not os.path.exists(directorio):
-        return None
-    for nombre in os.listdir(directorio):
-        if not (nombre.startswith("historial_facturas_") and nombre.endswith(".xlsx")):
-            continue
+        return {}
+
+    nombres = sorted(
+        f for f in os.listdir(directorio)
+        if f.startswith("historial_facturas_") and f.endswith(".xlsx")
+    )
+    firma = tuple((n, os.path.getmtime(os.path.join(directorio, n))) for n in nombres)
+
+    if firma == _indice_historial_cache["firma"]:
+        return _indice_historial_cache["indice"]
+
+    indice = {}
+    for nombre in nombres:
         hist_path = os.path.join(directorio, nombre)
         try:
             wb = load_workbook(hist_path, read_only=True)
@@ -1441,13 +1481,19 @@ def _buscar_en_directorio_historial(archivo, directorio):
                 val = str(row[0]).strip()
                 if val == "Archivo" or "Extracción facturas" in val:
                     continue
-                if val == archivo:
-                    wb.close()
-                    return [str(c) if c is not None else "-" for c in row]
+                # Primera aparición gana (igual que el escaneo secuencial original).
+                indice.setdefault(val, [str(c) if c is not None else "-" for c in row])
             wb.close()
         except Exception as e:
             print(f"Error leyendo historial {hist_path}: {e}")
-    return None
+
+    _indice_historial_cache["firma"] = firma
+    _indice_historial_cache["indice"] = indice
+    return indice
+
+
+def _buscar_en_directorio_historial(archivo, directorio):
+    return _indice_historial(directorio).get(archivo)
 
 
 def buscar_en_historial(archivo):
@@ -1481,6 +1527,7 @@ def cargar_pdf_pendiente_individual(archivo):
         result_csv = extract_invoice_with_agent(file_name=archivo, invoice_text=text)
         tabla = csv_to_matrix(result_csv)
         if len(tabla) > 1:
+            guardar_historial(result_csv, "manual")
             return tabla[1], "api", False
     except Exception as e:
         print(f"ERROR extrayendo {archivo}: {e}")
@@ -1592,6 +1639,7 @@ def _carpetas_busqueda_pdf():
     return [
         CORREGIR_DIR,
         COMPLETADAS_DIR,
+        FACTURAS_REVISADAS_DIR,
         os.path.join(FACTURAS_DIR, "procesadas"),
         NO_FACTURA_DIR,
         REENVIAR_PEDIDO_DIR,
