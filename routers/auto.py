@@ -6,15 +6,19 @@ from fastapi.responses import JSONResponse
 
 from logic import (
     FACTURAS_DIR,
+    ERROR_DIR,
     NO_FACTURA_DIR,
     COMPLETADAS_DIR,
     FACTURAS_REVISADAS_DIR,
     REENVIAR_PEDIDO_DIR,
     REENVIADAS_PEDIDO_DIR,
+    REENVIAR_DOS_FACTURAS_DIR,
     REENVIAR_OTRO_MOTIVO_DIR,
     REENVIADAS_OTRO_MOTIVO_DIR,
+    REENVIAR_ERROR_PESA_MUCHO_DIR,
+    REENVIAR_ERROR_OTRO_DIR,
     MOTIVOS_ENVIO_CORREO,
-    CAMPOS_OBLIGATORIOS_FACTURA,
+    MOTIVOS_ERROR_EXTRACCION,
     read_pdf_text,
     es_no_factura,
     extract_invoice_with_agent,
@@ -25,6 +29,8 @@ from logic import (
     listar_reenviar_pedido,
     solicitar_envio_correo,
     listar_solicitudes_envio_correo,
+    listar_errores,
+    clasificar_error,
     guardar_historial,
     guardar_factura_examinada_sql,
 )
@@ -111,28 +117,24 @@ def estadisticas():
         "entrada":         os.path.join(FACTURAS_DIR, "entrada"),
         "procesadas":      os.path.join(FACTURAS_DIR, "procesadas"),
         "imagenes":        os.path.join(FACTURAS_DIR, "imagenes"),
-        "error":           os.path.join(FACTURAS_DIR, "error"),
+        "error":           ERROR_DIR,
         "completadas":     COMPLETADAS_DIR,
         "revisadas":       FACTURAS_REVISADAS_DIR,
         "manual":          os.path.join(FACTURAS_DIR, "corregir_manualmente"),
         "no_es_factura":   NO_FACTURA_DIR,
         "reenviar_pedido": REENVIAR_PEDIDO_DIR,
         "reenviadas_pedido": REENVIADAS_PEDIDO_DIR,
+        "reenviar_dos_facturas": REENVIAR_DOS_FACTURAS_DIR,
         "reenviar_otro_motivo": REENVIAR_OTRO_MOTIVO_DIR,
         "reenviadas_otro_motivo": REENVIADAS_OTRO_MOTIVO_DIR,
+        "reenviar_error_pesa_mucho": REENVIAR_ERROR_PESA_MUCHO_DIR,
+        "reenviar_error_otro": REENVIAR_ERROR_OTRO_DIR,
     }
 
     datos = {}
     for nombre, ruta in carpetas.items():
         if not os.path.exists(ruta):
             datos[nombre] = 0
-        elif nombre in ("reenviar_otro_motivo", "reenviadas_otro_motivo"):
-            # Estas carpetas tienen subcarpetas por campo para las solicitudes
-            # de "falta_dato_obligatorio", así que hay que contar recursivamente.
-            datos[nombre] = sum(
-                len([f for f in archivos if f.lower().endswith(".pdf")])
-                for _, _, archivos in os.walk(ruta)
-            )
         else:
             datos[nombre] = len([f for f in os.listdir(ruta) if f.lower().endswith(".pdf")])
 
@@ -158,7 +160,6 @@ def reenviar_pedido_lista():
 def motivos_envio_correo():
     return {
         "motivos": [{"clave": k, "etiqueta": v} for k, v in MOTIVOS_ENVIO_CORREO.items()],
-        "campos_obligatorios": CAMPOS_OBLIGATORIOS_FACTURA,
     }
 
 
@@ -167,13 +168,12 @@ async def solicitar_envio_correo_endpoint(body: dict):
     archivo = str(body.get("archivo", "")).strip()
     motivo = str(body.get("motivo", "")).strip()
     motivo_otro = body.get("motivo_otro")
-    campo_obligatorio = body.get("campo_obligatorio")
 
     if not archivo or os.path.basename(archivo) != archivo:
         raise HTTPException(status_code=400, detail="Nombre de archivo no válido.")
 
     try:
-        archivo_generado = solicitar_envio_correo(archivo, motivo, motivo_otro, campo_obligatorio)
+        archivo_generado = solicitar_envio_correo(archivo, motivo, motivo_otro)
         return {"ok": True, "archivo_generado": archivo_generado}
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"No se encontró el PDF: {archivo}")
@@ -184,3 +184,34 @@ async def solicitar_envio_correo_endpoint(body: dict):
 @router.get("/solicitudes-envio-correo-lista")
 def solicitudes_envio_correo_lista():
     return {"archivos": listar_solicitudes_envio_correo()}
+
+
+# =========================================================
+# ERRORES DE EXTRACCIÓN (carpeta "error", sin clasificar)
+# =========================================================
+
+@router.get("/motivos-error-extraccion")
+def motivos_error_extraccion():
+    return {"motivos": [{"clave": k, "etiqueta": v} for k, v in MOTIVOS_ERROR_EXTRACCION.items()]}
+
+
+@router.get("/errores-lista")
+def errores_lista():
+    return {"archivos": listar_errores()}
+
+
+@router.post("/clasificar-error")
+async def clasificar_error_endpoint(body: dict):
+    archivo = str(body.get("archivo", "")).strip()
+    motivo = str(body.get("motivo", "")).strip()
+
+    if not archivo or os.path.basename(archivo) != archivo:
+        raise HTTPException(status_code=400, detail="Nombre de archivo no válido.")
+
+    try:
+        email = clasificar_error(archivo, motivo)
+        return {"ok": True, "email": email}
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"No se encontró el PDF: {archivo}")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))

@@ -537,6 +537,14 @@ a.link-abrir-pdf:hover {
     text-decoration: underline;
 }
 
+table.tabla-historial tr.fila-seleccionada td {
+    background: #FFF6D5;
+}
+
+.item-reenviar.fila-seleccionada {
+    background: #FFF6D5;
+}
+
 /* DASHBOARD AUTOMÁTICO */
 .grid {
     display: grid;
@@ -616,6 +624,11 @@ a.link-abrir-pdf:hover {
     background: #FDECEA;
     border-color: #C62828;
     color: #B71C1C;
+    cursor: pointer;
+}
+
+.alerta.error:hover {
+    background: #FADBD8;
 }
 
 /* FILTROS */
@@ -883,10 +896,10 @@ a.link-abrir-pdf:hover {
             <button class="btn-secondary" style="margin-left:auto" onclick="cargarSolicitudesCorreo()">Actualizar lista</button>
         </div>
         <p class="help">
-            Facturas en espera de que Power Automate envíe el correo de aclaración correspondiente (falta el pedido
-            de cliente, falta otro dato obligatorio, el PDF trae varias facturas juntas, u otro motivo redactado a
-            mano) y las archive. Esta lista es de solo lectura: un archivo desaparece de aquí en cuanto Power
-            Automate lo procesa, la app nunca lo mueve.
+            Facturas marcadas como "dos o más facturas en la misma página/PDF", o con un motivo "Otro" redactado a
+            mano (esas ya se han enviado por correo directamente; aquí solo queda constancia). Las de "falta pedido
+            de cliente" tienen su propia lista arriba. Esta lista es de solo lectura: un archivo desaparece de aquí
+            en cuanto Power Automate la procesa (o nunca, si era un "Otro" ya enviado a mano).
         </p>
         <div id="listaSolicitudesCorreo">
             <span class="help">Cargando...</span>
@@ -927,15 +940,34 @@ a.link-abrir-pdf:hover {
             <select id="modalCorreoMotivo" onchange="onCambioMotivoCorreo()"></select>
         </label>
 
-        <label class="modal-label" id="grupoCampoObligatorio" style="display:none">Campo que falta
-            <select id="modalCorreoCampoObligatorio"></select>
-        </label>
-
         <textarea id="modalCorreoTextoLibre" style="display:none" placeholder="Redacta el motivo del correo..."></textarea>
+
+        <p class="help" id="modalCorreoAvisoOtro" style="display:none">
+            Al confirmar se abrirá tu cliente de correo para redactarlo a mano y se abrirá el PDF para que lo adjuntes.
+        </p>
 
         <div class="modal-acciones">
             <button class="btn-secondary" onclick="cerrarModalEnviarCorreo()">Cancelar</button>
             <button class="btn-primary" id="btnModalCorreoEnviar" onclick="confirmarEnvioCorreo()">Enviar</button>
+        </div>
+    </div>
+</div>
+
+<!-- ========================================================= -->
+<!-- MODAL: ERRORES DE EXTRACCIÓN SIN CLASIFICAR                -->
+<!-- ========================================================= -->
+<div id="overlayErrores" class="modal-overlay" style="display:none">
+    <div class="modal-box modal-box-ancho">
+        <div class="modal-titulo">Facturas con error de procesamiento</div>
+        <p class="help">
+            No se pudieron extraer. Clasifica cada una para saber cómo seguir: si el fichero pesa demasiado se
+            reenvía por esa vía; para cualquier otro motivo se abre tu correo para redactarlo a mano con el PDF.
+        </p>
+        <div id="listaErrores">
+            <span class="help">Cargando...</span>
+        </div>
+        <div class="modal-acciones">
+            <button class="btn-secondary" onclick="cerrarModalErrores()">Cerrar</button>
         </div>
     </div>
 </div>
@@ -1036,7 +1068,7 @@ function actualizarAlertas(data) {
 
     if (error > 0) {
         alertas.push(`
-            <div class="alerta error">
+            <div class="alerta error" onclick="abrirModalErrores()" title="Clasificar facturas con error">
                 <span class="alerta-icono">❌</span>
                 <span>Hay ${error} factura${error === 1 ? "" : "s"} con error de procesamiento</span>
             </div>
@@ -1097,17 +1129,27 @@ function escaparAttr(v) {
 // PANEL DE PDF (visor a la derecha, en vez de pestaña nueva)
 // =========================================================
 
+function marcarFilaSeleccionada(archivo) {
+    document.querySelectorAll(".fila-seleccionada").forEach(el => el.classList.remove("fila-seleccionada"));
+    if (!archivo) return;
+    document.querySelectorAll(`[data-archivo="${CSS.escape(archivo)}"]`).forEach(el =>
+        el.classList.add("fila-seleccionada")
+    );
+}
+
 function abrirPanelPdf(archivo) {
     const url = "/pdf-factura/" + encodeURIComponent(archivo);
     document.getElementById("panelPdfNombre").textContent = archivo;
     document.getElementById("panelPdfIframe").src = url;
     document.getElementById("panelPdfAbrirNueva").href = url;
     document.getElementById("panelPdf").style.display = "flex";
+    marcarFilaSeleccionada(archivo);
 }
 
 function cerrarPanelPdf() {
     document.getElementById("panelPdf").style.display = "none";
     document.getElementById("panelPdfIframe").src = "about:blank";
+    marcarFilaSeleccionada(null);
 }
 
 // config: { fechaDesdeId, fechaHastaId, columnaFecha, textos: [{id, columna}] }
@@ -1181,7 +1223,8 @@ function renderTablaGenerica(tabla, containerId, mensajeVacio, opciones) {
     html += "</tr>";
 
     rows.forEach((row, i) => {
-        html += "<tr>";
+        const archivoFila = idxArchivo !== -1 ? escaparAttr(row[idxArchivo]) : "";
+        html += `<tr${archivoFila ? ` data-archivo="${archivoFila}"` : ""}>`;
         row.forEach((c, ci) => {
             if (ci === idxArchivo && opciones.archivoClickable) {
                 html += `<td><a href="#" class="link-abrir-pdf" data-row-idx="${i}">${formatearNombreArchivo(c ?? "")}</a></td>`;
@@ -1249,6 +1292,7 @@ async function cargarReenviarPedido() {
         archivos.forEach(archivo => {
             const item = document.createElement("div");
             item.className = "item-reenviar";
+            item.dataset.archivo = archivo;
             item.innerHTML = `
                 <a href="#" class="link-abrir-pdf">${formatearNombreArchivo(archivo)}</a>
                 <button class="btn-enviar-correo" title="Pedir por correo el número de pedido de cliente">✉️ Enviar correo</button>
@@ -1268,18 +1312,26 @@ async function cargarReenviarPedido() {
 // =========================================================
 
 let motivosEnvioCorreoCache = null;
-let camposObligatoriosCache = null;
 let archivoModalCorreo = null;
 
 async function obtenerMotivosEnvioCorreo() {
-    if (motivosEnvioCorreoCache) {
-        return { motivos: motivosEnvioCorreoCache, campos: camposObligatoriosCache };
-    }
+    if (motivosEnvioCorreoCache) return motivosEnvioCorreoCache;
     const res = await fetch("/motivos-envio-correo");
     const data = await res.json();
     motivosEnvioCorreoCache = data.motivos || [];
-    camposObligatoriosCache = data.campos_obligatorios || [];
-    return { motivos: motivosEnvioCorreoCache, campos: camposObligatoriosCache };
+    return motivosEnvioCorreoCache;
+}
+
+function extraerEmailDeNombre(archivo) {
+    const m = /__EMAIL__(.*?)__ENDMAIL__/.exec(archivo);
+    return m ? m[1] : null;
+}
+
+function abrirCorreoYPdf(archivo, asunto) {
+    const email = extraerEmailDeNombre(archivo) || "";
+    const mailto = `mailto:${email}?subject=${encodeURIComponent(asunto)}`;
+    window.location.href = mailto;
+    window.open(`/pdf-factura/${encodeURIComponent(archivo)}`, "_blank");
 }
 
 async function abrirModalEnviarCorreo(archivo, motivoPreseleccionado) {
@@ -1290,19 +1342,13 @@ async function abrirModalEnviarCorreo(archivo, motivoPreseleccionado) {
     textarea.style.display = "none";
     textarea.value = "";
 
-    document.getElementById("grupoCampoObligatorio").style.display = "none";
-
     const select = document.getElementById("modalCorreoMotivo");
     select.innerHTML = "<option>Cargando...</option>";
     document.getElementById("overlayEnviarCorreo").style.display = "flex";
 
     try {
-        const { motivos, campos } = await obtenerMotivosEnvioCorreo();
+        const motivos = await obtenerMotivosEnvioCorreo();
         select.innerHTML = motivos.map(m => `<option value="${m.clave}">${m.etiqueta}</option>`).join("");
-
-        const selectCampo = document.getElementById("modalCorreoCampoObligatorio");
-        selectCampo.innerHTML = `<option value="">-- Selecciona el campo --</option>` +
-            campos.map(c => `<option value="${c}">${c}</option>`).join("");
 
         if (motivoPreseleccionado) {
             select.value = motivoPreseleccionado;
@@ -1316,11 +1362,10 @@ async function abrirModalEnviarCorreo(archivo, motivoPreseleccionado) {
 
 function onCambioMotivoCorreo() {
     const select = document.getElementById("modalCorreoMotivo");
-    const textarea = document.getElementById("modalCorreoTextoLibre");
-    const grupoCampo = document.getElementById("grupoCampoObligatorio");
+    const esOtro = select.value === "otros";
 
-    textarea.style.display = select.value === "otros" ? "block" : "none";
-    grupoCampo.style.display = select.value === "falta_dato_obligatorio" ? "block" : "none";
+    document.getElementById("modalCorreoTextoLibre").style.display = esOtro ? "block" : "none";
+    document.getElementById("modalCorreoAvisoOtro").style.display = esOtro ? "block" : "none";
 }
 
 function cerrarModalEnviarCorreo() {
@@ -1333,15 +1378,9 @@ async function confirmarEnvioCorreo() {
 
     const motivo = document.getElementById("modalCorreoMotivo").value;
     const motivoOtro = document.getElementById("modalCorreoTextoLibre").value.trim();
-    const campoObligatorio = document.getElementById("modalCorreoCampoObligatorio").value;
 
     if (motivo === "otros" && !motivoOtro) {
         mostrarToast("Redacta el motivo antes de enviar.", "error");
-        return;
-    }
-
-    if (motivo === "falta_dato_obligatorio" && !campoObligatorio) {
-        mostrarToast("Selecciona el campo obligatorio que falta.", "error");
         return;
     }
 
@@ -1357,7 +1396,6 @@ async function confirmarEnvioCorreo() {
                 archivo: archivoModalCorreo,
                 motivo,
                 motivo_otro: motivoOtro,
-                campo_obligatorio: campoObligatorio,
             })
         });
 
@@ -1367,9 +1405,24 @@ async function confirmarEnvioCorreo() {
             return;
         }
 
+        if (motivo === "otros") {
+            abrirCorreoYPdf(archivoModalCorreo, `Factura ${archivoModalCorreo} — ${motivoOtro}`);
+        }
+
         mostrarToast(`✓ ${archivoModalCorreo} añadida a la cola de envío de correo.`, "ok");
+
+        // "falta_pedido_cliente" y "dos_facturas_una_pagina" mueven el PDF
+        // fuera de su cola actual (lo asume Power Automate), así que
+        // desaparece al instante sin recargar la página.
+        if (motivo === "falta_pedido_cliente" || motivo === "dos_facturas_una_pagina") {
+            quitarDePendientesCache(archivoModalCorreo);
+            cargarFacturasCompletadas();
+            if (motivo === "falta_pedido_cliente") cargarReenviarPedido();
+        }
+
         cerrarModalEnviarCorreo();
         cargarSolicitudesCorreo();
+        cargarEstadisticas();
 
     } catch (e) {
         mostrarToast("Error de conexión.", "error");
@@ -1432,6 +1485,82 @@ async function cargarSolicitudesCorreo() {
 
     } catch (e) {
         lista.innerHTML = "<span class='help'>Error al cargar la lista.</span>";
+    }
+}
+
+// =========================================================
+// ERRORES DE EXTRACCIÓN SIN CLASIFICAR (modal desde la alerta)
+// =========================================================
+
+function abrirModalErrores() {
+    document.getElementById("overlayErrores").style.display = "flex";
+    cargarErroresLista();
+}
+
+function cerrarModalErrores() {
+    document.getElementById("overlayErrores").style.display = "none";
+}
+
+async function cargarErroresLista() {
+    const lista = document.getElementById("listaErrores");
+    lista.innerHTML = "<span class='help'><span class='spinner'></span>Cargando...</span>";
+
+    try {
+        const res = await fetch("/errores-lista");
+        const data = await res.json();
+        const archivos = data.archivos || [];
+
+        if (archivos.length === 0) {
+            lista.innerHTML = "<span class='help'>No hay facturas con error pendientes de clasificar.</span>";
+            cargarEstadisticas();
+            return;
+        }
+
+        lista.innerHTML = "";
+        archivos.forEach(archivo => {
+            const item = document.createElement("div");
+            item.className = "item-reenviar";
+            item.innerHTML = `
+                <a href="#" class="link-abrir-pdf">${formatearNombreArchivo(archivo)}</a>
+                <button class="btn-secondary" style="padding:4px 10px;font-size:12px">📦 Fichero muy grande</button>
+                <button class="btn-secondary" style="padding:4px 10px;font-size:12px">✉️ Otro</button>
+            `;
+            item.querySelector("a").onclick = (e) => { e.preventDefault(); window.open(`/pdf-factura/${encodeURIComponent(archivo)}`, "_blank"); };
+            const [btnPesaMucho, btnOtro] = item.querySelectorAll("button");
+            btnPesaMucho.onclick = () => clasificarError(archivo, "pesa_mucho");
+            btnOtro.onclick = () => clasificarError(archivo, "otro");
+            lista.appendChild(item);
+        });
+
+    } catch (e) {
+        lista.innerHTML = "<span class='help'>Error al cargar la lista.</span>";
+    }
+}
+
+async function clasificarError(archivo, motivo) {
+    try {
+        const res = await fetch("/clasificar-error", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ archivo, motivo })
+        });
+
+        if (!res.ok) {
+            const err = await res.json();
+            mostrarToast(err.detail || "Error al clasificar la factura.", "error");
+            return;
+        }
+
+        if (motivo === "otro") {
+            abrirCorreoYPdf(archivo, `Factura ${archivo} — error de procesamiento`);
+        }
+
+        mostrarToast(`✓ ${archivo} clasificada.`, "ok");
+        cargarErroresLista();
+        cargarEstadisticas();
+
+    } catch (e) {
+        mostrarToast("Error de conexión.", "error");
     }
 }
 

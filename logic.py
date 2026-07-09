@@ -34,10 +34,14 @@ COMPLETADAS_DIR      = os.path.join(FACTURAS_DIR, "completadas")
 FACTURAS_REVISADAS_DIR = os.path.join(FACTURAS_DIR, "facturas_revisadas")
 HISTORIAL_DIR        = os.path.join(FACTURAS_DIR, "historial")
 NO_FACTURA_DIR       = os.path.join(FACTURAS_DIR, "no_es_factura")
+ERROR_DIR            = os.path.join(FACTURAS_DIR, "error")
 REENVIAR_PEDIDO_DIR  = os.path.join(FACTURAS_DIR, "reenviar_falta_pedidocliente")
 REENVIADAS_PEDIDO_DIR = os.path.join(FACTURAS_DIR, "reenviadas_falta_pedidocliente")
+REENVIAR_DOS_FACTURAS_DIR = os.path.join(FACTURAS_DIR, "reenviar_dos_factura_una_pagina")
 REENVIAR_OTRO_MOTIVO_DIR   = os.path.join(FACTURAS_DIR, "reenviar_otro_motivo")
 REENVIADAS_OTRO_MOTIVO_DIR = os.path.join(FACTURAS_DIR, "reenviadas_otro_motivo")
+REENVIAR_ERROR_PESA_MUCHO_DIR = os.path.join(FACTURAS_DIR, "reenviar_error_pesa_mucho")
+REENVIAR_ERROR_OTRO_DIR       = os.path.join(FACTURAS_DIR, "reenviar_error_otro")
 
 # Prefijo con el que se marcan en disco las facturas subidas como urgentes,
 # para que aparezcan primero en la lista de pendientes sin necesitar una tabla aparte.
@@ -45,22 +49,19 @@ PRIORIDAD_PREFIX = "URGENTE__"
 
 # Motivos seleccionables para pedir por correo una aclaración de la factura.
 # Ninguno se envía solo: siempre hace falta que una persona revise la factura
-# y elija el motivo antes de que se copie a la carpeta que vigila Power Automate.
+# y elija el motivo antes de que se copie a la carpeta que vigila Power Automate
+# (salvo "otros", que además guía a redactar el correo a mano con el PDF).
 MOTIVOS_ENVIO_CORREO = {
-    "falta_pedido_cliente":  "Falta el número de pedido de cliente",
-    "falta_dato_obligatorio": "Falta otro dato obligatorio de la factura (distinto del pedido de cliente)",
-    "varias_facturas_pdf":   "El documento contiene varias facturas en el mismo PDF",
-    "otros":                 "Otros",
+    "falta_pedido_cliente":     "Falta el número de pedido de cliente",
+    "dos_facturas_una_pagina":  "Hay dos o más facturas en la misma página/PDF",
+    "otros":                    "Otro",
 }
 
-# Campos obligatorios de una factura (mismo listado que valida la pantalla de
-# corrección manual antes de poder confirmar una factura). Se ofrecen como
-# lista para elegir uno solo cuando el motivo de envío es "falta_dato_obligatorio".
-CAMPOS_OBLIGATORIOS_FACTURA = [
-    "BaseImp", "Buyer", "Empresa", "FFactura", "ImporIVA", "Moneda",
-    "NombreProveedor", "NumeroFactura", "PedidoCliente", "Proveedor",
-    "TipoIVA", "TotalFact",
-]
+# Motivos de clasificación de un error de extracción (carpeta "error").
+MOTIVOS_ERROR_EXTRACCION = {
+    "pesa_mucho": "El fichero pesa demasiado",
+    "otro":       "Otro",
+}
 
 
 # =========================================================
@@ -1313,10 +1314,10 @@ def mover_pdf(pdf_path, tipo):
         "imagen":          os.path.join(FACTURAS_DIR, "imagenes"),
         "no_es_factura":   NO_FACTURA_DIR,
         "reenviar_pedido": REENVIAR_PEDIDO_DIR,
-        "error":           os.path.join(FACTURAS_DIR, "error"),
+        "error":           ERROR_DIR,
     }
 
-    carpeta_destino = carpetas.get(tipo, os.path.join(FACTURAS_DIR, "error"))
+    carpeta_destino = carpetas.get(tipo, ERROR_DIR)
 
     # Carpeta maestra: TODOS los PDF procesados van aquí siempre
     carpeta_procesadas = os.path.join(FACTURAS_DIR, "procesadas")
@@ -1559,12 +1560,13 @@ def listar_pendientes_completo():
 
 
 def confirmar_y_mover_factura(archivo, fila_completa, usuario):
+    """Corregir manualmente ya es la revisión humana de la factura, así que
+    al confirmar se marca directamente como definitiva (sin pasar por
+    "completadas"): se guarda en el historial/SQL y el PDF se mueve
+    directamente a facturas_revisadas."""
     guardar_factura_corregida_completa(fila_completa=fila_completa, usuario=usuario)
     guardar_factura_examinada_sql(fila_completa, "manual")
-    src = os.path.join(CORREGIR_DIR, archivo)
-    os.makedirs(COMPLETADAS_DIR, exist_ok=True)
-    dest = os.path.join(COMPLETADAS_DIR, archivo)
-    shutil.move(src, dest)
+    marcar_factura_definitiva(archivo, True, usuario)
 
 
 def descartar_pendiente(archivo):
@@ -1633,8 +1635,12 @@ def _carpetas_busqueda_pdf():
         FACTURAS_REVISADAS_DIR,
         os.path.join(FACTURAS_DIR, "procesadas"),
         NO_FACTURA_DIR,
+        ERROR_DIR,
         REENVIAR_PEDIDO_DIR,
         REENVIADAS_PEDIDO_DIR,
+        REENVIAR_DOS_FACTURAS_DIR,
+        REENVIAR_ERROR_PESA_MUCHO_DIR,
+        REENVIAR_ERROR_OTRO_DIR,
     ]
 
 
@@ -1664,33 +1670,38 @@ def buscar_pdf_por_nombre(archivo):
     return None
 
 
-def solicitar_envio_correo(archivo, motivo, motivo_otro=None, campo_obligatorio=None):
-    """
-    Copia el PDF (sin moverlo de donde esté) a REENVIAR_OTRO_MOTIVO_DIR,
-    codificando el motivo elegido en el nombre de archivo para que el flujo
-    de Power Automate que vigile esa carpeta pueda redactar el correo con el
-    motivo adecuado. Devuelve el nombre final generado.
+_CARPETA_POR_MOTIVO_CORREO = {
+    "falta_pedido_cliente":    REENVIAR_PEDIDO_DIR,
+    "dos_facturas_una_pagina": REENVIAR_DOS_FACTURAS_DIR,
+    "otros":                   REENVIAR_OTRO_MOTIVO_DIR,
+}
 
-    Cuando el motivo es "falta_dato_obligatorio" el PDF no va a la raíz de
-    REENVIAR_OTRO_MOTIVO_DIR sino a una subcarpeta con el nombre del campo
-    que falta (una por cada valor de CAMPOS_OBLIGATORIOS_FACTURA), para que
-    Power Automate pueda vigilar cada campo con un flujo distinto.
+
+#Motivos en los que Power Automate se queda con la factura a partir de aquí
+# (la gestiona y archiva por su cuenta), así que el PDF se MUEVE fuera de su
+# cola actual (corregir_manualmente, completadas...) para que no siga
+# apareciendo ahí como pendiente. "otros" no tiene flujo automático detrás
+# (lo redacta una persona a mano), así que ese se copia y el original se
+# queda donde estaba.
+_MOTIVOS_QUE_MUEVEN = {"falta_pedido_cliente", "dos_facturas_una_pagina"}
+
+
+def solicitar_envio_correo(archivo, motivo, motivo_otro=None):
+    """
+    Traslada el PDF a la carpeta correspondiente al motivo elegido,
+    codificando el motivo en el nombre de archivo para que el flujo de Power
+    Automate que vigile esa carpeta pueda redactar el correo adecuado.
+    Devuelve el nombre final generado.
     """
     if motivo not in MOTIVOS_ENVIO_CORREO:
         raise ValueError(f"Motivo no reconocido: {motivo}")
 
-    carpeta_destino = REENVIAR_OTRO_MOTIVO_DIR
+    carpeta_destino = _CARPETA_POR_MOTIVO_CORREO[motivo]
 
     if motivo == "otros":
         texto_motivo = (motivo_otro or "").strip()
         if not texto_motivo:
-            raise ValueError("Debes redactar el motivo cuando seleccionas 'Otros'.")
-    elif motivo == "falta_dato_obligatorio":
-        campo_obligatorio = (campo_obligatorio or "").strip()
-        if campo_obligatorio not in CAMPOS_OBLIGATORIOS_FACTURA:
-            raise ValueError("Debes seleccionar el campo obligatorio que falta.")
-        texto_motivo = f"{MOTIVOS_ENVIO_CORREO[motivo]}: {campo_obligatorio}"
-        carpeta_destino = os.path.join(REENVIAR_OTRO_MOTIVO_DIR, campo_obligatorio)
+            raise ValueError("Debes redactar el motivo cuando seleccionas 'Otro'.")
     else:
         texto_motivo = MOTIVOS_ENVIO_CORREO[motivo]
 
@@ -1711,24 +1722,78 @@ def solicitar_envio_correo(archivo, motivo, motivo_otro=None, campo_obligatorio=
         nuevo_nombre = f"{base}__MOTIVOENVIO__{texto_motivo}__ENDMOTIVOENVIO__{sufijo}{ext}"
         dest = os.path.join(carpeta_destino, nuevo_nombre)
 
-    shutil.copy2(src, dest)
+    if motivo in _MOTIVOS_QUE_MUEVEN:
+        shutil.move(src, dest)
+    else:
+        shutil.copy2(src, dest)
+
     return nuevo_nombre
+
+
+_RE_EMAIL_MARCADOR = re.compile(r"__EMAIL__(.*?)__ENDMAIL__")
+
+
+def extraer_email_de_nombre(archivo):
+    """Recupera el email de quien envió la factura a partir del marcador
+    __EMAIL__...__ENDMAIL__ que trae el nombre desde la ingesta original
+    (Power Automate). Devuelve None si el archivo no lo trae."""
+    m = _RE_EMAIL_MARCADOR.search(archivo)
+    return m.group(1) if m else None
+
+
+def listar_errores():
+    """Lista de solo lectura de ERROR_DIR: PDFs cuya extracción falló y que
+    todavía no se han clasificado (fichero muy grande / otro motivo)."""
+    if not os.path.exists(ERROR_DIR):
+        return []
+    return sorted(f for f in os.listdir(ERROR_DIR) if f.lower().endswith(".pdf"))
+
+
+def clasificar_error(archivo, motivo):
+    """
+    Clasifica un PDF de ERROR_DIR y lo mueve a la carpeta correspondiente:
+    - "pesa_mucho" -> REENVIAR_ERROR_PESA_MUCHO_DIR
+    - "otro"       -> REENVIAR_ERROR_OTRO_DIR (para que quede constancia;
+      el correo en sí se redacta a mano con el PDF adjunto).
+    Devuelve el email (si el nombre lo trae) para poder prellenar el "Para"
+    del correo cuando el motivo es "otro".
+    """
+    if motivo not in MOTIVOS_ERROR_EXTRACCION:
+        raise ValueError(f"Motivo no reconocido: {motivo}")
+
+    carpeta_destino = (
+        REENVIAR_ERROR_PESA_MUCHO_DIR if motivo == "pesa_mucho" else REENVIAR_ERROR_OTRO_DIR
+    )
+
+    src = os.path.join(ERROR_DIR, archivo)
+    if not os.path.exists(src):
+        raise FileNotFoundError(archivo)
+
+    os.makedirs(carpeta_destino, exist_ok=True)
+    dest = os.path.join(carpeta_destino, archivo)
+
+    if os.path.exists(dest):
+        base, ext = os.path.splitext(archivo)
+        dest = os.path.join(carpeta_destino, f"{base}_{datetime.now().strftime('%Y%m%d%H%M%S')}{ext}")
+
+    shutil.move(src, dest)
+    return extraer_email_de_nombre(archivo)
 
 
 def listar_solicitudes_envio_correo():
     """
-    Lista de solo lectura de REENVIAR_OTRO_MOTIVO_DIR, incluyendo las
-    subcarpetas por campo de las solicitudes de "falta_dato_obligatorio".
-    Igual que con reenviar_pedido, la app nunca mueve nada de aquí a
-    REENVIADAS_OTRO_MOTIVO_DIR: el archivo desaparece de esta lista solo
-    cuando Power Automate lo procesa (envía el correo) y lo archiva por su
-    cuenta.
+    Lista de solo lectura de las solicitudes de correo que no son "falta
+    pedido cliente" (esa ya tiene su propia lista en REENVIAR_PEDIDO_DIR):
+    "dos facturas en una página" y "otro". Igual que con reenviar_pedido, la
+    app nunca mueve nada de aquí a REENVIADAS_OTRO_MOTIVO_DIR: el archivo
+    desaparece de esta lista solo cuando Power Automate lo procesa (envía el
+    correo) y lo archiva por su cuenta.
     """
-    if not os.path.exists(REENVIAR_OTRO_MOTIVO_DIR):
-        return []
     archivos = []
-    for _, _, nombres in os.walk(REENVIAR_OTRO_MOTIVO_DIR):
-        archivos.extend(n for n in nombres if n.lower().endswith(".pdf"))
+    for carpeta in (REENVIAR_DOS_FACTURAS_DIR, REENVIAR_OTRO_MOTIVO_DIR):
+        if not os.path.exists(carpeta):
+            continue
+        archivos.extend(f for f in os.listdir(carpeta) if f.lower().endswith(".pdf"))
     return sorted(archivos)
 
 
