@@ -126,6 +126,13 @@ def estadisticas():
     for nombre, ruta in carpetas.items():
         if not os.path.exists(ruta):
             datos[nombre] = 0
+        elif nombre in ("reenviar_otro_motivo", "reenviadas_otro_motivo"):
+            # Estas carpetas tienen subcarpetas por campo para las solicitudes
+            # de "falta_dato_obligatorio", así que hay que contar recursivamente.
+            datos[nombre] = sum(
+                len([f for f in archivos if f.lower().endswith(".pdf")])
+                for _, _, archivos in os.walk(ruta)
+            )
         else:
             datos[nombre] = len([f for f in os.listdir(ruta) if f.lower().endswith(".pdf")])
 

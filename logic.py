@@ -1207,26 +1207,17 @@ def clasificar_factura(fila):
         return "imagen"
 
     # ==========================================
-    # Comprobar campos obligatorios separando
-    # PedidoCliente del resto
+    # Comprobar campos obligatorios (incluido
+    # PedidoCliente: si falta, pasa por corregir
+    # manualmente en vez de reenviarse solo)
     # ==========================================
 
-    otros_obligatorios = [c for c in CAMPOS_OBLIGATORIOS if c != "PedidoCliente"]
-
-    for campo in otros_obligatorios:
+    for campo in CAMPOS_OBLIGATORIOS:
 
         valor = str(datos.get(campo, "-")).strip()
 
         if valor == "-":
             return "manual"
-
-    # ==========================================
-    # REENVIAR: todos los demás campos OK
-    # pero falta PedidoCliente
-    # ==========================================
-
-    if str(datos.get("PedidoCliente", "-")).strip() == "-":
-        return "reenviar_pedido"
 
     # ==========================================
     # COMPLETADA: extracción correcta
@@ -1644,9 +1635,15 @@ def _carpetas_busqueda_pdf():
         NO_FACTURA_DIR,
         REENVIAR_PEDIDO_DIR,
         REENVIADAS_PEDIDO_DIR,
-        REENVIAR_OTRO_MOTIVO_DIR,
-        REENVIADAS_OTRO_MOTIVO_DIR,
     ]
+
+
+# REENVIAR_OTRO_MOTIVO_DIR y REENVIADAS_OTRO_MOTIVO_DIR ya no son planas: las
+# solicitudes de "falta_dato_obligatorio" se guardan en una subcarpeta por
+# campo (una por cada valor de CAMPOS_OBLIGATORIOS_FACTURA), así que hay que
+# recorrerlas recursivamente en vez de mirar solo el nivel superior.
+def _carpetas_busqueda_pdf_recursiva():
+    return [REENVIAR_OTRO_MOTIVO_DIR, REENVIADAS_OTRO_MOTIVO_DIR]
 
 
 def buscar_pdf_por_nombre(archivo):
@@ -1656,6 +1653,14 @@ def buscar_pdf_por_nombre(archivo):
         ruta = os.path.join(carpeta, archivo)
         if os.path.exists(ruta):
             return ruta
+
+    for carpeta in _carpetas_busqueda_pdf_recursiva():
+        if not os.path.exists(carpeta):
+            continue
+        for raiz, _, archivos in os.walk(carpeta):
+            if archivo in archivos:
+                return os.path.join(raiz, archivo)
+
     return None
 
 
@@ -1665,9 +1670,16 @@ def solicitar_envio_correo(archivo, motivo, motivo_otro=None, campo_obligatorio=
     codificando el motivo elegido en el nombre de archivo para que el flujo
     de Power Automate que vigile esa carpeta pueda redactar el correo con el
     motivo adecuado. Devuelve el nombre final generado.
+
+    Cuando el motivo es "falta_dato_obligatorio" el PDF no va a la raíz de
+    REENVIAR_OTRO_MOTIVO_DIR sino a una subcarpeta con el nombre del campo
+    que falta (una por cada valor de CAMPOS_OBLIGATORIOS_FACTURA), para que
+    Power Automate pueda vigilar cada campo con un flujo distinto.
     """
     if motivo not in MOTIVOS_ENVIO_CORREO:
         raise ValueError(f"Motivo no reconocido: {motivo}")
+
+    carpeta_destino = REENVIAR_OTRO_MOTIVO_DIR
 
     if motivo == "otros":
         texto_motivo = (motivo_otro or "").strip()
@@ -1678,6 +1690,7 @@ def solicitar_envio_correo(archivo, motivo, motivo_otro=None, campo_obligatorio=
         if campo_obligatorio not in CAMPOS_OBLIGATORIOS_FACTURA:
             raise ValueError("Debes seleccionar el campo obligatorio que falta.")
         texto_motivo = f"{MOTIVOS_ENVIO_CORREO[motivo]}: {campo_obligatorio}"
+        carpeta_destino = os.path.join(REENVIAR_OTRO_MOTIVO_DIR, campo_obligatorio)
     else:
         texto_motivo = MOTIVOS_ENVIO_CORREO[motivo]
 
@@ -1690,13 +1703,13 @@ def solicitar_envio_correo(archivo, motivo, motivo_otro=None, campo_obligatorio=
     base, ext = os.path.splitext(archivo)
     nuevo_nombre = f"{base}__MOTIVOENVIO__{texto_motivo}__ENDMOTIVOENVIO__{ext}"
 
-    os.makedirs(REENVIAR_OTRO_MOTIVO_DIR, exist_ok=True)
-    dest = os.path.join(REENVIAR_OTRO_MOTIVO_DIR, nuevo_nombre)
+    os.makedirs(carpeta_destino, exist_ok=True)
+    dest = os.path.join(carpeta_destino, nuevo_nombre)
 
     if os.path.exists(dest):
         sufijo = datetime.now().strftime("%Y%m%d%H%M%S")
         nuevo_nombre = f"{base}__MOTIVOENVIO__{texto_motivo}__ENDMOTIVOENVIO__{sufijo}{ext}"
-        dest = os.path.join(REENVIAR_OTRO_MOTIVO_DIR, nuevo_nombre)
+        dest = os.path.join(carpeta_destino, nuevo_nombre)
 
     shutil.copy2(src, dest)
     return nuevo_nombre
@@ -1704,14 +1717,19 @@ def solicitar_envio_correo(archivo, motivo, motivo_otro=None, campo_obligatorio=
 
 def listar_solicitudes_envio_correo():
     """
-    Lista de solo lectura de REENVIAR_OTRO_MOTIVO_DIR. Igual que con
-    reenviar_pedido, la app nunca mueve nada de aquí a REENVIADAS_OTRO_MOTIVO_DIR:
-    el archivo desaparece de esta lista solo cuando Power Automate lo procesa
-    (envía el correo) y lo archiva por su cuenta.
+    Lista de solo lectura de REENVIAR_OTRO_MOTIVO_DIR, incluyendo las
+    subcarpetas por campo de las solicitudes de "falta_dato_obligatorio".
+    Igual que con reenviar_pedido, la app nunca mueve nada de aquí a
+    REENVIADAS_OTRO_MOTIVO_DIR: el archivo desaparece de esta lista solo
+    cuando Power Automate lo procesa (envía el correo) y lo archiva por su
+    cuenta.
     """
     if not os.path.exists(REENVIAR_OTRO_MOTIVO_DIR):
         return []
-    return sorted(f for f in os.listdir(REENVIAR_OTRO_MOTIVO_DIR) if f.lower().endswith(".pdf"))
+    archivos = []
+    for _, _, nombres in os.walk(REENVIAR_OTRO_MOTIVO_DIR):
+        archivos.extend(n for n in nombres if n.lower().endswith(".pdf"))
+    return sorted(archivos)
 
 
 # =========================================================
