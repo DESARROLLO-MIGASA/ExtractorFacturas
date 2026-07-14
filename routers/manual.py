@@ -22,8 +22,10 @@ from logic import (
     descartar_pendiente,
     listar_pendientes_lista,
     listar_pendientes_completo,
+    listar_incidencias_completo,
     listar_facturas_completadas,
     marcar_factura_definitiva,
+    marcar_revisada,
     actualizar_factura_completada,
     descartar_factura_completada,
     facturas_definitivas_tabla,
@@ -60,6 +62,31 @@ def pendientes_lista():
 @router.get("/pendientes-completo-json")
 def pendientes_completo_json():
     return {"tabla": listar_pendientes_completo()}
+
+
+# =========================================================
+# INCIDENCIAS (comprador o proveedor no reconocidos en la base de datos)
+# =========================================================
+
+@router.get("/incidencias-completo-json")
+def incidencias_completo_json():
+    return {"tabla": listar_incidencias_completo()}
+
+
+@router.post("/marcar-revisada")
+async def marcar_revisada_endpoint(body: dict):
+    archivo = str(body.get("archivo", "")).strip()
+    revisada = bool(body.get("revisada"))
+    usuario = str(body.get("usuario", "")).strip() or "desconocido"
+
+    if not archivo:
+        raise HTTPException(status_code=400, detail="Falta el nombre del archivo.")
+
+    try:
+        marcar_revisada(archivo, revisada, usuario)
+        return {"ok": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/subir-factura")
@@ -170,6 +197,7 @@ async def extraer(facturas: List[UploadFile] = File(...)):
             result_csv = extract_invoice_with_agent(
                 file_name=f.filename,
                 invoice_text=text,
+                pdf_path=ruta_temp,
             )
             results.append(result_csv)
             guardar_historial(result_csv, "usuario")

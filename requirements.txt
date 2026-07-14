@@ -4,6 +4,7 @@ python-multipart
 pdfplumber
 openai
 openpyxl
+pyxlsb
 python-dotenv
 pyodbc
 PyMuPDF

@@ -2,6 +2,7 @@ import os
 import re
 import sys
 import csv
+import json
 import tempfile
 from io import StringIO
 from datetime import datetime
@@ -24,6 +25,10 @@ from sql_historial import (
     listar_facturas_examinadas_sql,
     marcar_factura_definitiva_sql,
     eliminar_factura_examinada_sql,
+    buscar_empresa_por_cif,
+    buscar_proveedor_por_cif,
+    marcar_revisada_sql,
+    archivos_revisados_sql,
 )
 
 _fallback = os.path.join(os.path.dirname(os.path.abspath(__file__)), "facturas")
@@ -35,6 +40,7 @@ FACTURAS_REVISADAS_DIR = os.path.join(FACTURAS_DIR, "facturas_revisadas")
 HISTORIAL_DIR        = os.path.join(FACTURAS_DIR, "historial")
 NO_FACTURA_DIR       = os.path.join(FACTURAS_DIR, "no_es_factura")
 ERROR_DIR            = os.path.join(FACTURAS_DIR, "error")
+INCIDENCIAS_DIR      = os.path.join(FACTURAS_DIR, "incidencias")
 REENVIAR_PEDIDO_DIR  = os.path.join(FACTURAS_DIR, "reenviar_falta_pedidocliente")
 REENVIADAS_PEDIDO_DIR = os.path.join(FACTURAS_DIR, "reenviadas_falta_pedidocliente")
 REENVIAR_DOS_FACTURAS_DIR = os.path.join(FACTURAS_DIR, "reenviar_dos_factura_una_pagina")
@@ -70,43 +76,30 @@ MOTIVOS_ERROR_EXTRACCION = {
 
 EXPECTED_HEADERS = [
     "Archivo",
-    "BaseImp",
-    "BaseIRPF",
+    "NumeroFactura",
     "Buyer",
     "Empresa",
-    "FEscaneo",
-    "FFactura",
-    "FOperacion",
-    "ImporIVA",
-    "Moneda",
-    "NombreProveedor",
-    "NumeroFactura",
-    "PedidoCliente",
     "Proveedor",
+    "NombreProveedor",
+    "PedidoCliente",
+    "BaseImp",
+    "BaseIRPF",
     "TipoIVA",
     "TipoIVA2",
     "TipoIVA3",
+    "ImporIVA",
     "TotalFact",
+    "Moneda",
+    "FFactura",
+    "FOperacion",
+    "FEscaneo",
 ]
 
 DEFAULT_PROMPT = """Eres un extractor estricto de datos de facturas de proveedor.
 
-Debes devolver SOLO una tabla de texto separada por |.
-
-NO uses comas como separador.
-NO uses markdown.
-NO des explicaciones.
-NO añadas texto fuera de la tabla.
-NO uses saltos de línea dentro de ninguna celda.
-Cada celda debe contener una sola línea de texto.
-
-La salida debe tener exactamente 2 líneas:
-- 1 línea de cabecera
-- 1 línea de datos
-
-La cabecera debe ser EXACTAMENTE:
-
-Archivo|BaseImp|BaseIRPF|Buyer|Empresa|FEscaneo|FFactura|FOperacion|ImporIVA|Moneda|NombreProveedor|NumeroFactura|PedidoCliente|Proveedor|TipoIVA|TipoIVA2|TipoIVA3|TotalFact
+Debes devolver los datos como un objeto JSON con un valor de texto por cada
+campo indicado más abajo (el formato exacto del JSON ya viene forzado por el
+esquema de la petición; tú solo tienes que rellenar bien cada campo).
 
 Reglas generales:
 - Si un dato no aparece claramente, devuelve "-".
@@ -117,8 +110,6 @@ Reglas generales:
 - No añadas unidades ni símbolos de moneda salvo que formen parte inseparable del dato.
 - Para importes, devuelve solo el número, usando coma decimal si aparece así en el documento.
 - Para fechas, devuelve el formato que aparezca en el documento. Si puedes normalizar con seguridad, usa DD/MM/AAAA.
-- La línea de cabecera tiene 18 campos. La línea de datos debe tener EXACTAMENTE 18 valores separados por "|", uno por cada campo, en el mismo orden que la cabecera.
-- Nunca omitas un campo ni lo fusiones con otro, aunque su valor sea "-". Antes de responder, cuenta los valores de la línea de datos y verifica que son 18.
 
 Definición de campos:
 
@@ -153,12 +144,24 @@ Buyer:
   BTW-nummer
 - Devuelve únicamente el identificador fiscal.
 - Nunca devuelvas el nombre de la empresa.
+- NUNCA devuelvas un código de cliente/cuenta interno (lo que aparece tras
+  etiquetas como "Cliente:", "Customer:", "Account:", "Nº Cliente", "Código
+  Cliente"). Esos códigos son una referencia interna del emisor de la
+  factura, no un CIF/NIF/VAT, aunque tengan un formato parecido (letra +
+  números).
+- Es muy habitual que un código de cliente ("Cliente: 003565") y el
+  CIF/NIF/VAT real del comprador ("NIF/CIF: B16709305") aparezcan juntos en
+  el mismo bloque de dirección. En ese caso ignora el código de cliente y
+  usa el valor de la etiqueta NIF/CIF/VAT explícita, aunque esté más abajo
+  o parezca menos destacado que el código de cliente.
+- Si el único dato disponible junto al comprador es un código de cliente de
+  este tipo y no hay ninguna etiqueta NIF/CIF/VAT explícita para él en todo
+  el documento, devuelve "-".
 - Si no aparece claramente devuelve "-".
 
 Empresa:
-- Nombre de la empresa compradora.
-- Si existe un CIF/NIF/VAT del comprador (Buyer), busca también la razón social asociada.
-- No devuelvas "-" si la empresa compradora aparece identificada en cualquier parte de la factura.
+- Siempre devuelve "-".
+- Este campo se rellena posteriormente por el sistema a partir del CIF/NIF/VAT del comprador (Buyer), nunca lo extraigas del texto.
 
 FEscaneo:
 - Siempre devuelve "-".
@@ -178,7 +181,8 @@ Moneda:
 - Si aparece € devuelve EUR.
 
 NombreProveedor:
-- Razón social del proveedor.
+- Siempre devuelve "-".
+- Este campo se rellena posteriormente por el sistema a partir del CIF/NIF/VAT del proveedor, nunca lo extraigas del texto.
 
 NumeroFactura:
 - Número de factura del proveedor.
@@ -227,6 +231,14 @@ Proveedor:
   USt-IdNr
   BTW-nummer
 - Suele aparecer junto al nombre y dirección del vendedor en la cabecera, o en el pie de página junto a los datos legales/registrales de la empresa emisora (registro mercantil, capital social, etc.).
+- El pie de página con los datos registrales (Registro Mercantil, capital
+  social, protección de datos) identifica casi siempre a la empresa que
+  EMITE la factura, aunque en la cabecera aparezca destacado el nombre o el
+  CIF del comprador (algunas facturas imprimen primero los datos de envío/
+  facturación del cliente y solo mencionan al emisor en esa letra pequeña
+  del pie). Si hay conflicto entre un CIF de la cabecera y uno del pie de
+  página junto a "Registro Mercantil"/"C.I.F.-" de una empresa distinta,
+  prioriza el del pie de página como Proveedor.
 - Devuelve únicamente el identificador fiscal.
 - Si no aparece claramente devuelve "-".
 
@@ -492,35 +504,6 @@ def csv_to_matrix(csv_text):
     return [line.split("|") for line in lines]
 
 
-def clean_llm_csv_response(text):
-    if not text:
-        return ""
-
-    text = text.strip()
-    text = re.sub(r"^```(?:csv|text)?\s*", "", text, flags=re.IGNORECASE)
-    text = re.sub(r"\s*```$", "", text)
-
-    expected_header = "|".join(EXPECTED_HEADERS)
-    idx = text.find(expected_header)
-
-    if idx != -1:
-        text = text[idx:].strip()
-
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
-
-    if len(lines) >= 2:
-        lines = lines[:2]
-
-    cleaned_lines = []
-
-    for line in lines:
-        cols = line.split("|")
-        cols = (cols + [""] * len(EXPECTED_HEADERS))[:len(EXPECTED_HEADERS)]
-        cleaned_lines.append("|".join(cols))
-
-    return "\n".join(cleaned_lines)
-
-
 def normalizar_valor(v):
     v = str(v).strip()
 
@@ -530,9 +513,294 @@ def normalizar_valor(v):
     return v
 
 
+# Nombres de mes (sin acentos) en los idiomas que aparecen en las facturas
+# que procesamos (ES/EN/FR/IT/PT/DE), para poder normalizar fechas del tipo
+# "12 de marzo de 2024" o "12 March 2024" además de las puramente numéricas.
+_MESES = {
+    "enero": 1, "febrero": 2, "marzo": 3, "abril": 4, "mayo": 5, "junio": 6,
+    "julio": 7, "agosto": 8, "septiembre": 9, "setiembre": 9, "octubre": 10,
+    "noviembre": 11, "diciembre": 12,
+    "january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6,
+    "july": 7, "august": 8, "september": 9, "october": 10, "november": 11,
+    "december": 12,
+    "jan": 1, "feb": 2, "mar": 3, "apr": 4, "jun": 6, "jul": 7, "aug": 8,
+    "sep": 9, "sept": 9, "oct": 10, "nov": 11, "dec": 12,
+    "janvier": 1, "fevrier": 2, "mars": 3, "avril": 4, "mai": 5, "juin": 6,
+    "juillet": 7, "aout": 8, "septembre": 9, "octobre": 10, "novembre": 11,
+    "decembre": 12,
+    "gennaio": 1, "febbraio": 2, "aprile": 4, "maggio": 5, "giugno": 6,
+    "luglio": 7, "settembre": 9, "ottobre": 10, "dicembre": 12,
+    "janeiro": 1, "fevereiro": 2, "marco": 3, "maio": 5, "junho": 6,
+    "julho": 7, "setembro": 9, "outubro": 10, "novembro": 11, "dezembro": 12,
+    "januar": 1, "februar": 2, "marz": 3, "juni": 6, "juli": 7,
+    "oktober": 10, "dezember": 12,
+}
+
+
+def _quitar_acentos(s):
+    import unicodedata
+    return unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode()
+
+
+def normalizar_fecha(v):
+    """Reescribe una fecha extraída por el LLM (en cualquier formato en que
+    haya venido) como DD/MM/AAAA, igual que FEscaneo. Si no se reconoce el
+    formato, se devuelve el valor tal cual para no perder el dato."""
+    v = str(v).strip()
+
+    if v in ("", "-"):
+        return "-"
+
+    # DD/MM/AAAA, DD-MM-AAAA, DD.MM.AAAA (año de 2 o 4 dígitos)
+    m = re.match(r"^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})$", v)
+    if m:
+        dia, mes, anio = m.groups()
+        if len(anio) == 2:
+            anio = ("20" if int(anio) <= 79 else "19") + anio
+        try:
+            return datetime(int(anio), int(mes), int(dia)).strftime("%d/%m/%Y")
+        except ValueError:
+            return v
+
+    # AAAA-MM-DD, AAAA/MM/DD
+    m = re.match(r"^(\d{4})[/\-.](\d{1,2})[/\-.](\d{1,2})$", v)
+    if m:
+        anio, mes, dia = m.groups()
+        try:
+            return datetime(int(anio), int(mes), int(dia)).strftime("%d/%m/%Y")
+        except ValueError:
+            return v
+
+    texto = _quitar_acentos(v.lower())
+
+    # "12 de marzo de 2024", "12 march 2024", "12-mar-2024"
+    m = re.match(r"^(\d{1,2})\s*(?:de)?\s*[/\-.\s]\s*([a-z]+)\.?\s*[/\-.,]?\s*(?:de)?\s*(\d{4})$", texto)
+    if m:
+        dia, mes_txt, anio = m.groups()
+        mes = _MESES.get(mes_txt)
+        if mes:
+            try:
+                return datetime(int(anio), mes, int(dia)).strftime("%d/%m/%Y")
+            except ValueError:
+                return v
+
+    # "march 12, 2024", "march 12 2024"
+    m = re.match(r"^([a-z]+)\.?\s+(\d{1,2}),?\s+(\d{4})$", texto)
+    if m:
+        mes_txt, dia, anio = m.groups()
+        mes = _MESES.get(mes_txt)
+        if mes:
+            try:
+                return datetime(int(anio), mes, int(dia)).strftime("%d/%m/%Y")
+            except ValueError:
+                return v
+
+    return v
+
+
 def limpiar_fila(row):
     row = (row + [""] * len(EXPECTED_HEADERS))[:len(EXPECTED_HEADERS)]
     return [normalizar_valor(x) for x in row]
+
+
+_RE_CIF_NO_ALFANUM = re.compile(r"[^A-Za-z0-9]")
+
+
+def normalizar_cif(valor):
+    """Deja un CIF/NIF/VAT listo para comparar contra la base de datos:
+    quita espacios, guiones, puntos y cualquier otro carácter que no sea
+    letra o número (las facturas los escriben con formatos muy distintos,
+    p.ej. "B-90.207.085"), y pone todo en mayúsculas."""
+    if valor is None or valor == "-":
+        return "-"
+    limpio = _RE_CIF_NO_ALFANUM.sub("", str(valor)).upper()
+    return limpio if limpio else "-"
+
+
+# El modelo a veces no extrae un CIF que sí aparece con etiqueta clara en
+# el documento: en letra pequeña de pie de página, con la etiqueta
+# abreviada ("NIF ES B14092902", "R.M. de Córdoba" en vez de "Registro
+# Mercantil"), o con dos CIF (comprador y proveedor) compartiendo una sola
+# etiqueta en la misma línea ("C.I.F. B41510223 B91950253"). Pedirle al
+# modelo que preste más atención por prompt resultó frágil (en pruebas, un
+# modelo llegaba a devolver "-" en Buyer y Proveedor a la vez con solo
+# tocar el texto del prompt), así que en vez de eso se buscan por regex
+# TODAS las etiquetas CIF/NIF/VAT del documento, como candidatos de
+# respaldo. No se asigna ningún CIF a un campo por sí sola: solo aporta
+# candidatos que resolver_empresa_y_proveedor comprobará contra las tablas
+# maestras (y a los que no coincidan con ninguna se les da visibilidad en
+# vez de descartarlos en silencio, ver esa función).
+_RE_ETIQUETA_CIF = re.compile(r"\b(?:C\.?I\.?F\.?|N\.?I\.?F\.?|VAT)\.?\s*(?:ES)?[:\-\.\s]+", re.IGNORECASE)
+_RE_TOKEN_CIF = re.compile(r"[A-Z][\-\. ]?\d{7,8}[0-9A-Z]?\b")
+_VENTANA_ETIQUETA_CIF = 35
+
+
+def detectar_cifs_con_etiqueta(texto):
+    """
+    Devuelve la lista (sin duplicados, en orden de aparición) de todos los
+    CIF/NIF/VAT que aparecen etiquetados en cualquier parte de `texto`, no
+    solo el primero. Devuelve [] si no se encuentra ninguno.
+    """
+    if not texto:
+        return []
+
+    vistos = []
+    for m in _RE_ETIQUETA_CIF.finditer(texto):
+        ventana = texto[m.end():m.end() + _VENTANA_ETIQUETA_CIF]
+
+        for tm in _RE_TOKEN_CIF.finditer(ventana):
+            cif = normalizar_cif(tm.group())
+            if cif != "-" and cif not in vistos:
+                vistos.append(cif)
+
+    return vistos
+
+
+# Algunas facturas meten el CIF del proveedor suelto, sin ninguna etiqueta
+# CIF/NIF, pegado justo a la web o al teléfono de contacto en el pie de
+# página (p.ej. "+34 954 18 66 80 https://www.procisa.es A41071465"). No
+# hay ninguna palabra ancla como "CIF" o "Registro Mercantil" cerca, así
+# que se busca específicamente justo después de una URL/www.
+_RE_CIF_TRAS_URL = re.compile(
+    r"(?:https?://|www\.)\S+\s+([A-Z][\-\. ]?\d{7,8}[0-9A-Z]?)\b",
+    re.IGNORECASE,
+)
+
+
+def detectar_cif_tras_url(texto):
+    """Devuelve la lista de CIF encontrados justo después de una URL/web
+    en `texto`, sin ninguna etiqueta CIF/NIF de por medio. Devuelve [] si
+    no se encuentra ninguno."""
+    if not texto:
+        return []
+
+    vistos = []
+    for m in _RE_CIF_TRAS_URL.finditer(texto):
+        cif = normalizar_cif(m.group(1))
+        if cif != "-" and cif not in vistos:
+            vistos.append(cif)
+
+    return vistos
+
+
+_RE_CIF_SUELTO = re.compile(r"[A-Z][\-\. ]?\d{7,8}[0-9A-Z]?")
+
+
+def extraer_cif_de_texto_libre(texto):
+    """
+    Busca el primer CIF con forma válida dentro de una cadena libre. Sirve
+    para sanear respuestas de vision que a veces devuelven más texto del
+    pedido (p.ej. "OLEO VERDE S.L. NIF B91580142" en vez de solo el CIF),
+    que normalizar_cif por sí sola dejaría todo pegado en un único token
+    inválido. Devuelve el CIF normalizado, o "-" si no encuentra ninguno.
+    """
+    if not texto or texto == "-":
+        return "-"
+    m = _RE_CIF_SUELTO.search(texto)
+    return normalizar_cif(m.group()) if m else "-"
+
+
+def _es_eco_corrupto(candidato, referencia):
+    """
+    Heurística barata para descartar una alucinación típica del respaldo
+    por visión: en vez de reconocer el CIF que de verdad falta, el modelo
+    devuelve el MISMO CIF que ya se conoce del otro campo pero con un
+    carácter de más o de menos (p.ej. referencia="B91616227", candidato=
+    "B916162227"). Si `candidato` es exactamente `referencia` con un solo
+    carácter insertado (o viceversa), se considera sospechoso.
+    """
+    if not candidato or not referencia or candidato in ("-", referencia):
+        return False
+
+    largo, corto = (candidato, referencia) if len(candidato) > len(referencia) else (referencia, candidato)
+    if len(largo) - len(corto) != 1:
+        return False
+
+    return any(largo[:i] + largo[i + 1:] == corto for i in range(len(largo)))
+
+
+# Se muestra en Empresa/NombreProveedor cuando el CIF sí se ha detectado en la
+# factura pero no existe (o no está activo/sin bloquear) en la tabla maestra
+# que le corresponde, para distinguirlo de un "-" que significaría que no se
+# encontró ningún CIF. clasificar_factura también reconoce este mensaje como
+# "no resuelto" a la hora de decidir si la factura es una incidencia.
+MENSAJE_CIF_NO_ENCONTRADO = "El CIF no se encuentra en la base de datos"
+
+
+def resolver_empresa_y_proveedor(cif_buyer, cif_proveedor, candidatos_extra=None):
+    """
+    Cuál de los CIF/NIF/VAT de la factura es el comprador (Buyer/Empresa) y
+    cuál el proveedor (Proveedor/NombreProveedor) lo decide esta función
+    consultando las tablas maestras, no la posición/contexto que haya usado
+    el modelo para etiquetarlos. Así, si el modelo confunde cabecera y pie
+    de página y etiqueta los CIF al revés, la factura se sigue clasificando
+    bien mientras cada CIF exista en la tabla que le corresponde.
+
+    cif_buyer y cif_proveedor son los CIF tal como los etiquetó el modelo;
+    candidatos_extra es la lista de respaldo que haya encontrado
+    detectar_cifs_con_etiqueta (CIF con etiqueta clara en el documento que
+    el modelo pasó por alto). Por defecto se asume que son del proveedor
+    -es el caso más habitual: el CIF del comprador casi siempre lo
+    encuentra ya el modelo-, pero si alguno resulta ser el del comprador lo
+    decide igualmente el cruce contra las tablas maestras, no esta
+    suposición. Un "-"/[] significa que no hay candidato en esa posición.
+
+    Un candidato que no coincida con ninguna tabla (p.ej. un proveedor nuevo
+    que todavía no se ha dado de alta en ProveedoresClasificados) no se
+    descarta en silencio: se deja visible en el hueco de Buyer/Proveedor
+    que le corresponda SEGÚN SU ROL (no en el primer hueco libre) — así, si
+    solo se ha encontrado un CIF y era el del proveedor, no se cuela como
+    si fuera el del comprador. Empresa/NombreProveedor muestra entonces
+    MENSAJE_CIF_NO_ENCONTRADO en vez de un "-" que no distingue "no se
+    encontró ningún CIF" de "se encontró pero no está de alta".
+
+    Si el mismo CIF aparece con roles distintos (p.ej. porque quedó mal
+    etiquetado como Buyer en una extracción antigua, pero también aparece
+    en candidatos_extra), gana el rol de candidatos_extra: es una señal más
+    fiable porque viene de una etiqueta explícita en el documento, en vez
+    de una etiqueta sin verificar.
+
+    Devuelve (buyer_cif, nombre_empresa, proveedor_cif, nombre_proveedor).
+    """
+    candidatos_por_prioridad = [(cif_proveedor, "proveedor")]
+    candidatos_por_prioridad.extend((extra, "proveedor") for extra in (candidatos_extra or []))
+    candidatos_por_prioridad.append((cif_buyer, "buyer"))
+
+    rol_de = {}
+    for cif, rol in candidatos_por_prioridad:
+        if cif and cif != "-" and cif not in rol_de:
+            rol_de[cif] = rol
+
+    buyer_cif, nombre_empresa = "-", None
+    proveedor_cif, nombre_proveedor = "-", None
+
+    # 1) Resolver contra las tablas maestras sin importar el rol.
+    for cif in rol_de:
+        if nombre_empresa is None:
+            empresa = buscar_empresa_por_cif(cif)
+            if empresa:
+                buyer_cif, nombre_empresa = cif, empresa
+                continue
+
+        if nombre_proveedor is None:
+            proveedor = buscar_proveedor_por_cif(cif)
+            if proveedor:
+                proveedor_cif, nombre_proveedor = cif, proveedor
+
+    # 2) Candidatos sin resolver: se colocan en el hueco de su rol.
+    for cif, rol in rol_de.items():
+        if cif == buyer_cif or cif == proveedor_cif:
+            continue
+
+        if rol == "buyer" and buyer_cif == "-":
+            buyer_cif = cif
+        elif rol == "proveedor" and proveedor_cif == "-":
+            proveedor_cif = cif
+
+    nombre_empresa_final = nombre_empresa or (MENSAJE_CIF_NO_ENCONTRADO if buyer_cif != "-" else "-")
+    nombre_proveedor_final = nombre_proveedor or (MENSAJE_CIF_NO_ENCONTRADO if proveedor_cif != "-" else "-")
+
+    return buyer_cif, nombre_empresa_final, proveedor_cif, nombre_proveedor_final
 
 
 def combinar_csvs(lista_csv):
@@ -566,7 +834,20 @@ def combinar_csvs(lista_csv):
 # LLAMADA AL MODELO
 # =========================================================
 
-def extract_invoice_with_agent(file_name, invoice_text, agent_prompt=DEFAULT_PROMPT):
+# Esquema JSON estricto para la respuesta del modelo: con "strict": true la
+# API garantiza que el objeto devuelto tiene EXACTAMENTE estas 18 claves (ni
+# de menos ni de más), así que a diferencia del antiguo formato de texto
+# separado por "|" es imposible que el modelo se salte un campo a mitad de
+# la fila y desplace los siguientes.
+FACTURA_JSON_SCHEMA = {
+    "type": "object",
+    "properties": {campo: {"type": "string"} for campo in EXPECTED_HEADERS},
+    "required": EXPECTED_HEADERS,
+    "additionalProperties": False,
+}
+
+
+def extract_invoice_with_agent(file_name, invoice_text, agent_prompt=DEFAULT_PROMPT, pdf_path=None):
     client = build_client()
     model = get_model()
 
@@ -608,85 +889,145 @@ FACTURA:
             {
                 "role": "system",
                 "content": (
-                    "Eres un extractor documental muy estricto. "
-                    "Tu única salida permitida es una tabla válida separada por |, "
-                    "sin explicaciones, sin markdown y sin texto adicional."
+                    "Eres un extractor documental muy estricto. Devuelve los datos "
+                    "de la factura en el objeto JSON solicitado, sin explicaciones "
+                    "ni texto adicional."
                 )
             },
             {
                 "role": "user",
                 "content": final_prompt
             }
-        ]
+        ],
+        response_format={
+            "type": "json_schema",
+            "json_schema": {
+                "name": "factura",
+                "schema": FACTURA_JSON_SCHEMA,
+                "strict": True,
+            },
+        },
     )
 
-    raw = response.choices[0].message.content or ""
-    cleaned = clean_llm_csv_response(raw)
+    raw = response.choices[0].message.content or "{}"
 
-    rows = csv_to_matrix(cleaned)
+    try:
+        datos_json = json.loads(raw)
+    except ValueError:
+        datos_json = {}
 
-    if len(rows) < 2:
-        fixed = "|".join(EXPECTED_HEADERS) + "\n" + "|".join([file_name] + ["-"] * (len(EXPECTED_HEADERS) - 1))
-        return fixed
+    # Con response_format en modo "strict", el JSON Schema garantiza que la
+    # API solo devuelve los 18 campos exactos (o falla la petición) — a
+    # diferencia del antiguo formato de texto separado por "|", aquí es
+    # estructuralmente imposible que el modelo se salte un campo y desplace
+    # los siguientes (el bug que hacía que el CIF del proveedor terminara en
+    # la columna del TipoIVA).
+    #
+    # Se trabaja por nombre de campo (dict), no por posición: así el orden
+    # de EXPECTED_HEADERS se puede cambiar sin tener que revisar índices
+    # numéricos a mano en todo este bloque; la lista posicional solo se
+    # construye al final, para el CSV de salida.
+    datos = {h: normalizar_valor(datos_json.get(h, "-")) for h in EXPECTED_HEADERS}
 
-    headers = rows[0]
-    data = limpiar_fila(rows[1])
+    datos["Archivo"] = file_name
+    datos["FEscaneo"] = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
 
-    if headers != EXPECTED_HEADERS:
-        headers = EXPECTED_HEADERS
-
-    # Archivo
-    data[0] = file_name
-
-    # FEscaneo
-    data[5] = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    datos["FFactura"] = normalizar_fecha(datos["FFactura"])
+    datos["FOperacion"] = normalizar_fecha(datos["FOperacion"])
 
     # FOperacion = FFactura
-    if data[6] != "-":
-        data[7] = data[6]
+    if datos["FFactura"] != "-":
+        datos["FOperacion"] = datos["FFactura"]
 
-    # IVA a 0
-    if data[9] == "-" and data[2] != "-" and data[17] != "-":
+    # ImporIVA a 0 si BaseImp coincide con TotalFact (factura sin IVA)
+    if datos["ImporIVA"] == "-" and datos["BaseImp"] != "-" and datos["TotalFact"] != "-":
         try:
-            base = float(data[2].replace(".", "").replace(",", "."))
-            total = float(data[17].replace(".", "").replace(",", "."))
+            base = float(datos["BaseImp"].replace(".", "").replace(",", "."))
+            total = float(datos["TotalFact"].replace(".", "").replace(",", "."))
 
             if abs(base - total) < 0.01:
-                data[9] = "0"
+                datos["ImporIVA"] = "0"
         except:
             pass
 
-    # Tipo IVA a 0
-    if data[14] == "-" and data[9] == "0":
-        data[14] = "0"
+    # TipoIVA a 0 si ImporIVA es 0
+    if datos["TipoIVA"] == "-" and datos["ImporIVA"] == "0":
+        datos["TipoIVA"] = "0"
 
     # Moneda
-    if data[10] == "-":
+    if datos["Moneda"] == "-":
         texto_up = raw_text.upper()
 
         if "€" in raw_text or "EUR" in texto_up:
-            data[10] = "EUR"
+            datos["Moneda"] = "EUR"
 
         elif "$" in raw_text or "USD" in texto_up:
-            data[10] = "USD"
+            datos["Moneda"] = "USD"
 
-    # Empresa
-    if data[5] == "-" and data[4] != "-":
-        # evitar que Buyer se use como Empresa
-        pass
+    # Buyer/Proveedor + Empresa/NombreProveedor: el modelo extrae los dos
+    # CIF/NIF/VAT de la factura, pero cuál es el comprador y cuál el
+    # proveedor lo decide resolver_empresa_y_proveedor() consultando
+    # EmpresasClasificadas/ProveedoresClasificados, no la posición/contexto
+    # que haya usado el modelo para etiquetarlos (ver esa función). Si un
+    # CIF no aparece o está inactivo/bloqueado en ninguna tabla, se deja en
+    # "-" y clasificar_factura la mandará a incidencias.
+    cif_1 = normalizar_cif(datos["Buyer"])
+    cif_2 = normalizar_cif(datos["Proveedor"])
 
-    # Buyer
-    if data[4] != "-":
-        data[4] = data[4].replace(" ", "").upper()
+    # Respaldo determinista: además de los dos CIF que haya devuelto el
+    # modelo (los use bien, los intercambie o directamente no encuentre
+    # alguno), se buscan por regex todos los CIF con etiqueta clara en el
+    # documento, más los que aparezcan sueltos justo después de una URL/web
+    # (sin etiqueta CIF/NIF de por medio), que el modelo pudo pasar por
+    # alto. resolver_empresa_y_proveedor ya ignora los candidatos "-" y los
+    # que no encuentre en ninguna tabla, así que pasar estos de más no hace
+    # daño cuando no aplican.
+    candidatos_extra = detectar_cifs_con_etiqueta(raw_text) + detectar_cif_tras_url(raw_text)
 
-    # Proveedor
-    if data[13] != "-":
-        data[13] = data[13].replace(" ", "").upper()
+    buyer_cif, nombre_empresa, proveedor_cif, nombre_proveedor = resolver_empresa_y_proveedor(
+        cif_1, cif_2, candidatos_extra
+    )
+
+    # Último respaldo: si ni el modelo ni el regex han dado con el CIF del
+    # comprador o del proveedor, es posible que esté metido en un logo,
+    # sello o pegado sin etiqueta a una URL/teléfono — cosas que un modelo
+    # mirando la imagen real de la factura reconoce mejor que leyendo el
+    # texto ya aplanado. Solo se llama a vision (más caro y lento) cuando
+    # de verdad hace falta, no en cada factura.
+    if pdf_path and (buyer_cif == "-" or proveedor_cif == "-"):
+        try:
+            import imagenes as _imagenes_vision
+            cif_vision_buyer, cif_vision_proveedor = _imagenes_vision.detectar_cif_con_vision_desde_pdf(pdf_path)
+        except Exception as e:
+            print(f"AVISO: fallo al intentar el respaldo por visión del CIF para {file_name}: {e}")
+            cif_vision_buyer, cif_vision_proveedor = "-", "-"
+
+        # La visión a veces "alucina": en vez de encontrar el CIF que
+        # falta, repite el que ya se conoce del otro campo con un carácter
+        # de más/menos. Se descarta ese eco en vez de dejarlo ensuciar el
+        # campo con un CIF inventado.
+        if _es_eco_corrupto(cif_vision_buyer, proveedor_cif) or _es_eco_corrupto(cif_vision_buyer, cif_2):
+            cif_vision_buyer = "-"
+        if _es_eco_corrupto(cif_vision_proveedor, buyer_cif) or _es_eco_corrupto(cif_vision_proveedor, cif_1):
+            cif_vision_proveedor = "-"
+
+        if (buyer_cif == "-" and cif_vision_buyer != "-") or (proveedor_cif == "-" and cif_vision_proveedor != "-"):
+            cif_1_con_vision = cif_1 if buyer_cif != "-" else cif_vision_buyer
+            candidatos_extra_con_vision = candidatos_extra + (
+                [cif_vision_proveedor] if proveedor_cif == "-" and cif_vision_proveedor != "-" else []
+            )
+            buyer_cif, nombre_empresa, proveedor_cif, nombre_proveedor = resolver_empresa_y_proveedor(
+                cif_1_con_vision, cif_2, candidatos_extra_con_vision
+            )
+
+    datos["Buyer"], datos["Empresa"], datos["Proveedor"], datos["NombreProveedor"] = (
+        buyer_cif, nombre_empresa, proveedor_cif, nombre_proveedor
+    )
 
     output = StringIO()
     writer = csv.writer(output, delimiter="|", lineterminator="\n")
-    writer.writerow(headers)
-    writer.writerow(data)
+    writer.writerow(EXPECTED_HEADERS)
+    writer.writerow([datos[h] for h in EXPECTED_HEADERS])
 
     return output.getvalue().strip()
 
@@ -1208,6 +1549,23 @@ def clasificar_factura(fila):
         return "imagen"
 
     # ==========================================
+    # INCIDENCIA: el comprador (Empresa) o el
+    # proveedor (NombreProveedor) no se pudieron
+    # resolver contra su base de datos (CIF no
+    # encontrado, o encontrado pero inactivo/
+    # bloqueado -> MENSAJE_CIF_NO_ENCONTRADO).
+    # Estos dos campos ya no los extrae la API,
+    # siempre vienen de ese cruce, así que si no
+    # se resolvieron es un problema de datos
+    # maestros, no de extracción.
+    # ==========================================
+
+    NO_RESUELTO = ("-", MENSAJE_CIF_NO_ENCONTRADO)
+
+    if str(datos.get("Empresa", "-")).strip() in NO_RESUELTO or str(datos.get("NombreProveedor", "-")).strip() in NO_RESUELTO:
+        return "incidencia"
+
+    # ==========================================
     # Comprobar campos obligatorios (incluido
     # PedidoCliente: si falta, pasa por corregir
     # manualmente en vez de reenviarse solo)
@@ -1314,22 +1672,37 @@ def mover_pdf(pdf_path, tipo):
         "imagen":          os.path.join(FACTURAS_DIR, "imagenes"),
         "no_es_factura":   NO_FACTURA_DIR,
         "reenviar_pedido": REENVIAR_PEDIDO_DIR,
+        "incidencia":      INCIDENCIAS_DIR,
         "error":           ERROR_DIR,
     }
 
     carpeta_destino = carpetas.get(tipo, ERROR_DIR)
 
+    def _copiar_con_reintentos(origen, destino, intentos=10, espera=1):
+        # El PDF origen puede estar en una carpeta sincronizada con OneDrive:
+        # si en ese momento OneDrive lo está subiendo/descargando, la copia
+        # falla con "WinError 32: en uso por otro proceso". Es transitorio,
+        # así que se reintenta unas cuantas veces antes de darse por vencido.
+        for intento in range(intentos):
+            try:
+                shutil.copy2(origen, destino)
+                return
+            except (PermissionError, OSError):
+                if intento == intentos - 1:
+                    raise
+                time.sleep(espera)
+
     # Carpeta maestra: TODOS los PDF procesados van aquí siempre
     carpeta_procesadas = os.path.join(FACTURAS_DIR, "procesadas")
     os.makedirs(carpeta_procesadas, exist_ok=True)
     dest_procesadas = os.path.join(carpeta_procesadas, os.path.basename(pdf_path))
-    shutil.copy2(pdf_path, dest_procesadas)
+    _copiar_con_reintentos(pdf_path, dest_procesadas)
     print("PDF COPIADO A PROCESADAS:", dest_procesadas)
 
     # Carpeta específica según categoría
     os.makedirs(carpeta_destino, exist_ok=True)
     destino = os.path.join(carpeta_destino, os.path.basename(pdf_path))
-    shutil.copy2(pdf_path, destino)
+    _copiar_con_reintentos(pdf_path, destino)
     print("PDF COPIADO A", tipo.upper() + ":", destino)
 
     for _ in range(10):
@@ -1347,6 +1720,45 @@ def mover_pdf(pdf_path, tipo):
         except Exception:
 
             time.sleep(1)
+
+
+def _extraer_y_clasificar_pdf(pdf_path, archivo):
+    """Lee, extrae y clasifica un PDF, moviéndolo a la carpeta que
+    corresponda según el resultado. Común a procesar_carpeta() (carpeta
+    "entrada") y a reprocesar_error() (un PDF que ya estaba en ERROR_DIR).
+    Devuelve el tipo de destino, o None si la extracción no devolvió datos
+    (el LLM no lanzó excepción pero tampoco hay fila que clasificar)."""
+
+    text = read_pdf_text(pdf_path)
+
+    if es_no_factura(text):
+        mover_pdf(pdf_path, "no_es_factura")
+        return "no_es_factura"
+
+    if len(text) < 80:
+        mover_pdf(pdf_path, "imagen")
+        return "imagen"
+
+    result_csv = extract_invoice_with_agent(
+        file_name=archivo,
+        invoice_text=text,
+        pdf_path=pdf_path,
+    )
+
+    tabla = csv_to_matrix(result_csv)
+
+    if len(tabla) < 2:
+        return None
+
+    fila = tabla[1]
+    tipo = clasificar_factura(fila)
+    mover_pdf(pdf_path, tipo)
+    guardar_historial(result_csv, "auto")
+
+    if tipo == "completada":
+        guardar_factura_examinada_sql(fila, "auto")
+
+    return tipo
 
 
 def procesar_carpeta():
@@ -1369,56 +1781,14 @@ def procesar_carpeta():
         )
 
         try:
-
-            text = read_pdf_text(
-                pdf_path
-            )
-
-            if es_no_factura(text):
-                mover_pdf(pdf_path, "no_es_factura")
-                resultados.append({"archivo": archivo, "estado": "no_es_factura"})
+            tipo = _extraer_y_clasificar_pdf(pdf_path, archivo)
+            if tipo is None:
                 continue
-
-            if len(text) < 80:
-                mover_pdf(pdf_path, "imagen")
-                resultados.append({"archivo": archivo, "estado": "imagen"})
-                continue
-
-            result_csv = extract_invoice_with_agent(
-                file_name=archivo,
-                invoice_text=text
-            )
-
-            tabla = csv_to_matrix(
-                result_csv
-            )
-
-            if len(tabla) < 2:
-                continue
-
-            fila = tabla[1]
-
-            tipo = clasificar_factura(
-                fila
-            )
-
-            mover_pdf(
-                pdf_path,
-                tipo
-            )
 
             resultados.append({
                 "archivo": archivo,
                 "estado": tipo
             })
-
-            guardar_historial(
-                result_csv,
-                "auto"
-            )
-
-            if tipo == "completada":
-                guardar_factura_examinada_sql(fila, "auto")
 
         except Exception as e:
 
@@ -1435,6 +1805,31 @@ def procesar_carpeta():
             })
 
     return resultados
+
+
+def reprocesar_error(archivo):
+    """
+    Reintenta la extracción de un PDF que quedó en ERROR_DIR (p.ej. un fallo
+    puntual de la API). Si esta vez tiene éxito, el PDF se mueve a la carpeta
+    que corresponda, igual que en el flujo automático normal. Si vuelve a
+    fallar, el PDF se queda donde estaba (en ERROR_DIR) para clasificarlo a
+    mano, y se informa del fallo para que la UI pueda avisar.
+
+    Devuelve (exito, estado): con exito=True, estado es el tipo de destino;
+    con exito=False, estado es el motivo del fallo.
+    """
+    pdf_path = os.path.join(ERROR_DIR, archivo)
+    if not os.path.exists(pdf_path):
+        raise FileNotFoundError(archivo)
+
+    try:
+        tipo = _extraer_y_clasificar_pdf(pdf_path, archivo)
+        if tipo is None:
+            return False, "La extracción no devolvió datos."
+        return True, tipo
+    except Exception as e:
+        print(f"ERROR reprocesando {archivo}: {e}")
+        return False, str(e)
 
 
 # =========================================================
@@ -1473,8 +1868,10 @@ def _indice_historial(directorio):
                 val = str(row[0]).strip()
                 if val == "Archivo" or "Extracción facturas" in val:
                     continue
-                # Primera aparición gana (igual que el escaneo secuencial original).
-                indice.setdefault(val, [str(c) if c is not None else "-" for c in row])
+                # Última aparición gana: si una factura se reprocesa (mismo
+                # nombre de archivo), debe mostrarse la extracción más
+                # reciente, no la primera que se guardó.
+                indice[val] = [str(c) if c is not None else "-" for c in row]
             wb.close()
         except Exception as e:
             print(f"Error leyendo historial {hist_path}: {e}")
@@ -1516,7 +1913,7 @@ def cargar_pdf_pendiente_individual(archivo):
 
     print(f"[api] {archivo} no encontrado en historial, extrayendo con LLM")
     try:
-        result_csv = extract_invoice_with_agent(file_name=archivo, invoice_text=text)
+        result_csv = extract_invoice_with_agent(file_name=archivo, invoice_text=text, pdf_path=ruta)
         tabla = csv_to_matrix(result_csv)
         if len(tabla) > 1:
             guardar_historial(result_csv, "manual")
@@ -1536,6 +1933,52 @@ def listar_pendientes_lista():
     )
 
 
+HEADERS_PENDIENTES_COMPLETO = EXPECTED_HEADERS + ["Revisada"]
+HEADERS_INCIDENCIAS_COMPLETO = EXPECTED_HEADERS + ["Revisada"]
+
+
+def _refrescar_buyer_proveedor(fila):
+    """
+    Vuelve a resolver Buyer/Empresa/Proveedor/NombreProveedor de `fila`
+    (formato EXPECTED_HEADERS) contra el estado ACTUAL de
+    EmpresasClasificadas/ProveedoresClasificados, en vez de quedarse con el
+    valor que se guardó en el historial en el momento de la extracción.
+
+    Esto es necesario porque "pendientes" e "incidencias" leen del
+    historial en vez de volver a llamar al LLM, así que sin este refresco
+    seguirían mostrando "-" en Empresa/NombreProveedor aunque las tablas
+    maestras se actualizasen después (alta de una empresa/proveedor nuevo,
+    o corrección de un CIF), y aunque el propio resolver ya sepa reubicar
+    un Buyer/Proveedor que el modelo etiquetó al revés.
+
+    También vuelve a buscar candidatos con etiqueta CIF/NIF leyendo el PDF
+    de nuevo (sin llamar al LLM): así, si se mejora
+    detectar_cifs_con_etiqueta más adelante, las incidencias ya atascadas
+    por ese motivo se corrigen solas la próxima vez que se listan, en vez
+    de quedarse ancladas al resultado de la extracción original.
+    """
+    i_buyer, i_empresa = EXPECTED_HEADERS.index("Buyer"), EXPECTED_HEADERS.index("Empresa")
+    i_proveedor, i_nombreprov = EXPECTED_HEADERS.index("Proveedor"), EXPECTED_HEADERS.index("NombreProveedor")
+    i_archivo = EXPECTED_HEADERS.index("Archivo")
+
+    cif_1 = normalizar_cif(fila[i_buyer])
+    cif_2 = normalizar_cif(fila[i_proveedor])
+
+    candidatos_extra = []
+    ruta_pdf = buscar_pdf_por_nombre(fila[i_archivo])
+    if ruta_pdf:
+        try:
+            texto_pdf = clean_pdf_text(read_pdf_text(ruta_pdf))
+            candidatos_extra = detectar_cifs_con_etiqueta(texto_pdf) + detectar_cif_tras_url(texto_pdf)
+        except Exception as e:
+            print(f"AVISO: no se pudo releer {fila[i_archivo]} para refrescar sus CIF: {e}")
+
+    fila[i_buyer], fila[i_empresa], fila[i_proveedor], fila[i_nombreprov] = (
+        resolver_empresa_y_proveedor(cif_1, cif_2, candidatos_extra)
+    )
+    return fila
+
+
 def listar_pendientes_completo():
     """
     [headers, *filas] con los datos ya extraídos de cada factura pendiente de
@@ -1543,7 +1986,12 @@ def listar_pendientes_completo():
     que "todas las extracciones"). Reutiliza cargar_pdf_pendiente_individual,
     que casi siempre lee del historial ya existente; solo llama al LLM para
     PDFs subidos a mano que todavía no se hayan extraído nunca.
+
+    Añade la columna "Revisada" (Sí/No): un simple marcador de que alguien ya
+    la miró, independiente de si ya se ha completado o no.
     """
+    revisados = archivos_revisados_sql()
+
     filas = []
     for archivo in listar_pendientes_lista():
         fila, _fuente, es_no_factura_flag = cargar_pdf_pendiente_individual(archivo)
@@ -1553,10 +2001,56 @@ def listar_pendientes_completo():
         else:
             fila = (list(fila) + ["-"] * len(EXPECTED_HEADERS))[:len(EXPECTED_HEADERS)]
             fila[0] = archivo
+            fila = _refrescar_buyer_proveedor(fila)
 
+        fila.append("Sí" if archivo in revisados else "No")
         filas.append(fila)
 
-    return [EXPECTED_HEADERS] + filas
+    return [HEADERS_PENDIENTES_COMPLETO] + filas
+
+
+def listar_incidencias_lista():
+    if not os.path.exists(INCIDENCIAS_DIR):
+        return []
+    return sorted(f for f in os.listdir(INCIDENCIAS_DIR) if f.lower().endswith(".pdf"))
+
+
+def listar_incidencias_completo():
+    """
+    [headers, *filas] con los datos ya extraídos de cada factura en
+    incidencias (comprador o proveedor sin resolver contra su base de
+    datos), igual que listar_pendientes_completo. A diferencia de
+    "corregir_manualmente", aquí no hace falta llamar al LLM: la factura ya
+    se extrajo y se guardó en el historial antes de clasificarla como
+    incidencia, así que basta con leerla de ahí.
+
+    Añade también la columna "Revisada" (Sí/No), igual que listar_pendientes_completo.
+    """
+    revisados = archivos_revisados_sql()
+
+    filas = []
+    for archivo in listar_incidencias_lista():
+        fila = buscar_en_historial(archivo)
+
+        if fila is None:
+            fila = [archivo] + ["-"] * (len(EXPECTED_HEADERS) - 1)
+        else:
+            fila = limpiar_fila(list(fila))
+            fila[0] = archivo
+            fila = _refrescar_buyer_proveedor(fila)
+
+        fila.append("Sí" if archivo in revisados else "No")
+        filas.append(fila)
+
+    return [HEADERS_INCIDENCIAS_COMPLETO] + filas
+
+
+def marcar_revisada(archivo, revisada, usuario):
+    """Marca/desmarca en SQL una factura de "Corregir manualmente" o
+    "Incidencias" como revisada por una persona."""
+    ok = marcar_revisada_sql(archivo, revisada, usuario)
+    if not ok:
+        raise RuntimeError("No se pudo actualizar el estado de revisión en la base de datos.")
 
 
 def confirmar_y_mover_factura(archivo, fila_completa, usuario):
@@ -1571,14 +2065,15 @@ def confirmar_y_mover_factura(archivo, fila_completa, usuario):
 
 def descartar_pendiente(archivo):
     """
-    "Papelera" de corregir_manualmente: para documentos que la extracción
-    clasificó como pendiente de corrección pero que en realidad no son una
-    factura (un albarán, un ticket, etc. que se coló). No se borra el PDF,
-    se mueve a la carpeta "no_es_factura" por si hubiera que revisarlo más tarde.
+    "Papelera" de corregir_manualmente (y de incidencias): para documentos
+    que la extracción clasificó como pendientes de corrección o como
+    incidencia pero que en realidad no son una factura (un albarán, un
+    ticket, etc. que se coló). No se borra el PDF, se mueve a la carpeta
+    "no_es_factura" por si hubiera que revisarlo más tarde.
     """
-    src = os.path.join(CORREGIR_DIR, archivo)
+    src = buscar_pdf_por_nombre(archivo)
 
-    if not os.path.exists(src):
+    if src is None:
         raise FileNotFoundError(archivo)
 
     os.makedirs(NO_FACTURA_DIR, exist_ok=True)
@@ -1633,14 +2128,22 @@ def _carpetas_busqueda_pdf():
         CORREGIR_DIR,
         COMPLETADAS_DIR,
         FACTURAS_REVISADAS_DIR,
-        os.path.join(FACTURAS_DIR, "procesadas"),
         NO_FACTURA_DIR,
         ERROR_DIR,
+        INCIDENCIAS_DIR,
         REENVIAR_PEDIDO_DIR,
         REENVIADAS_PEDIDO_DIR,
         REENVIAR_DOS_FACTURAS_DIR,
         REENVIAR_ERROR_PESA_MUCHO_DIR,
         REENVIAR_ERROR_OTRO_DIR,
+        # "procesadas" guarda una copia de auditoría de TODO lo que pasa por
+        # mover_pdf(), así que cualquier archivo que haya sido clasificado
+        # alguna vez tiene ahí una copia aunque ya no esté en esa cola. Debe
+        # mirarse en último lugar: si se buscara antes que la carpeta real,
+        # "No es factura"/reenvíos moverían esa copia de auditoría en vez
+        # del PDF que de verdad está pendiente, y este reaparecería en su
+        # cola original al recargar.
+        os.path.join(FACTURAS_DIR, "procesadas"),
     ]
 
 
@@ -1747,6 +2250,26 @@ def listar_errores():
     if not os.path.exists(ERROR_DIR):
         return []
     return sorted(f for f in os.listdir(ERROR_DIR) if f.lower().endswith(".pdf"))
+
+
+HEADERS_ERRORES = ["Archivo", "FechaError"]
+
+
+def listar_errores_completo():
+    """[headers, *filas] de ERROR_DIR, para mostrarla como tabla filtrable
+    (igual que "Corregir manualmente"/"Incidencias") en vez de una simple
+    lista. No hay datos de factura que mostrar -la extracción no llegó a
+    completarse-, así que la única columna aparte del archivo es la fecha
+    en la que quedó en error (mtime del PDF)."""
+    filas = []
+    for archivo in listar_errores():
+        ruta = os.path.join(ERROR_DIR, archivo)
+        try:
+            fecha = datetime.fromtimestamp(os.path.getmtime(ruta)).strftime("%d/%m/%Y %H:%M:%S")
+        except OSError:
+            fecha = "-"
+        filas.append([archivo, fecha])
+    return [HEADERS_ERRORES] + filas
 
 
 def clasificar_error(archivo, motivo):

@@ -39,23 +39,23 @@ TABLA = "FacturasExaminadas"
 
 COLUMNAS = [
     "Archivo",
-    "BaseImp",
-    "BaseIRPF",
+    "NumeroFactura",
     "Buyer",
     "Empresa",
-    "FEscaneo",
-    "FFactura",
-    "FOperacion",
-    "ImporIVA",
-    "Moneda",
-    "NombreProveedor",
-    "NumeroFactura",
-    "PedidoCliente",
     "Proveedor",
+    "NombreProveedor",
+    "PedidoCliente",
+    "BaseImp",
+    "BaseIRPF",
     "TipoIVA",
     "TipoIVA2",
     "TipoIVA3",
+    "ImporIVA",
     "TotalFact",
+    "Moneda",
+    "FFactura",
+    "FOperacion",
+    "FEscaneo",
 ]
 
 
@@ -233,6 +233,156 @@ def marcar_factura_definitiva_sql(archivo, definitiva, usuario):
     except Exception as e:
         print(f"AVISO: no se pudo marcar la factura como definitiva ({MOTOR}): {e}")
         return False
+
+
+TABLA_REVISADAS = "FacturasRevisadas"
+
+
+def _crear_tabla_revisadas_si_no_existe(cursor):
+    if MOTOR == "sqlite":
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS {TABLA_REVISADAS} (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                Archivo TEXT NOT NULL UNIQUE,
+                Revisada INTEGER NOT NULL DEFAULT 0,
+                UsuarioRevisada TEXT,
+                FechaRevisada TEXT
+            )
+        """)
+        return
+
+    cursor.execute(f"""
+        IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = '{TABLA_REVISADAS}')
+        CREATE TABLE {TABLA_REVISADAS} (
+            Id INT IDENTITY(1,1) PRIMARY KEY,
+            Archivo NVARCHAR(255) NOT NULL,
+            Revisada BIT NOT NULL DEFAULT 0,
+            UsuarioRevisada NVARCHAR(100) NULL,
+            FechaRevisada DATETIME NULL,
+            CONSTRAINT UQ_{TABLA_REVISADAS}_Archivo UNIQUE (Archivo)
+        )
+    """)
+
+
+def marcar_revisada_sql(archivo, revisada, usuario):
+    """
+    Marca (o desmarca) un archivo de "Corregir manualmente" o "Incidencias"
+    como revisado por una persona. Es un estado propio de estas dos colas
+    (una simple constancia visual de que alguien ya la miró), independiente
+    de Definitiva/FacturasExaminadas -esas facturas todavía no están
+    completas-, así que vive en su propia tabla.
+    """
+    try:
+        with _conectar() as conn:
+            cursor = conn.cursor()
+            _crear_tabla_revisadas_si_no_existe(cursor)
+            conn.commit()
+
+            cursor.execute(
+                f"UPDATE {TABLA_REVISADAS} SET Revisada = ?, UsuarioRevisada = ?, "
+                f"FechaRevisada = {FECHA_ACTUAL_SQL} WHERE Archivo = ?",
+                (1 if revisada else 0, usuario, archivo),
+            )
+
+            if cursor.rowcount == 0:
+                cursor.execute(
+                    f"INSERT INTO {TABLA_REVISADAS} (Archivo, Revisada, UsuarioRevisada, FechaRevisada) "
+                    f"VALUES (?, ?, ?, {FECHA_ACTUAL_SQL})",
+                    (archivo, 1 if revisada else 0, usuario),
+                )
+
+            conn.commit()
+
+        return True
+
+    except Exception as e:
+        print(f"AVISO: no se pudo marcar {archivo} como revisada ({MOTOR}): {e}")
+        return False
+
+
+def archivos_revisados_sql():
+    """Devuelve el conjunto de nombres de archivo marcados actualmente como
+    revisados (Revisada = 1). Devuelve un conjunto vacío si la consulta
+    falla, para que el llamador simplemente los trate como "No revisada"."""
+    try:
+        with _conectar() as conn:
+            cursor = conn.cursor()
+            _crear_tabla_revisadas_si_no_existe(cursor)
+            conn.commit()
+
+            cursor.execute(f"SELECT Archivo FROM {TABLA_REVISADAS} WHERE Revisada = 1")
+            filas = cursor.fetchall()
+
+        return {fila[0] for fila in filas}
+
+    except Exception as e:
+        print(f"AVISO: no se pudieron listar los archivos revisados ({MOTOR}): {e}")
+        return set()
+
+
+def _candidatos_cif(cif):
+    """
+    Variantes de `cif` a probar, de más a menos específica. Las facturas
+    intracomunitarias suelen traer el CIF con el prefijo de país ISO (p.ej.
+    "ESB71406318"), mientras que en Business Central los CIF españoles se
+    guardan sin él ("B71406318"), así que si la versión completa no
+    encuentra nada se reintenta quitando ese prefijo de 2 letras.
+    """
+    candidatos = [cif]
+    if len(cif) > 2 and cif[:2].isalpha():
+        candidatos.append(cif[2:])
+    return candidatos
+
+
+def buscar_empresa_por_cif(cif):
+    """
+    Busca `cif` en EmpresasClasificadas y devuelve su NombreEmpresa si existe
+    y está activa (Activa = 1). Devuelve None si no se encuentra, si está
+    inactiva, o si la consulta falla: en los tres casos el llamador debe
+    tratarlo igual (la factura acaba en incidencias), así que aquí no se
+    propaga la excepción, solo se avisa por consola.
+    """
+    cif = (cif or "").strip().upper()
+    if not cif:
+        return None
+    try:
+        with _conectar() as conn:
+            cursor = conn.cursor()
+            for candidato in _candidatos_cif(cif):
+                cursor.execute(
+                    "SELECT NombreEmpresa FROM EmpresasClasificadas WHERE UPPER(CIF) = ? AND Activa = 1",
+                    (candidato,),
+                )
+                fila = cursor.fetchone()
+                if fila:
+                    return fila[0]
+        return None
+    except Exception as e:
+        print(f"AVISO: no se pudo consultar EmpresasClasificadas ({MOTOR}): {e}")
+        return None
+
+
+def buscar_proveedor_por_cif(cif):
+    """Análogo a buscar_empresa_por_cif, pero contra ProveedoresClasificados
+    y exigiendo que no esté bloqueado (Bloqueado = 0)."""
+    cif = (cif or "").strip().upper()
+    if not cif:
+        return None
+    try:
+        with _conectar() as conn:
+            cursor = conn.cursor()
+            for candidato in _candidatos_cif(cif):
+                cursor.execute(
+                    "SELECT NombreEmpresa FROM ProveedoresClasificados WHERE UPPER(CIF) = ? AND Bloqueado = 0",
+                    (candidato,),
+                )
+                fila = cursor.fetchone()
+                if fila:
+                    return fila[0]
+        return None
+    except Exception as e:
+        print(f"AVISO: no se pudo consultar ProveedoresClasificados ({MOTOR}): {e}")
+        return None
 
 
 def eliminar_factura_examinada_sql(archivo):

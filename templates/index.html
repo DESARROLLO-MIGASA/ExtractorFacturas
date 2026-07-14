@@ -244,6 +244,22 @@ table.tabla-campos td.campo-readonly {
     background: #F0FAF3;
 }
 
+.campo-alerta input {
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid #C62828;
+    border-radius: 4px;
+    padding: 5px 8px;
+    font-size: 13px;
+    background: #FDECEA;
+    outline: none;
+}
+
+.campo-alerta input:focus {
+    border-color: #C62828;
+    background: #FCE0DE;
+}
+
 .valor-ok {
     color: #333;
 }
@@ -380,6 +396,12 @@ table.tabla-historial th.th-acciones {
     width: 640px;
     max-height: 85vh;
     overflow-y: auto;
+}
+
+/* Se puede abrir "Enviar correo" con el modal de errores ya abierto detrás
+   (p.ej. desde la cola de errores de extracción): debe quedar por encima. */
+#overlayEnviarCorreo {
+    z-index: 1001;
 }
 
 .modal-titulo {
@@ -525,6 +547,12 @@ table.tabla-historial td {
 table.tabla-historial td.celda-vacia {
     color: #BDBDBD;
     font-style: italic;
+}
+
+table.tabla-historial td.celda-alerta {
+    color: #C62828;
+    background-color: #FDECEA;
+    font-weight: 600;
 }
 
 a.link-abrir-pdf {
@@ -698,6 +726,8 @@ table.tabla-historial tr.fila-seleccionada td {
     <div class="tabs">
         <button class="tab-btn active" data-tab="auto" onclick="cambiarTab('auto')">Visualización automática</button>
         <button class="tab-btn" data-tab="manual" onclick="cambiarTab('manual')">Corregir manualmente <span id="badgePendientesTab" class="badge vacio">0</span></button>
+        <button class="tab-btn" data-tab="incidencias" onclick="cambiarTab('incidencias')">Incidencias <span id="badgeIncidenciasTab" class="badge vacio">0</span></button>
+        <button class="tab-btn" data-tab="errores" onclick="cambiarTab('errores')">Errores <span id="badgeErroresTab" class="badge vacio">0</span></button>
         <button class="tab-btn" data-tab="revisar" onclick="cambiarTab('revisar')">Revisar facturas</button>
         <button class="tab-btn" data-tab="subir" onclick="cambiarTab('subir')">Subir facturas</button>
         <button class="tab-btn" data-tab="correo" onclick="cambiarTab('correo')">Enviar correo <span id="badgeSolicitudesCorreoTab" class="badge vacio">0</span></button>
@@ -744,6 +774,11 @@ table.tabla-historial tr.fila-seleccionada td {
                 <div class="kpi-text">Manual</div>
             </div>
 
+            <div class="kpi error">
+                <div id="incidencias" class="kpi-num">0</div>
+                <div class="kpi-text">Incidencias</div>
+            </div>
+
             <div class="kpi">
                 <div id="completadas" class="kpi-num">0</div>
                 <div class="kpi-text">Completadas</div>
@@ -760,29 +795,12 @@ table.tabla-historial tr.fila-seleccionada td {
             </div>
 
             <div class="kpi">
-                <div id="reenviar_pedido" class="kpi-num">0</div>
-                <div class="kpi-text">Reenviar (falta pedido cliente)</div>
-            </div>
-
-            <div class="kpi">
                 <div id="reenviadas_pedido" class="kpi-num">0</div>
                 <div class="kpi-text">Reenviadas (falta pedido cliente)</div>
             </div>
 
         </div>
 
-    </div>
-
-    <div class="card">
-        <div class="section-title">
-            Pendientes de reenviar al proveedor
-            <span id="badgeReenviarPedido" class="badge vacio">0</span>
-            <button class="btn-secondary" style="margin-left:auto" onclick="cargarReenviarPedido()">Actualizar lista</button>
-        </div>
-        <p class="help">Facturas a las que les falta el número de pedido de cliente. No se envía nada automáticamente: revísalas y pulsa "Enviar correo" para pedirlo. El archivo desaparece de esta lista solo cuando Power Automate lo gestiona (la app nunca lo mueve).</p>
-        <div id="listaReenviarPedido">
-            <span class="help">Cargando...</span>
-        </div>
     </div>
 
 </div>
@@ -813,6 +831,74 @@ table.tabla-historial tr.fila-seleccionada td {
         </div>
 
         <div class="scroll-x" id="tablaPendientes">
+            <span class="help">Cargando...</span>
+        </div>
+    </div>
+
+</div>
+
+<!-- ========================================================= -->
+<!-- PESTAÑA: INCIDENCIAS (comprador/proveedor no reconocidos)  -->
+<!-- ========================================================= -->
+<div class="tab-panel" id="tab-incidencias" style="display:none">
+
+    <div class="card">
+        <div class="section-title">
+            Facturas con incidencia
+            <span id="badgeIncidencias" class="badge vacio">0</span>
+            <button class="btn-secondary" style="margin-left:auto" onclick="cargarIncidenciasCompleto()">Actualizar lista</button>
+        </div>
+        <p class="help">
+            El comprador (Buyer) o el proveedor no se han podido resolver contra la base de datos de empresas/proveedores
+            clasificados (CIF no encontrado, o encontrado pero inactivo/bloqueado). Empresa y/o Nombre proveedor aparecen
+            vacíos porque ya no los extrae la API: complétalos a mano (o corrige el CIF) y guarda para moverla a revisadas.
+        </p>
+
+        <div class="filtro-fecha">
+            <label>Desde <input type="date" id="incFechaDesde" onchange="filtrarIncidencias()"></label>
+            <label>Hasta <input type="date" id="incFechaHasta" onchange="filtrarIncidencias()"></label>
+            <label>Buyer <input type="text" id="incFiltroBuyer" oninput="filtrarIncidencias()" placeholder="CIF/NIF comprador"></label>
+            <label>Empresa <input type="text" id="incFiltroEmpresa" oninput="filtrarIncidencias()" placeholder="Empresa"></label>
+            <label>Nombre proveedor <input type="text" id="incFiltroNombreProveedor" oninput="filtrarIncidencias()" placeholder="Nombre proveedor"></label>
+            <label>Nº factura <input type="text" id="incFiltroNumeroFactura" oninput="filtrarIncidencias()" placeholder="Nº factura"></label>
+            <label>Pedido cliente <input type="text" id="incFiltroPedidoCliente" oninput="filtrarIncidencias()" placeholder="Pedido cliente"></label>
+            <label>Proveedor <input type="text" id="incFiltroProveedor" oninput="filtrarIncidencias()" placeholder="CIF/NIF proveedor"></label>
+            <button class="btn-secondary" onclick="limpiarFiltroIncidencias()">Limpiar filtro</button>
+            <span class="help">Haz clic en el nombre del archivo para abrir el PDF.</span>
+        </div>
+
+        <div class="scroll-x" id="tablaIncidencias">
+            <span class="help">Cargando...</span>
+        </div>
+    </div>
+
+</div>
+
+<!-- ========================================================= -->
+<!-- PESTAÑA: ERRORES DE EXTRACCIÓN (fallo antes de clasificar) -->
+<!-- ========================================================= -->
+<div class="tab-panel" id="tab-errores" style="display:none">
+
+    <div class="card">
+        <div class="section-title">
+            Facturas con error de procesamiento
+            <span id="badgeErrores" class="badge vacio">0</span>
+            <button class="btn-secondary" style="margin-left:auto" onclick="cargarErroresCompleto()">Actualizar lista</button>
+        </div>
+        <p class="help">
+            La extracción automática ha fallado en estas facturas (fallo puntual de la API, PDF ilegible...) y no
+            hay datos que mostrar. Puedes reintentar el procesamiento, marcarla como "fichero muy grande", pedir
+            aclaración por correo o descartarla si no es una factura.
+        </p>
+
+        <div class="filtro-fecha">
+            <label>Desde <input type="date" id="errFechaDesde" onchange="filtrarErrores()"></label>
+            <label>Hasta <input type="date" id="errFechaHasta" onchange="filtrarErrores()"></label>
+            <button class="btn-secondary" onclick="limpiarFiltroErrores()">Limpiar filtro</button>
+            <span class="help">Haz clic en el nombre del archivo para abrir el PDF. El filtro de fechas busca por la fecha en la que quedó en error.</span>
+        </div>
+
+        <div class="scroll-x" id="tablaErrores">
             <span class="help">Cargando...</span>
         </div>
     </div>
@@ -954,25 +1040,6 @@ table.tabla-historial tr.fila-seleccionada td {
 </div>
 
 <!-- ========================================================= -->
-<!-- MODAL: ERRORES DE EXTRACCIÓN SIN CLASIFICAR                -->
-<!-- ========================================================= -->
-<div id="overlayErrores" class="modal-overlay" style="display:none">
-    <div class="modal-box modal-box-ancho">
-        <div class="modal-titulo">Facturas con error de procesamiento</div>
-        <p class="help">
-            No se pudieron extraer. Clasifica cada una para saber cómo seguir: si el fichero pesa demasiado se
-            reenvía por esa vía; para cualquier otro motivo se abre tu correo para redactarlo a mano con el PDF.
-        </p>
-        <div id="listaErrores">
-            <span class="help">Cargando...</span>
-        </div>
-        <div class="modal-acciones">
-            <button class="btn-secondary" onclick="cerrarModalErrores()">Cerrar</button>
-        </div>
-    </div>
-</div>
-
-<!-- ========================================================= -->
 <!-- MODAL: EDITAR FACTURA (pendientes y completadas)           -->
 <!-- ========================================================= -->
 <div id="overlayEditarFactura" class="modal-overlay" style="display:none">
@@ -1031,10 +1098,10 @@ async function cargarEstadisticas(){
     document.getElementById("procesadas").innerText = data.procesadas || 0;
     document.getElementById("imagenes").innerText = data.imagenes || 0;
     document.getElementById("manual").innerText = data.manual || 0;
+    document.getElementById("incidencias").innerText = data.incidencias || 0;
     document.getElementById("completadas").innerText = data.completadas || 0;
     document.getElementById("revisadas").innerText = data.revisadas || 0;
     document.getElementById("no_es_factura").innerText = data.no_es_factura || 0;
-    document.getElementById("reenviar_pedido").innerText = data.reenviar_pedido || 0;
     document.getElementById("reenviadas_pedido").innerText = data.reenviadas_pedido || 0;
 
     actualizarAlertas(data);
@@ -1068,7 +1135,7 @@ function actualizarAlertas(data) {
 
     if (error > 0) {
         alertas.push(`
-            <div class="alerta error" onclick="abrirModalErrores()" title="Clasificar facturas con error">
+            <div class="alerta error" onclick="cambiarTab('errores')" title="Ir a Errores">
                 <span class="alerta-icono">❌</span>
                 <span>Hay ${error} factura${error === 1 ? "" : "s"} con error de procesamiento</span>
             </div>
@@ -1202,6 +1269,9 @@ function filtrosTextoConPrefijo(prefijo) {
 }
 
 // Renderizador genérico de tabla con columna de acciones opcional.
+// Debe coincidir exactamente con MENSAJE_CIF_NO_ENCONTRADO en logic.py
+const MENSAJE_CIF_NO_ENCONTRADO = "El CIF no se encuentra en la base de datos";
+
 // opciones: { archivoClickable: bool, acciones: [{ titulo, icono(row), onClick(row, headers) }] }
 function renderTablaGenerica(tabla, containerId, mensajeVacio, opciones) {
     opciones = opciones || {};
@@ -1230,8 +1300,11 @@ function renderTablaGenerica(tabla, containerId, mensajeVacio, opciones) {
                 html += `<td><a href="#" class="link-abrir-pdf" data-row-idx="${i}">${formatearNombreArchivo(c ?? "")}</a></td>`;
                 return;
             }
-            const esVacio = (c ?? "").toString().trim() === "-" || (c ?? "").toString().trim() === "";
-            html += `<td class="${esVacio ? "celda-vacia" : ""}">${c ?? ""}</td>`;
+            const valorCelda = (c ?? "").toString().trim();
+            const esAlerta = valorCelda === MENSAJE_CIF_NO_ENCONTRADO;
+            const esVacio = !esAlerta && (valorCelda === "-" || valorCelda === "");
+            const contenido = esAlerta ? `⚠️ ${valorCelda}` : (c ?? "");
+            html += `<td class="${esAlerta ? "celda-alerta" : (esVacio ? "celda-vacia" : "")}">${contenido}</td>`;
         });
         if (acciones.length > 0) {
             html += "<td class='celda-acciones'>";
@@ -1263,47 +1336,6 @@ function renderTablaGenerica(tabla, containerId, mensajeVacio, opciones) {
             const ai = parseInt(btn.dataset.accionIdx, 10);
             btn.onclick = () => acciones[ai].onClick(rows[idx], headers);
         });
-    }
-}
-
-// =========================================================
-// PENDIENTES DE REENVIAR AL PROVEEDOR (falta pedido cliente)
-// =========================================================
-
-async function cargarReenviarPedido() {
-    const lista = document.getElementById("listaReenviarPedido");
-    lista.innerHTML = "<span class='help'><span class='spinner'></span>Cargando...</span>";
-
-    try {
-        const res = await fetch("/reenviar-pedido-lista");
-        const data = await res.json();
-        const archivos = data.archivos || [];
-
-        const badge = document.getElementById("badgeReenviarPedido");
-        badge.textContent = archivos.length;
-        badge.className = "badge" + (archivos.length === 0 ? " vacio" : "");
-
-        if (archivos.length === 0) {
-            lista.innerHTML = "<span class='help'>No hay facturas pendientes de reenviar al proveedor.</span>";
-            return;
-        }
-
-        lista.innerHTML = "";
-        archivos.forEach(archivo => {
-            const item = document.createElement("div");
-            item.className = "item-reenviar";
-            item.dataset.archivo = archivo;
-            item.innerHTML = `
-                <a href="#" class="link-abrir-pdf">${formatearNombreArchivo(archivo)}</a>
-                <button class="btn-enviar-correo" title="Pedir por correo el número de pedido de cliente">✉️ Enviar correo</button>
-            `;
-            item.querySelector("a").onclick = (e) => { e.preventDefault(); abrirPanelPdf(archivo); };
-            item.querySelector("button").onclick = () => abrirModalEnviarCorreo(archivo, "falta_pedido_cliente");
-            lista.appendChild(item);
-        });
-
-    } catch (e) {
-        lista.innerHTML = "<span class='help'>Error al cargar la lista.</span>";
     }
 }
 
@@ -1417,8 +1449,12 @@ async function confirmarEnvioCorreo() {
         if (motivo === "falta_pedido_cliente" || motivo === "dos_facturas_una_pagina") {
             quitarDePendientesCache(archivoModalCorreo);
             cargarFacturasCompletadas();
-            if (motivo === "falta_pedido_cliente") cargarReenviarPedido();
         }
+
+        // El modal de "Enviar correo" también se abre desde la pestaña de
+        // errores; si ese PDF estaba ahí y este motivo lo mueve, hay que
+        // refrescarla (no-op si el archivo no era de esa cola).
+        cargarErroresCompleto();
 
         cerrarModalEnviarCorreo();
         cargarSolicitudesCorreo();
@@ -1489,52 +1525,91 @@ async function cargarSolicitudesCorreo() {
 }
 
 // =========================================================
-// ERRORES DE EXTRACCIÓN SIN CLASIFICAR (modal desde la alerta)
+// PESTAÑA: ERRORES DE EXTRACCIÓN (sin datos de factura)
 // =========================================================
 
-function abrirModalErrores() {
-    document.getElementById("overlayErrores").style.display = "flex";
-    cargarErroresLista();
-}
+let erroresCompletoCache = null;
 
-function cerrarModalErrores() {
-    document.getElementById("overlayErrores").style.display = "none";
-}
-
-async function cargarErroresLista() {
-    const lista = document.getElementById("listaErrores");
-    lista.innerHTML = "<span class='help'><span class='spinner'></span>Cargando...</span>";
+async function cargarErroresCompleto() {
+    document.getElementById("tablaErrores").innerHTML = "<span class='help'><span class='spinner'></span>Cargando...</span>";
 
     try {
-        const res = await fetch("/errores-lista");
+        const res = await fetch("/errores-completo-json");
         const data = await res.json();
-        const archivos = data.archivos || [];
-
-        if (archivos.length === 0) {
-            lista.innerHTML = "<span class='help'>No hay facturas con error pendientes de clasificar.</span>";
-            cargarEstadisticas();
-            return;
-        }
-
-        lista.innerHTML = "";
-        archivos.forEach(archivo => {
-            const item = document.createElement("div");
-            item.className = "item-reenviar";
-            item.innerHTML = `
-                <a href="#" class="link-abrir-pdf">${formatearNombreArchivo(archivo)}</a>
-                <button class="btn-secondary" style="padding:4px 10px;font-size:12px">📦 Fichero muy grande</button>
-                <button class="btn-secondary" style="padding:4px 10px;font-size:12px">✉️ Otro</button>
-            `;
-            item.querySelector("a").onclick = (e) => { e.preventDefault(); window.open(`/pdf-factura/${encodeURIComponent(archivo)}`, "_blank"); };
-            const [btnPesaMucho, btnOtro] = item.querySelectorAll("button");
-            btnPesaMucho.onclick = () => clasificarError(archivo, "pesa_mucho");
-            btnOtro.onclick = () => clasificarError(archivo, "otro");
-            lista.appendChild(item);
-        });
-
+        erroresCompletoCache = data.tabla || [];
+        actualizarBadgeErrores();
+        filtrarErrores();
     } catch (e) {
-        lista.innerHTML = "<span class='help'>Error al cargar la lista.</span>";
+        document.getElementById("tablaErrores").innerHTML = "<span class='help'>Error al cargar las facturas con error.</span>";
     }
+}
+
+function quitarDeErroresCache(archivo) {
+    if (!erroresCompletoCache) return;
+    const headers = erroresCompletoCache[0];
+    const idxArchivo = headers.indexOf("Archivo");
+    erroresCompletoCache = [
+        headers,
+        ...erroresCompletoCache.slice(1).filter(row => row[idxArchivo] !== archivo),
+    ];
+    actualizarBadgeErrores();
+    filtrarErrores();
+}
+
+function actualizarBadgeErrores() {
+    const n = erroresCompletoCache ? Math.max(erroresCompletoCache.length - 1, 0) : 0;
+    [document.getElementById("badgeErrores"), document.getElementById("badgeErroresTab")].forEach(b => {
+        b.textContent = n;
+        b.className = "badge" + (n === 0 ? " vacio" : "");
+    });
+}
+
+function filtrarErrores() {
+    if (!erroresCompletoCache) return;
+
+    const tabla = aplicarFiltros(erroresCompletoCache, {
+        fechaDesdeId: "errFechaDesde",
+        fechaHastaId: "errFechaHasta",
+        columnaFecha: "FechaError",
+        textos: [],
+    });
+
+    renderTablaGenerica(tabla, "tablaErrores", "No hay facturas con error que coincidan con el filtro.", {
+        archivoClickable: true,
+        acciones: [
+            {
+                titulo: "Volver a procesar",
+                icono: () => "🔄",
+                onClick: (row, headers) => reprocesarError(row[headers.indexOf("Archivo")]),
+            },
+            {
+                titulo: "Enviar correo",
+                icono: () => "✉️",
+                onClick: (row, headers) => abrirModalEnviarCorreo(row[headers.indexOf("Archivo")]),
+            },
+            {
+                titulo: "No es factura",
+                icono: () => "🗑️",
+                onClick: (row, headers) => descartarErrorComoNoFactura(row[headers.indexOf("Archivo")]),
+            },
+            {
+                titulo: "Fichero muy grande",
+                icono: () => "📦",
+                onClick: (row, headers) => clasificarError(row[headers.indexOf("Archivo")], "pesa_mucho"),
+            },
+        ],
+    });
+}
+
+function limpiarFiltroErrores() {
+    document.getElementById("errFechaDesde").value = "";
+    document.getElementById("errFechaHasta").value = "";
+    filtrarErrores();
+}
+
+function _botonesFilaErrores(archivo) {
+    const fila = document.querySelector(`#tablaErrores tr[data-archivo="${CSS.escape(archivo)}"]`);
+    return fila ? fila.querySelectorAll("button") : [];
 }
 
 async function clasificarError(archivo, motivo) {
@@ -1551,16 +1626,74 @@ async function clasificarError(archivo, motivo) {
             return;
         }
 
-        if (motivo === "otro") {
-            abrirCorreoYPdf(archivo, `Factura ${archivo} — error de procesamiento`);
-        }
-
         mostrarToast(`✓ ${archivo} clasificada.`, "ok");
-        cargarErroresLista();
+        quitarDeErroresCache(archivo);
         cargarEstadisticas();
 
     } catch (e) {
         mostrarToast("Error de conexión.", "error");
+    }
+}
+
+async function descartarErrorComoNoFactura(archivo) {
+    const confirmado = confirm(
+        `¿Mover "${archivo}" a la carpeta "No es factura"?\n\nSe quitará de la cola de errores.`
+    );
+    if (!confirmado) return;
+
+    try {
+        const res = await fetch("/descartar-pendiente", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ archivo })
+        });
+
+        if (!res.ok) {
+            const err = await res.json();
+            mostrarToast(err.detail || "Error al mover el PDF.", "error");
+            return;
+        }
+
+        mostrarToast(`✓ ${archivo} movido a "No es factura".`, "ok");
+        quitarDeErroresCache(archivo);
+        cargarEstadisticas();
+
+    } catch (e) {
+        mostrarToast("Error de conexión.", "error");
+    }
+}
+
+async function reprocesarError(archivo) {
+    const botones = _botonesFilaErrores(archivo);
+    botones.forEach(b => b.disabled = true);
+
+    try {
+        const res = await fetch("/reprocesar-error", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ archivo })
+        });
+
+        if (!res.ok) {
+            const err = await res.json();
+            mostrarToast(err.detail || "Error al reprocesar la factura.", "error");
+            return;
+        }
+
+        const data = await res.json();
+
+        if (data.exito) {
+            mostrarToast(`✓ ${archivo} reprocesada correctamente (${data.estado}).`, "ok");
+            quitarDeErroresCache(archivo);
+            cargarEstadisticas();
+        } else {
+            mostrarToast(`⚠️ Este documento no puede ser procesado: ${archivo}`, "error");
+        }
+
+    } catch (e) {
+        mostrarToast("Error de conexión.", "error");
+    } finally {
+        botones.forEach(b => b.disabled = false);
     }
 }
 
@@ -1632,6 +1765,11 @@ function filtrarPendientes() {
                 icono: () => "🗑️",
                 onClick: (row, headers) => descartarPendiente(row[headers.indexOf("Archivo")]),
             },
+            {
+                titulo: "Marcar/desmarcar como revisada",
+                icono: (row, headers) => row[headers.indexOf("Revisada")] === "Sí" ? "✅" : "☐",
+                onClick: (row, headers) => alternarRevisada(row, headers, "pendiente"),
+            },
         ],
     });
 }
@@ -1665,6 +1803,159 @@ async function descartarPendiente(archivo) {
         mostrarToast(`✓ ${archivo} movido a "No es factura".`, "ok");
         quitarDePendientesCache(archivo);
         cargarEstadisticas();
+
+    } catch (e) {
+        mostrarToast("Error de conexión.", "error");
+    }
+}
+
+// =========================================================
+// PESTAÑA: INCIDENCIAS (comprador/proveedor no reconocidos)
+// =========================================================
+
+let incidenciasCompletoCache = null;
+
+async function cargarIncidenciasCompleto() {
+    document.getElementById("tablaIncidencias").innerHTML = "<span class='help'><span class='spinner'></span>Cargando...</span>";
+
+    try {
+        const res = await fetch("/incidencias-completo-json");
+        const data = await res.json();
+        incidenciasCompletoCache = data.tabla || [];
+        actualizarBadgeIncidencias();
+        filtrarIncidencias();
+    } catch (e) {
+        document.getElementById("tablaIncidencias").innerHTML = "<span class='help'>Error al cargar las incidencias.</span>";
+    }
+}
+
+function quitarDeIncidenciasCache(archivo) {
+    if (!incidenciasCompletoCache) return;
+    const headers = incidenciasCompletoCache[0];
+    const idxArchivo = headers.indexOf("Archivo");
+    incidenciasCompletoCache = [
+        headers,
+        ...incidenciasCompletoCache.slice(1).filter(row => row[idxArchivo] !== archivo),
+    ];
+    actualizarBadgeIncidencias();
+    filtrarIncidencias();
+}
+
+function actualizarBadgeIncidencias() {
+    const n = incidenciasCompletoCache ? Math.max(incidenciasCompletoCache.length - 1, 0) : 0;
+    [document.getElementById("badgeIncidencias"), document.getElementById("badgeIncidenciasTab")].forEach(b => {
+        b.textContent = n;
+        b.className = "badge" + (n === 0 ? " vacio" : "");
+    });
+}
+
+function filtrarIncidencias() {
+    if (!incidenciasCompletoCache) return;
+
+    const tabla = aplicarFiltros(incidenciasCompletoCache, {
+        fechaDesdeId: "incFechaDesde",
+        fechaHastaId: "incFechaHasta",
+        columnaFecha: "FEscaneo",
+        textos: filtrosTextoConPrefijo("inc"),
+    });
+
+    renderTablaGenerica(tabla, "tablaIncidencias", "No hay incidencias que coincidan con el filtro.", {
+        archivoClickable: true,
+        acciones: [
+            {
+                titulo: "Editar / completar campos",
+                icono: () => "✏️",
+                onClick: (row, headers) => abrirModalEditarFactura(row, headers, "incidencia"),
+            },
+            {
+                titulo: "Enviar correo",
+                icono: () => "✉️",
+                onClick: (row, headers) => abrirModalEnviarCorreo(row[headers.indexOf("Archivo")]),
+            },
+            {
+                titulo: "No es factura",
+                icono: () => "🗑️",
+                onClick: (row, headers) => descartarIncidencia(row[headers.indexOf("Archivo")]),
+            },
+            {
+                titulo: "Marcar/desmarcar como revisada",
+                icono: (row, headers) => row[headers.indexOf("Revisada")] === "Sí" ? "✅" : "☐",
+                onClick: (row, headers) => alternarRevisada(row, headers, "incidencia"),
+            },
+        ],
+    });
+}
+
+function limpiarFiltroIncidencias() {
+    document.getElementById("incFechaDesde").value = "";
+    document.getElementById("incFechaHasta").value = "";
+    limpiarInputsFiltro(filtrosTextoConPrefijo("inc").map(f => f.id));
+    filtrarIncidencias();
+}
+
+async function descartarIncidencia(archivo) {
+    const confirmado = confirm(
+        `¿Mover "${archivo}" a la carpeta "No es factura"?\n\nNo se elimina el PDF, solo se aparta de la cola de incidencias por si la clasificación se hubiera equivocado.`
+    );
+    if (!confirmado) return;
+
+    try {
+        const res = await fetch("/descartar-pendiente", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ archivo })
+        });
+
+        if (!res.ok) {
+            const err = await res.json();
+            mostrarToast(err.detail || "Error al mover el PDF.", "error");
+            return;
+        }
+
+        mostrarToast(`✓ ${archivo} movido a "No es factura".`, "ok");
+        quitarDeIncidenciasCache(archivo);
+        cargarEstadisticas();
+
+    } catch (e) {
+        mostrarToast("Error de conexión.", "error");
+    }
+}
+
+// =========================================================
+// MARCAR/DESMARCAR COMO REVISADA (pendientes e incidencias)
+// =========================================================
+
+async function alternarRevisada(row, headers, tipo) {
+    const archivo = row[headers.indexOf("Archivo")];
+    const nuevoEstado = row[headers.indexOf("Revisada")] !== "Sí";
+
+    try {
+        const res = await fetch("/marcar-revisada", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ archivo, revisada: nuevoEstado, usuario: "marqueros" }),
+        });
+
+        if (!res.ok) {
+            const err = await res.json();
+            mostrarToast(err.detail || "Error al marcar como revisada.", "error");
+            return;
+        }
+
+        const cache = tipo === "pendiente" ? pendientesCompletoCache : incidenciasCompletoCache;
+        if (cache) {
+            const idxArchivo = cache[0].indexOf("Archivo");
+            const idxRevisada = cache[0].indexOf("Revisada");
+            const fila = cache.slice(1).find(r => r[idxArchivo] === archivo);
+            if (fila) fila[idxRevisada] = nuevoEstado ? "Sí" : "No";
+        }
+
+        mostrarToast(
+            nuevoEstado ? `✓ ${archivo} marcada como revisada.` : `${archivo} desmarcada como revisada.`,
+            "ok"
+        );
+
+        if (tipo === "pendiente") filtrarPendientes(); else filtrarIncidencias();
 
     } catch (e) {
         mostrarToast("Error de conexión.", "error");
@@ -1833,7 +2124,7 @@ async function descargarFacturasDefinitivas() {
 
 let edicionFactura = null; // { archivo, tipo, origen, headers, fila, edits }
 
-const COLUMNAS_META_NO_EDITABLES = new Set(["Origen", "Definitiva", "UsuarioDefinitiva", "FechaDefinitiva"]);
+const COLUMNAS_META_NO_EDITABLES = new Set(["Origen", "Definitiva", "UsuarioDefinitiva", "FechaDefinitiva", "Revisada"]);
 
 function extraerCamposFactura(headers, row) {
     const idxs = headers.map((h, i) => i).filter(i => !COLUMNAS_META_NO_EDITABLES.has(headers[i]));
@@ -1851,12 +2142,14 @@ function abrirModalEditarFactura(rowCompleta, headersCompletos, tipo) {
     edicionFactura = { archivo, tipo, origen, headers, fila: [...fila], edits: {} };
 
     document.getElementById("editarFacturaTitulo").textContent =
-        tipo === "pendiente" ? "Completar factura pendiente" : "Editar factura completada";
+        tipo === "pendiente" ? "Completar factura pendiente" :
+        tipo === "incidencia" ? "Completar factura con incidencia" :
+        "Editar factura completada";
     document.getElementById("editarFacturaArchivoNombre").textContent = archivo;
     document.getElementById("estadoEdicionFactura").textContent = "";
 
     const btnGuardar = document.getElementById("btnGuardarEdicionFactura");
-    btnGuardar.textContent = tipo === "pendiente" ? "Guardar y mover a completadas" : "Guardar cambios";
+    btnGuardar.textContent = (tipo === "pendiente" || tipo === "incidencia") ? "Guardar y mover a completadas" : "Guardar cambios";
     btnGuardar.disabled = false;
 
     pintarCamposEdicion(headers, fila);
@@ -1871,7 +2164,8 @@ function pintarCamposEdicion(headers, fila) {
 
     headers.forEach((h, i) => {
         const val = String(fila[i] ?? "-").trim();
-        const esGuion = val === "-" || val === "" || val === "None" || val === "null";
+        const esAlerta = val === MENSAJE_CIF_NO_ENCONTRADO;
+        const esGuion = !esAlerta && (val === "-" || val === "" || val === "None" || val === "null");
         const readonly = camposReadonly.has(h);
 
         html += "<tr>";
@@ -1879,6 +2173,15 @@ function pintarCamposEdicion(headers, fila) {
 
         if (readonly) {
             html += `<td class="campo-valor campo-readonly">${val}</td>`;
+        } else if (esAlerta) {
+            html += `<td class="campo-valor campo-alerta">
+                        <input
+                            type="text"
+                            data-col="${i}"
+                            placeholder="⚠️ ${val}"
+                            oninput="registrarEditFactura(${i}, this.value)"
+                        >
+                     </td>`;
         } else if (esGuion) {
             html += `<td class="campo-valor campo-pendiente">
                         <input
@@ -1951,17 +2254,20 @@ async function guardarEdicionFactura() {
         filaFinal[parseInt(col)] = val;
     }
 
+    const esPendienteOIncidencia = edicionFactura.tipo === "pendiente" || edicionFactura.tipo === "incidencia";
+
     const estadoMsg = document.getElementById("estadoEdicionFactura");
     estadoMsg.textContent = "";
 
-    if (edicionFactura.tipo === "pendiente") {
-        const camposObl = [1, 3, 4, 6, 8, 9, 10, 11, 12, 13, 14, 17]; // índices en EXPECTED_HEADERS
+    if (esPendienteOIncidencia) {
+        // Buscados por nombre (no por índice fijo) para no depender del
+        // orden de columnas de EXPECTED_HEADERS.
         const nombresObl = ["BaseImp", "Buyer", "Empresa", "FFactura", "ImporIVA", "Moneda",
             "NombreProveedor", "NumeroFactura", "PedidoCliente", "Proveedor", "TipoIVA", "TotalFact"];
 
-        const faltantes = camposObl
-            .map((ci, ii) => ({ ci, nombre: nombresObl[ii] }))
-            .filter(({ ci }) => String(filaFinal[ci] ?? "-").trim() === "-")
+        const faltantes = nombresObl
+            .map(nombre => ({ nombre, ci: edicionFactura.headers.indexOf(nombre) }))
+            .filter(({ ci }) => ci !== -1 && String(filaFinal[ci] ?? "-").trim() === "-")
             .map(({ nombre }) => nombre);
 
         if (faltantes.length > 0) {
@@ -1977,7 +2283,7 @@ async function guardarEdicionFactura() {
 
     try {
         let res;
-        if (edicionFactura.tipo === "pendiente") {
+        if (esPendienteOIncidencia) {
             res = await fetch("/confirmar-factura", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -2003,10 +2309,14 @@ async function guardarEdicionFactura() {
         if (!res.ok) {
             const err = await res.json();
 
-            if (res.status === 404 && edicionFactura.tipo === "pendiente") {
+            if (res.status === 404 && esPendienteOIncidencia) {
                 mostrarToast(`${edicionFactura.archivo} ya no está pendiente (se guardó antes). Se ha quitado de la lista.`, "error");
                 cerrarModalEditarFactura();
-                quitarDePendientesCache(edicionFactura.archivo);
+                if (edicionFactura.tipo === "incidencia") {
+                    quitarDeIncidenciasCache(edicionFactura.archivo);
+                } else {
+                    quitarDePendientesCache(edicionFactura.archivo);
+                }
                 return;
             }
 
@@ -2016,7 +2326,7 @@ async function guardarEdicionFactura() {
 
         const tipo = edicionFactura.tipo;
         mostrarToast(
-            tipo === "pendiente"
+            esPendienteOIncidencia
                 ? `✓ ${edicionFactura.archivo} movida a completadas.`
                 : `✓ ${edicionFactura.archivo} actualizada.`,
             "ok"
@@ -2025,6 +2335,9 @@ async function guardarEdicionFactura() {
 
         if (tipo === "pendiente") {
             quitarDePendientesCache(edicionFactura.archivo);
+            await cargarFacturasCompletadas();
+        } else if (tipo === "incidencia") {
+            quitarDeIncidenciasCache(edicionFactura.archivo);
             await cargarFacturasCompletadas();
         } else {
             await cargarFacturasCompletadas();
@@ -2090,8 +2403,9 @@ async function subirFactura() {
 // =========================================================
 
 cargarEstadisticas();
-cargarReenviarPedido();
 cargarPendientesCompleto();
+cargarIncidenciasCompleto();
+cargarErroresCompleto();
 cargarFacturasCompletadas();
 cargarSolicitudesCorreo();
 

@@ -1,7 +1,7 @@
 """
 Carga puntual: vuelca a la tabla SQL ProveedoresClasificados los proveedores
-de ProveedoresBC.xls (Granel) y ProveedoresBCEnvasado.xls (Envasado), con
-su CIF, nombre de empresa y si están bloqueados o no.
+de ProveedoresGranel.xlsx (Granel) y ProveedoresEnvasado.xlsx (Envasado),
+con su CIF, nombre de empresa y si están bloqueados o no.
 
 Un mismo CIF puede aparecer en los dos ficheros (proveedor que sirve a
 granel y envasado); en ese caso se guardan dos filas, una por
@@ -26,8 +26,8 @@ from sql_historial import _conectar, MOTOR, FECHA_ACTUAL_SQL
 _ROOT = os.path.dirname(os.path.abspath(__file__))
 
 FICHEROS = [
-    (os.path.join(_ROOT, "ProveedoresBC.xls"), "Granel"),
-    (os.path.join(_ROOT, "ProveedoresBCEnvasado.xls"), "Envasado"),
+    (os.path.join(_ROOT, "ProveedoresGranel.xlsx"), "Granel"),
+    (os.path.join(_ROOT, "ProveedoresEnvasado.xlsx"), "Envasado"),
 ]
 
 TABLA = "ProveedoresClasificados"
@@ -35,25 +35,30 @@ TABLA = "ProveedoresClasificados"
 
 def leer_proveedores(path, clasificacion):
     """
-    Lee la hoja 'Suppliers' de un fichero exportado de Business Central
-    (aunque la extensión sea .xls, el contenido es xlsx; se abre en modo
-    binario para que openpyxl no lo rechace por la extensión).
+    Lee un fichero exportado de Business Central (vista de la tabla
+    Proveedor). La fila 0 es el título de la vista, la fila 1 trae la
+    fecha de exportación y la fila 2 la cabecera real; los datos empiezan
+    en la fila 3. El orden de columnas difiere entre Granel y Envasado,
+    así que se busca por nombre de columna. La columna "Bloqueado" no es
+    booleana: viene en blanco si el proveedor no está bloqueado, o con un
+    motivo de bloqueo (p.ej. "Todos", "Pago") en caso contrario.
     """
-    with open(path, "rb") as f:
-        wb = openpyxl.load_workbook(f, data_only=True)
-    ws = wb["Suppliers"]
+    wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    ws = wb[wb.sheetnames[0]]
+    filas = ws.iter_rows(values_only=True)
 
-    filas = list(ws.iter_rows(values_only=True))
-    headers = filas[0]
+    next(filas)  # título
+    next(filas)  # fecha de exportación
+    headers = next(filas)
     idx = {h: i for i, h in enumerate(headers)}
 
     proveedores = []
-    for fila in filas[1:]:
-        cif = str(fila[idx["VATRegistrationNumber"]] or "").strip()
-        nombre = str(fila[idx["Name1"]] or "").strip()
-        bloqueado = str(fila[idx["Blocked"]] or "").strip().upper() == "X"
+    for fila in filas:
+        cif = str(fila[idx["CIF/NIF"]] or "").strip()
         if not cif:
             continue
+        nombre = str(fila[idx["Nombre"]] or "").strip()
+        bloqueado = bool(str(fila[idx["Bloqueado"]] or "").strip())
         proveedores.append((clasificacion, cif, nombre, bloqueado))
 
     return proveedores

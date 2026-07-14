@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from logic import (
     FACTURAS_DIR,
     ERROR_DIR,
+    INCIDENCIAS_DIR,
     NO_FACTURA_DIR,
     COMPLETADAS_DIR,
     FACTURAS_REVISADAS_DIR,
@@ -29,8 +30,9 @@ from logic import (
     listar_reenviar_pedido,
     solicitar_envio_correo,
     listar_solicitudes_envio_correo,
-    listar_errores,
+    listar_errores_completo,
     clasificar_error,
+    reprocesar_error,
     guardar_historial,
     guardar_factura_examinada_sql,
 )
@@ -77,6 +79,7 @@ async def upload_pdf(file: UploadFile = File(...)):
         result_csv = extract_invoice_with_agent(
             file_name=file.filename,
             invoice_text=text,
+            pdf_path=pdf_path,
         )
 
         tabla = csv_to_matrix(result_csv)
@@ -118,6 +121,7 @@ def estadisticas():
         "procesadas":      os.path.join(FACTURAS_DIR, "procesadas"),
         "imagenes":        os.path.join(FACTURAS_DIR, "imagenes"),
         "error":           ERROR_DIR,
+        "incidencias":     INCIDENCIAS_DIR,
         "completadas":     COMPLETADAS_DIR,
         "revisadas":       FACTURAS_REVISADAS_DIR,
         "manual":          os.path.join(FACTURAS_DIR, "corregir_manualmente"),
@@ -195,9 +199,9 @@ def motivos_error_extraccion():
     return {"motivos": [{"clave": k, "etiqueta": v} for k, v in MOTIVOS_ERROR_EXTRACCION.items()]}
 
 
-@router.get("/errores-lista")
-def errores_lista():
-    return {"archivos": listar_errores()}
+@router.get("/errores-completo-json")
+def errores_completo_json():
+    return {"tabla": listar_errores_completo()}
 
 
 @router.post("/clasificar-error")
@@ -215,3 +219,17 @@ async def clasificar_error_endpoint(body: dict):
         raise HTTPException(status_code=404, detail=f"No se encontró el PDF: {archivo}")
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/reprocesar-error")
+async def reprocesar_error_endpoint(body: dict):
+    archivo = str(body.get("archivo", "")).strip()
+
+    if not archivo or os.path.basename(archivo) != archivo:
+        raise HTTPException(status_code=400, detail="Nombre de archivo no válido.")
+
+    try:
+        exito, estado = reprocesar_error(archivo)
+        return {"ok": True, "exito": exito, "estado": estado}
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"No se encontró el PDF: {archivo}")
