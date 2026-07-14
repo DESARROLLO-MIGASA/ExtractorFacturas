@@ -1758,6 +1758,8 @@ def _extraer_y_clasificar_pdf(pdf_path, archivo):
     if tipo == "completada":
         guardar_factura_examinada_sql(fila, "auto")
 
+    eliminar_reenvios_de_factura_repetida(fila, archivo)
+
     return tipo
 
 
@@ -2318,6 +2320,159 @@ def listar_solicitudes_envio_correo():
             continue
         archivos.extend(f for f in os.listdir(carpeta) if f.lower().endswith(".pdf"))
     return sorted(archivos)
+
+
+# =========================================================
+# REENVIADAS: contador unificado y detalle (email/motivo/fecha) de las
+# facturas ya reenviadas y archivadas por Power Automate en las carpetas
+# "reenviadas_*" (no las colas "reenviar_*", que siguen pendientes).
+# =========================================================
+
+def _contar_pdfs_recursivo(carpeta):
+    """Cuenta los .pdf de `carpeta` incluidas las subcarpetas (necesario para
+    REENVIADAS_OTRO_MOTIVO_DIR, que guarda una subcarpeta por campo)."""
+    if not os.path.exists(carpeta):
+        return 0
+    total = 0
+    for _, _, archivos in os.walk(carpeta):
+        total += sum(1 for f in archivos if f.lower().endswith(".pdf"))
+    return total
+
+
+def contar_reenviadas():
+    """Total de facturas ya reenviadas y archivadas, sumando las dos carpetas
+    'reenviadas_*'. No incluye las colas 'reenviar_*' (todavía pendientes de
+    que Power Automate las procese), que ya tienen su propio aviso."""
+    return _contar_pdfs_recursivo(REENVIADAS_PEDIDO_DIR) + _contar_pdfs_recursivo(REENVIADAS_OTRO_MOTIVO_DIR)
+
+
+_RE_MOTIVO_MARCADOR = re.compile(r"__MOTIVOENVIO__(.*?)__ENDMOTIVOENVIO__")
+
+
+def _archivo_original_de_reenvio(nombre):
+    """Recupera el nombre de archivo tal y como se guardó en el historial
+    (sin el marcador __MOTIVOENVIO__...__ENDMOTIVOENVIO__ que se añade al
+    copiarlo/moverlo a una carpeta de reenvío)."""
+    return _RE_MOTIVO_MARCADOR.sub("", nombre)
+
+
+def _motivo_de_nombre_reenvio(nombre, motivo_por_defecto=None):
+    m = _RE_MOTIVO_MARCADOR.search(nombre)
+    return m.group(1) if m else motivo_por_defecto
+
+
+def listar_reenviadas_detalle():
+    """[{archivo, archivo_real, email, motivo, fecha}] de las facturas ya
+    reenviadas y archivadas (carpetas 'reenviadas_*'), para el panel de
+    detalle de la visualización automática. La fecha es la de archivado
+    (mtime), que es cuando Power Automate movió el PDF aquí tras enviar el
+    correo. "archivo" es el nombre limpio para mostrar; "archivo_real" es el
+    nombre tal cual está en disco (con marcadores), necesario para abrir el
+    PDF vía /pdf-factura/{archivo}."""
+    filas = []
+
+    def _agregar(carpeta, motivo_por_defecto):
+        if not os.path.exists(carpeta):
+            return
+        for raiz, _, archivos in os.walk(carpeta):
+            for nombre in archivos:
+                if not nombre.lower().endswith(".pdf"):
+                    continue
+                ruta = os.path.join(raiz, nombre)
+                archivo_limpio = _RE_EMAIL_MARCADOR.sub("", _archivo_original_de_reenvio(nombre))
+                try:
+                    fecha = datetime.fromtimestamp(os.path.getmtime(ruta)).strftime("%d/%m/%Y %H:%M:%S")
+                except OSError:
+                    fecha = "-"
+                filas.append({
+                    "archivo": archivo_limpio,
+                    "archivo_real": nombre,
+                    "email": extraer_email_de_nombre(nombre),
+                    "motivo": _motivo_de_nombre_reenvio(nombre, motivo_por_defecto),
+                    "fecha": fecha,
+                })
+
+    _agregar(REENVIADAS_PEDIDO_DIR, MOTIVOS_ENVIO_CORREO["falta_pedido_cliente"])
+    _agregar(REENVIADAS_OTRO_MOTIVO_DIR, None)
+
+    filas.sort(key=lambda f: f["fecha"], reverse=True)
+    return filas
+
+
+# =========================================================
+# FACTURA REENVIADA QUE VUELVE A LLEGAR
+# Si el proveedor reenvía por su cuenta (fuera de este flujo) la misma
+# factura que ya estaba pendiente/archivada en una carpeta de reenvío, esa
+# copia antigua deja de tener sentido: se borra para que no quede duplicada
+# ni siga contando como pendiente de reenvío.
+#
+# Esto es una excepción deliberada a la regla de que la app nunca toca las
+# carpetas reenviar_*/reenviadas_* (ver comentarios de listar_reenviar_pedido
+# y listar_solicitudes_envio_correo): aquí no se compite con Power Automate
+# por mover el archivo, se borra una copia que ya no hace falta porque la
+# factura ha vuelto a llegar por su cuenta.
+# =========================================================
+
+_CARPETAS_REENVIO_CON_DATOS = [
+    (REENVIAR_PEDIDO_DIR, False),
+    (REENVIADAS_PEDIDO_DIR, False),
+    (REENVIAR_DOS_FACTURAS_DIR, False),
+    (REENVIAR_OTRO_MOTIVO_DIR, True),
+    (REENVIADAS_OTRO_MOTIVO_DIR, True),
+]
+
+# En estas dos no hay NumeroFactura disponible: la extracción nunca llegó a
+# completarse (por eso el PDF terminó en error), así que solo se puede
+# comparar por nombre de archivo.
+_CARPETAS_REENVIO_SIN_DATOS = [REENVIAR_ERROR_PESA_MUCHO_DIR, REENVIAR_ERROR_OTRO_DIR]
+
+
+def eliminar_reenvios_de_factura_repetida(fila, archivo_entrante):
+    """
+    Si la factura recién extraída (`fila`, en el mismo orden que
+    EXPECTED_HEADERS) ya tenía una copia esperando/archivada en alguna
+    carpeta de reenvío, la borra de ahí. Se identifica por NumeroFactura +
+    Proveedor (más fiable que el nombre de archivo, que puede cambiar si el
+    proveedor reenvía con un fichero distinto).
+
+    Devuelve la lista de rutas borradas.
+    """
+    borrados = []
+
+    numero_factura = fila[1] if len(fila) > 1 else None
+    proveedor = fila[4] if len(fila) > 4 else None
+
+    if numero_factura and numero_factura != "-":
+        for carpeta, recursiva in _CARPETAS_REENVIO_CON_DATOS:
+            if not os.path.exists(carpeta):
+                continue
+            paseo = os.walk(carpeta) if recursiva else [(carpeta, [], os.listdir(carpeta))]
+            for raiz, _, archivos in paseo:
+                for nombre in archivos:
+                    if not nombre.lower().endswith(".pdf"):
+                        continue
+                    fila_existente = buscar_en_historial(_archivo_original_de_reenvio(nombre))
+                    if not fila_existente or len(fila_existente) <= 4:
+                        continue
+                    if fila_existente[1] == numero_factura and fila_existente[4] == proveedor:
+                        ruta = os.path.join(raiz, nombre)
+                        try:
+                            os.remove(ruta)
+                            borrados.append(ruta)
+                        except OSError as e:
+                            print(f"AVISO: no se pudo borrar {ruta} tras detectar reenvío repetido: {e}")
+
+    for carpeta in _CARPETAS_REENVIO_SIN_DATOS:
+        ruta = os.path.join(carpeta, archivo_entrante)
+        if not os.path.exists(ruta):
+            continue
+        try:
+            os.remove(ruta)
+            borrados.append(ruta)
+        except OSError as e:
+            print(f"AVISO: no se pudo borrar {ruta} tras detectar reenvío repetido: {e}")
+
+    return borrados
 
 
 # =========================================================

@@ -35,6 +35,9 @@ from logic import (
     reprocesar_error,
     guardar_historial,
     guardar_factura_examinada_sql,
+    contar_reenviadas,
+    listar_reenviadas_detalle,
+    eliminar_reenvios_de_factura_repetida,
 )
 
 CARPETA_ENTRADA = os.path.join(FACTURAS_DIR, "entrada")
@@ -96,6 +99,8 @@ async def upload_pdf(file: UploadFile = File(...)):
         if tipo == "completada":
             guardar_factura_examinada_sql(fila, "auto")
 
+        eliminar_reenvios_de_factura_repetida(fila, file.filename)
+
         return JSONResponse({"archivo": file.filename, "estado": tipo})
 
     except Exception as e:
@@ -142,7 +147,18 @@ def estadisticas():
         else:
             datos[nombre] = len([f for f in os.listdir(ruta) if f.lower().endswith(".pdf")])
 
+    datos["reenviadas"] = contar_reenviadas()
+
     return JSONResponse(datos)
+
+
+# =========================================================
+# REENVIADAS: detalle (factura, email, fecha, motivo) de lo ya reenviado
+# =========================================================
+
+@router.get("/reenviadas-detalle")
+def reenviadas_detalle():
+    return {"facturas": listar_reenviadas_detalle()}
 
 
 # =========================================================
