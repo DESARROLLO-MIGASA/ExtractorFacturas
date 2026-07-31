@@ -8,6 +8,7 @@ from logic import (
     FACTURAS_DIR,
     ERROR_DIR,
     INCIDENCIAS_DIR,
+    ESPERANDO_ALTA_DIR,
     NO_FACTURA_DIR,
     COMPLETADAS_DIR,
     FACTURAS_REVISADAS_DIR,
@@ -23,6 +24,7 @@ from logic import (
     read_pdf_text,
     es_no_factura,
     extract_invoice_with_agent,
+    rechazar_si_pesa_demasiado,
     csv_to_matrix,
     clasificar_factura,
     mover_pdf,
@@ -31,13 +33,20 @@ from logic import (
     solicitar_envio_correo,
     listar_solicitudes_envio_correo,
     listar_errores_completo,
+    listar_no_factura_completo,
+    abrir_carpeta_no_factura,
     clasificar_error,
     reprocesar_error,
+    reprocesar_errores,
+    LOCK_PROCESAMIENTO_AUTOMATICO,
     guardar_historial,
     guardar_factura_examinada_sql,
+    detectar_y_marcar_duplicados,
     contar_reenviadas,
+    contar_duplicados_pendientes,
     listar_reenviadas_detalle,
     eliminar_reenvios_de_factura_repetida,
+    crear_borrador_outlook_graph,
 )
 
 CARPETA_ENTRADA = os.path.join(FACTURAS_DIR, "entrada")
@@ -60,7 +69,7 @@ def procesar():
 # =========================================================
 
 @router.post("/upload-pdf")
-async def upload_pdf(file: UploadFile = File(...)):
+def upload_pdf(file: UploadFile = File(...)):
 
     os.makedirs(CARPETA_ENTRADA, exist_ok=True)
     pdf_path = os.path.join(CARPETA_ENTRADA, file.filename)
@@ -69,6 +78,9 @@ async def upload_pdf(file: UploadFile = File(...)):
         shutil.copyfileobj(file.file, f)
 
     try:
+        if rechazar_si_pesa_demasiado(pdf_path, file.filename):
+            return JSONResponse({"archivo": file.filename, "estado": "pesa_mucho"})
+
         text = read_pdf_text(pdf_path)
 
         if es_no_factura(text):
@@ -79,11 +91,15 @@ async def upload_pdf(file: UploadFile = File(...)):
             mover_pdf(pdf_path, "imagen")
             return JSONResponse({"archivo": file.filename, "estado": "imagen"})
 
-        result_csv = extract_invoice_with_agent(
+        result_csv, multiples_facturas = extract_invoice_with_agent(
             file_name=file.filename,
             invoice_text=text,
             pdf_path=pdf_path,
         )
+
+        if multiples_facturas:
+            mover_pdf(pdf_path, "incidencia")
+            return JSONResponse({"archivo": file.filename, "estado": "incidencia"})
 
         tabla = csv_to_matrix(result_csv)
 
@@ -93,11 +109,12 @@ async def upload_pdf(file: UploadFile = File(...)):
 
         fila = tabla[1]
         tipo = clasificar_factura(fila)
-        mover_pdf(pdf_path, tipo)
+        mover_pdf(pdf_path, tipo, fila=fila)
         guardar_historial(result_csv, "auto")
 
         if tipo == "completada":
             guardar_factura_examinada_sql(fila, "auto")
+            detectar_y_marcar_duplicados(fila)
 
         eliminar_reenvios_de_factura_repetida(fila, file.filename)
 
@@ -127,6 +144,7 @@ def estadisticas():
         "imagenes":        os.path.join(FACTURAS_DIR, "imagenes"),
         "error":           ERROR_DIR,
         "incidencias":     INCIDENCIAS_DIR,
+        "esperando_alta":  ESPERANDO_ALTA_DIR,
         "completadas":     COMPLETADAS_DIR,
         "revisadas":       FACTURAS_REVISADAS_DIR,
         "manual":          os.path.join(FACTURAS_DIR, "corregir_manualmente"),
@@ -148,6 +166,7 @@ def estadisticas():
             datos[nombre] = len([f for f in os.listdir(ruta) if f.lower().endswith(".pdf")])
 
     datos["reenviadas"] = contar_reenviadas()
+    datos["duplicados"] = contar_duplicados_pendientes()
 
     return JSONResponse(datos)
 
@@ -184,7 +203,7 @@ def motivos_envio_correo():
 
 
 @router.post("/solicitar-envio-correo")
-async def solicitar_envio_correo_endpoint(body: dict):
+def solicitar_envio_correo_endpoint(body: dict):
     archivo = str(body.get("archivo", "")).strip()
     motivo = str(body.get("motivo", "")).strip()
     motivo_otro = body.get("motivo_otro")
@@ -193,8 +212,8 @@ async def solicitar_envio_correo_endpoint(body: dict):
         raise HTTPException(status_code=400, detail="Nombre de archivo no válido.")
 
     try:
-        archivo_generado = solicitar_envio_correo(archivo, motivo, motivo_otro)
-        return {"ok": True, "archivo_generado": archivo_generado}
+        archivo_generado, aviso = solicitar_envio_correo(archivo, motivo, motivo_otro)
+        return {"ok": True, "archivo_generado": archivo_generado, "aviso": aviso}
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"No se encontró el PDF: {archivo}")
     except ValueError as e:
@@ -204,6 +223,24 @@ async def solicitar_envio_correo_endpoint(body: dict):
 @router.get("/solicitudes-envio-correo-lista")
 def solicitudes_envio_correo_lista():
     return {"archivos": listar_solicitudes_envio_correo()}
+
+
+@router.post("/crear-borrador-outlook")
+def crear_borrador_outlook_endpoint(body: dict):
+    """Crea el borrador (destinatario + PDF adjunto) en el buzón compartido
+    vía Microsoft Graph y devuelve el enlace para abrirlo en Outlook Web."""
+    archivo = str(body.get("archivo", "")).strip()
+    asunto = body.get("asunto")
+
+    if not archivo or os.path.basename(archivo) != archivo:
+        raise HTTPException(status_code=400, detail="Nombre de archivo no válido.")
+
+    try:
+        return crear_borrador_outlook_graph(archivo, asunto)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"No se encontró el PDF: {archivo}")
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # =========================================================
@@ -220,8 +257,22 @@ def errores_completo_json():
     return {"tabla": listar_errores_completo()}
 
 
+@router.get("/no-factura-completo-json")
+def no_factura_completo_json():
+    return {"tabla": listar_no_factura_completo()}
+
+
+@router.post("/abrir-carpeta-no-factura")
+def abrir_carpeta_no_factura_endpoint():
+    try:
+        abrir_carpeta_no_factura()
+        return {"ok": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"No se pudo abrir la carpeta: {e}")
+
+
 @router.post("/clasificar-error")
-async def clasificar_error_endpoint(body: dict):
+def clasificar_error_endpoint(body: dict):
     archivo = str(body.get("archivo", "")).strip()
     motivo = str(body.get("motivo", "")).strip()
 
@@ -238,14 +289,37 @@ async def clasificar_error_endpoint(body: dict):
 
 
 @router.post("/reprocesar-error")
-async def reprocesar_error_endpoint(body: dict):
+def reprocesar_error_endpoint(body: dict):
     archivo = str(body.get("archivo", "")).strip()
 
     if not archivo or os.path.basename(archivo) != archivo:
         raise HTTPException(status_code=400, detail="Nombre de archivo no válido.")
+
+    if not LOCK_PROCESAMIENTO_AUTOMATICO.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail="Hay un procesamiento en curso, inténtalo de nuevo en unos segundos.")
 
     try:
         exito, estado = reprocesar_error(archivo)
         return {"ok": True, "exito": exito, "estado": estado}
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"No se encontró el PDF: {archivo}")
+    finally:
+        LOCK_PROCESAMIENTO_AUTOMATICO.release()
+
+
+@router.post("/reprocesar-errores")
+def reprocesar_errores_endpoint():
+    if not LOCK_PROCESAMIENTO_AUTOMATICO.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail="Hay un procesamiento en curso, inténtalo de nuevo en unos segundos.")
+
+    try:
+        resultados = reprocesar_errores()
+        exitosos = sum(1 for r in resultados if r["exito"])
+        return {
+            "ok": True,
+            "resultados": resultados,
+            "exitosos": exitosos,
+            "fallidos": len(resultados) - exitosos,
+        }
+    finally:
+        LOCK_PROCESAMIENTO_AUTOMATICO.release()

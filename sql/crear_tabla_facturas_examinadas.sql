@@ -32,5 +32,6 @@ CREATE TABLE FacturasExaminadas (
     Definitiva          BIT NOT NULL DEFAULT 0,       -- 1 = marcada como 100% revisada/definitiva
     UsuarioDefinitiva   NVARCHAR(100) NULL,           -- usuario que la marcó/desmarcó
     FechaDefinitiva     DATETIME NULL,                -- fecha del último marcado/desmarcado
+    Duplicado           BIT NOT NULL DEFAULT 0,        -- 1 = coincide con otra en NumeroFactura+Proveedor+Buyer
     CONSTRAINT UQ_FacturasExaminadas_Archivo UNIQUE (Archivo)
 );

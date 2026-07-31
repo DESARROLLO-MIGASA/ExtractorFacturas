@@ -164,6 +164,20 @@ def main():
 
     print(f"\nCarga terminada: {len(todas)} empresas guardadas en {TABLA} ({MOTOR}).")
 
+    # Con el CIF ya confirmado en la base de datos (commit hecho arriba), se
+    # revisan las incidencias que estuvieran atascadas esperando justo a
+    # alguno de estos CIF: así se autorresuelven en cuanto se dan de alta,
+    # sin esperar a que alguien recargue "Incidencias" (ver
+    # logic.reclasificar_cola_por_cif). Solo tiene sentido para los CIF que
+    # quedan activos; uno inactivo no resuelve ninguna incidencia.
+    cifs_activos = sorted({cif for _, cif, _, _, activa in todas if activa})
+    if cifs_activos:
+        import logic
+
+        print(f"\nRevisando incidencias afectadas por {len(cifs_activos)} CIF(s) activos...")
+        total_movidas = sum(logic.reclasificar_cola_por_cif(cif) for cif in cifs_activos)
+        print(f"Incidencias reclasificadas: {total_movidas}")
+
 
 if __name__ == "__main__":
     main()

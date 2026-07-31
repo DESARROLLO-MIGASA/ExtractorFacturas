@@ -191,7 +191,7 @@ def detectar_cif_con_vision_desde_pdf(pdf_path):
 # LLAMADA AL MODELO (VISION)
 # =========================================================
 
-def extract_invoice_from_images(file_name, imagenes_b64, agent_prompt=None):
+def extract_invoice_from_images(file_name, imagenes_b64, agent_prompt=None, pdf_path=None):
     agent_prompt = agent_prompt or auto_logic.DEFAULT_PROMPT
 
     client = auto_logic.build_client()
@@ -277,19 +277,41 @@ def extract_invoice_from_images(file_name, imagenes_b64, agent_prompt=None):
     cif_2 = auto_logic.normalizar_cif(datos["Proveedor"])
 
     # Un solo intento de vision (pidiendo los 18 campos a la vez) a veces
-    # pasa por alto el CIF aunque sí lo tenga delante: un segundo intento
-    # con un prompt más simple, centrado solo en el CIF, tiene mejores
-    # resultados. Solo se repite si de verdad falta alguno de los dos.
-    if cif_1 == "-" or cif_2 == "-":
-        cif_1_vision, cif_2_vision = detectar_cif_con_vision(imagenes_b64)
-        if cif_1 == "-":
-            cif_1 = cif_1_vision
-        if cif_2 == "-":
-            cif_2 = cif_2_vision
+    # alucina un CIF: no vale con que tenga forma válida y coincida con una
+    # empresa real en las tablas maestras, porque esa coincidencia puede ser
+    # pura casualidad (letra + 7 dígitos + control da para pocas
+    # combinaciones) y entonces la factura se asigna en silencio a una
+    # empresa/proveedor que no es, sin ningún aviso. Por eso SIEMPRE se
+    # contrasta con una segunda lectura independiente (prompt más simple,
+    # centrado solo en el CIF): solo se acepta un CIF si ambas lecturas
+    # coinciden. Si no coinciden, se deja "-" para que la factura caiga en
+    # incidencias/revisión manual en vez de asignarse a la empresa o
+    # proveedor equivocado.
+    # Se compara por pertenencia (no por posición) porque a resolver_empresa_
+    # y_proveedor no le importa qué campo etiquetó el modelo como Buyer o
+    # Proveedor: si la segunda lectura encuentra los mismos dos CIF pero
+    # intercambiados de campo, sigue siendo una confirmación válida.
+    cif_1_vision, cif_2_vision = detectar_cif_con_vision(imagenes_b64)
+    valores_vision = {cif_1_vision, cif_2_vision} - {"-"}
+
+    if cif_1 not in valores_vision:
+        cif_1 = "-"
+    if cif_2 not in valores_vision:
+        cif_2 = "-"
 
     datos["Buyer"], datos["Empresa"], datos["Proveedor"], datos["NombreProveedor"] = (
         auto_logic.resolver_empresa_y_proveedor(cif_1, cif_2)
     )
+
+    # Posición de cada dato en la página (recuadro del visor de revisión),
+    # vía OCR porque esta factura no tiene texto extraíble. Igual que en
+    # logic.extract_invoice_with_agent: si falla, sigue sin recuadros.
+    if pdf_path:
+        try:
+            import posiciones as _posiciones
+            _posiciones.calcular_y_cachear(file_name, datos, pdf_path=pdf_path)
+        except Exception as e:
+            print(f"AVISO: no se pudieron calcular posiciones para {file_name}: {e}")
 
     output = StringIO()
     writer = csv.writer(output, delimiter="|", lineterminator="\n")
@@ -303,13 +325,16 @@ def extract_invoice_from_images(file_name, imagenes_b64, agent_prompt=None):
 # MOVER PDF TRAS EL RESULTADO
 # =========================================================
 
-def mover_pdf_imagen(pdf_path, tipo):
+def mover_pdf_imagen(pdf_path, tipo, fila=None):
     """
     Mueve el PDF (ya copiado a "procesadas" en la primera pasada) desde
     "imagenes" a la carpeta que corresponda según el resultado de vision.
 
     Si sigue sin poder leerse ("imagen"), va a "imagenes_sin_datos" en
     vez de volver a "imagenes", para no reprocesarlo en cada pasada.
+
+    Si `tipo` es "manual"/"incidencia", deja también la caché ColaRevision
+    con `fila` (o un placeholder si no hay fila), igual que logic.mover_pdf.
     """
     carpetas = {
         "completada":      auto_logic.COMPLETADAS_DIR,
@@ -327,6 +352,13 @@ def mover_pdf_imagen(pdf_path, tipo):
     shutil.move(pdf_path, destino)
 
     print(f"PDF MOVIDO A {tipo.upper()}:", destino)
+
+    cola = {"manual": "pendiente", "incidencia": "incidencia"}.get(tipo)
+    if cola is not None:
+        fila_a_guardar = fila if fila is not None else (
+            [os.path.basename(pdf_path)] + ["-"] * (len(auto_logic.EXPECTED_HEADERS) - 1)
+        )
+        auto_logic.guardar_en_cola_revision_sql(fila_a_guardar, cola)
 
 
 # =========================================================
@@ -354,7 +386,7 @@ def procesar_carpeta_imagenes():
                 resultados.append({"archivo": archivo, "estado": "error", "detalle": "PDF sin páginas"})
                 continue
 
-            result_csv = extract_invoice_from_images(archivo, imagenes_b64)
+            result_csv = extract_invoice_from_images(archivo, imagenes_b64, pdf_path=pdf_path)
             tabla = auto_logic.csv_to_matrix(result_csv)
 
             if len(tabla) < 2:
@@ -365,7 +397,7 @@ def procesar_carpeta_imagenes():
             fila = tabla[1]
             tipo = auto_logic.clasificar_factura(fila)
 
-            mover_pdf_imagen(pdf_path, tipo)
+            mover_pdf_imagen(pdf_path, tipo, fila=fila)
             auto_logic.guardar_historial(result_csv, "imagenes")
 
             if tipo == "completada":

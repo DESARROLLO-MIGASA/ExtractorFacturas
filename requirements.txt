@@ -8,3 +8,4 @@ pyxlsb
 python-dotenv
 pyodbc
 PyMuPDF
+pytesseract

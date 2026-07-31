@@ -114,6 +114,21 @@ body {
     color: #1F6F43;
 }
 
+.usuario-actual {
+    background: rgba(255,255,255,0.15);
+    color: white;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.usuario-actual:hover {
+    background: rgba(255,255,255,0.28);
+}
+
 .tab-panel {
     max-width: 1500px;
     margin: 30px auto;
@@ -161,28 +176,6 @@ body {
     font-weight: 700;
     margin-right: 6px;
     vertical-align: middle;
-}
-
-/* SUBIR FACTURA */
-.barra-subida {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 12px 14px;
-    background: #FAFBFA;
-    border: 1px dashed #DCE3DD;
-    border-radius: 8px;
-    margin-bottom: 16px;
-    flex-wrap: wrap;
-}
-
-.barra-subida label.chk-urgente {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 13px;
-    color: #333;
-    cursor: pointer;
 }
 
 /* TABLA VERTICAL (modal de edición) */
@@ -258,6 +251,62 @@ table.tabla-campos td.campo-readonly {
 .campo-alerta input:focus {
     border-color: #C62828;
     background: #FCE0DE;
+}
+
+/* AUTOCOMPLETADO DE CIF (Buyer/Proveedor en el modal de edición) */
+.campo-cif-wrap {
+    position: relative;
+}
+
+.lista-sugerencias-cif {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 50;
+    background: white;
+    border: 1px solid #DCE3DD;
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    max-height: 220px;
+    overflow-y: auto;
+    margin-top: 2px;
+}
+
+.sugerencia-cif {
+    padding: 6px 10px;
+    font-size: 12.5px;
+    cursor: pointer;
+    border-bottom: 1px solid #F0F4F0;
+}
+
+.sugerencia-cif:last-child {
+    border-bottom: none;
+}
+
+.sugerencia-cif:hover {
+    background: #EDF6F1;
+}
+
+.sugerencia-cif-codigo {
+    font-weight: 600;
+    color: #1F6F43;
+}
+
+.sugerencia-cif.sugerencia-cif-inactiva .sugerencia-cif-codigo {
+    color: #C62828;
+}
+
+.sugerencia-cif-estado {
+    font-size: 11px;
+    color: #C62828;
+    margin-left: 6px;
+}
+
+.sugerencia-cif-vacio {
+    padding: 6px 10px;
+    font-size: 12.5px;
+    color: #888;
 }
 
 .valor-ok {
@@ -445,6 +494,108 @@ table.tabla-historial th.th-acciones {
     white-space: nowrap;
 }
 
+/* MODAL "EDITAR FACTURA": PANTALLA DIVIDIDA (PDF propio + formulario) */
+
+#overlayEditarFactura .modal-box-ancho {
+    width: 100vw;
+    height: 100vh;
+    max-width: 100vw;
+    max-height: 100vh;
+    border-radius: 0;
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+
+.acciones-extra-edicion {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+}
+
+.acciones-extra-edicion button {
+    padding: 5px 11px;
+    font-size: 12px;
+}
+
+#editarFacturaSplit {
+    flex: 1;
+    display: flex;
+    gap: 16px;
+    overflow: hidden;
+    min-height: 0;
+}
+
+#editarFacturaContenido {
+    flex: 1;
+    overflow-y: auto;
+    min-width: 0;
+}
+
+#editarFacturaPdfPanel {
+    display: flex;
+    flex-direction: column;
+    width: 46vw;
+    min-width: 380px;
+    max-width: 900px;
+    flex-shrink: 0;
+    border: 1px solid #DCE3DD;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+#editarFacturaPdfScroll {
+    position: relative;
+    flex: 1;
+    overflow: auto;
+    background: #E7EBE7;
+    padding: 10px;
+}
+
+#editarFacturaPdfPaginas img {
+    display: block;
+    width: 100%;
+    margin-bottom: 10px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.18);
+    user-select: none;
+}
+
+/* Recuadro automático: rectángulo pastel que abarca un poco más que el
+   dato en sí (no un subrayado ajustado), para que se note bien qué campo
+   toca revisar ahora sin taparlo del todo. */
+.caja-resaltado {
+    position: absolute;
+    border: 2px solid #F2A93B;
+    background: rgba(255, 205, 110, 0.35);
+    border-radius: 5px;
+    pointer-events: none;
+    transition: top .12s ease, left .12s ease, width .12s ease, height .12s ease;
+}
+
+/* Recuadro que se dibuja a mano mientras se arrastra sobre el PDF. */
+.caja-manual {
+    position: absolute;
+    border: 2px dashed #1F6F43;
+    background: rgba(130, 205, 170, 0.30);
+    border-radius: 4px;
+    pointer-events: none;
+}
+
+#btnSeleccionarEnPdf.activo {
+    background: #1F6F43;
+    color: white;
+}
+
+table.tabla-campos tr.campo-activo td {
+    background: #FFF6D5;
+}
+
+table.tabla-campos tr[data-campo] {
+    cursor: pointer;
+}
+
 /* Se puede abrir "Enviar correo" con el modal de errores ya abierto detrás
    (p.ej. desde la cola de errores de extracción): debe quedar por encima. */
 #overlayEnviarCorreo {
@@ -591,6 +742,10 @@ table.tabla-historial td {
     white-space: nowrap;
 }
 
+table.tabla-historial tr[data-row-idx] {
+    cursor: pointer;
+}
+
 table.tabla-historial td.celda-vacia {
     color: #BDBDBD;
     font-style: italic;
@@ -723,6 +878,52 @@ table.tabla-historial tr.fila-seleccionada td {
     gap: 6px;
 }
 
+/* RESERVAS (varias personas revisando a la vez) */
+.barra-reservas {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+    font-size: 13px;
+    color: #333;
+}
+
+.barra-reservas label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.badge-reserva-mia {
+    background: #1F6F43;
+    color: white;
+    border-radius: 8px;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.badge-reserva-ajena {
+    background: #FDECEA;
+    color: #C62828;
+    border-radius: 8px;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.chk-seleccion-fila, .celda-reserva {
+    /* Arrastrar para seleccionar varias casillas seguidas no debe dejar el
+       típico resaltado azul de "texto seleccionado" por encima. */
+    user-select: none;
+}
+
+table.tabla-historial tr.fila-reservada-mia td {
+    background: #EDF6F1;
+}
+
 .filtro-fecha input[type="date"] {
     padding: 6px 8px;
     border: 1px solid #DCE3DD;
@@ -774,10 +975,15 @@ table.tabla-historial tr.fila-seleccionada td {
         <button class="tab-btn active" data-tab="auto" onclick="cambiarTab('auto')">Visualización automática</button>
         <button class="tab-btn" data-tab="manual" onclick="cambiarTab('manual')">Corregir manualmente <span id="badgePendientesTab" class="badge vacio">0</span></button>
         <button class="tab-btn" data-tab="incidencias" onclick="cambiarTab('incidencias')">Incidencias <span id="badgeIncidenciasTab" class="badge vacio">0</span></button>
+        <button class="tab-btn" data-tab="esperando_alta" onclick="cambiarTab('esperando_alta')">Esperando alta <span id="badgeEsperandoAltaTab" class="badge vacio">0</span></button>
         <button class="tab-btn" data-tab="errores" onclick="cambiarTab('errores')">Errores <span id="badgeErroresTab" class="badge vacio">0</span></button>
         <button class="tab-btn" data-tab="revisar" onclick="cambiarTab('revisar')">Revisar facturas</button>
-        <button class="tab-btn" data-tab="subir" onclick="cambiarTab('subir')">Subir facturas</button>
+        <button class="tab-btn" data-tab="duplicados" onclick="cambiarTab('duplicados')">Duplicados <span id="badgeDuplicadosTab" class="badge vacio">0</span></button>
+        <button class="tab-btn" data-tab="no_factura" onclick="cambiarTab('no_factura')">No es factura <span id="badgeNoFacturaTab" class="badge vacio">0</span></button>
+        <button class="tab-btn" data-tab="vista_global" onclick="cambiarTab('vista_global')">Vista global</button>
     </div>
+    <span id="usuarioActualWidget" class="usuario-actual" onclick="cambiarUsuarioActual()" title="Cambiar usuario"></span>
+    <span class="usuario-actual" onclick="liberarTodasLasReservas()" title="Si alguna factura aparece bloqueada por error, esto la libera">🔓 Liberar todas las reservas</span>
 </div>
 
 <!-- ========================================================= -->
@@ -802,7 +1008,7 @@ table.tabla-historial tr.fila-seleccionada td {
 
             <div class="kpi">
                 <div id="entrada" class="kpi-num">0</div>
-                <div class="kpi-text">Entrada</div>
+                <div class="kpi-text">Pendiente de procesar</div>
             </div>
 
             <div class="kpi error">
@@ -811,18 +1017,8 @@ table.tabla-historial tr.fila-seleccionada td {
             </div>
 
             <div class="kpi">
-                <div id="procesadas" class="kpi-num">0</div>
-                <div class="kpi-text">Procesadas</div>
-            </div>
-
-            <div class="kpi">
-                <div id="imagenes" class="kpi-num">0</div>
-                <div class="kpi-text">Imágenes</div>
-            </div>
-
-            <div class="kpi">
                 <div id="manual" class="kpi-num">0</div>
-                <div class="kpi-text">Manual</div>
+                <div class="kpi-text">Revisión manual</div>
             </div>
 
             <div class="kpi error">
@@ -830,9 +1026,14 @@ table.tabla-historial tr.fila-seleccionada td {
                 <div class="kpi-text">Incidencias</div>
             </div>
 
+            <div class="kpi error">
+                <div id="esperando_alta" class="kpi-num">0</div>
+                <div class="kpi-text">Esperando alta proveedor</div>
+            </div>
+
             <div class="kpi">
                 <div id="completadas" class="kpi-num">0</div>
-                <div class="kpi-text">Completadas</div>
+                <div class="kpi-text">Pendientes de verificación</div>
             </div>
 
             <div class="kpi">
@@ -866,6 +1067,7 @@ table.tabla-historial tr.fila-seleccionada td {
             Facturas pendientes de corrección
             <span id="badgePendientes" class="badge vacio">0</span>
             <button class="btn-secondary" style="margin-left:auto" onclick="cargarPendientesCompleto()">Actualizar lista</button>
+            <button class="btn-secondary" onclick="exportarExcelTabla('tablaPendientes', 'facturas_pendientes')">Exportar a Excel</button>
         </div>
 
         <div class="filtro-fecha">
@@ -879,6 +1081,13 @@ table.tabla-historial tr.fila-seleccionada td {
             <label>Proveedor <input type="text" id="pendFiltroProveedor" oninput="filtrarPendientes()" placeholder="CIF/NIF proveedor"></label>
             <button class="btn-secondary" onclick="limpiarFiltroPendientes()">Limpiar filtro</button>
             <span class="help">Haz clic en el nombre del archivo para abrir el PDF. El filtro de fechas busca por fecha de procesamiento (FEscaneo).</span>
+        </div>
+
+        <div class="barra-reservas">
+            <label><input type="checkbox" onchange="alternarSeleccionTodo('tablaPendientes', this.checked)"> Seleccionar todas</label>
+            <button class="btn-secondary" onclick="reservarSeleccion('tablaPendientes', 'pendiente')">🔒 Reservar seleccionadas</button>
+            <button class="btn-secondary" onclick="liberarMiSeleccion('tablaPendientes', 'pendiente')">Liberar mi selección</button>
+            <span class="help">Marca las que vas a revisar tú y pulsa "Reservar" para que no las coja también otra persona.</span>
         </div>
 
         <div class="scroll-x" id="tablaPendientes">
@@ -898,6 +1107,7 @@ table.tabla-historial tr.fila-seleccionada td {
             Facturas con incidencia
             <span id="badgeIncidencias" class="badge vacio">0</span>
             <button class="btn-secondary" style="margin-left:auto" onclick="cargarIncidenciasCompleto()">Actualizar lista</button>
+            <button class="btn-secondary" onclick="exportarExcelTabla('tablaIncidencias', 'facturas_incidencias')">Exportar a Excel</button>
         </div>
         <p class="help">
             El comprador (Buyer) o el proveedor no se han podido resolver contra la base de datos de empresas/proveedores
@@ -918,7 +1128,59 @@ table.tabla-historial tr.fila-seleccionada td {
             <span class="help">Haz clic en el nombre del archivo para abrir el PDF.</span>
         </div>
 
+        <div class="barra-reservas">
+            <label><input type="checkbox" onchange="alternarSeleccionTodo('tablaIncidencias', this.checked)"> Seleccionar todas</label>
+            <button class="btn-secondary" onclick="reservarSeleccion('tablaIncidencias', 'incidencia')">🔒 Reservar seleccionadas</button>
+            <button class="btn-secondary" onclick="liberarMiSeleccion('tablaIncidencias', 'incidencia')">Liberar mi selección</button>
+            <span class="help">Marca las que vas a revisar tú y pulsa "Reservar" para que no las coja también otra persona.</span>
+        </div>
+
         <div class="scroll-x" id="tablaIncidencias">
+            <span class="help">Cargando...</span>
+        </div>
+    </div>
+
+</div>
+
+<!-- ========================================================= -->
+<!-- PESTAÑA: ESPERANDO ALTA (proveedor/empresa aún sin dar de alta) -->
+<!-- ========================================================= -->
+<div class="tab-panel" id="tab-esperando_alta" style="display:none">
+
+    <div class="card">
+        <div class="section-title">
+            Facturas esperando alta en la base de datos
+            <span id="badgeEsperandoAlta" class="badge vacio">0</span>
+            <button class="btn-secondary" style="margin-left:auto" onclick="cargarEsperandoAltaCompleto()">Actualizar lista</button>
+            <button class="btn-secondary" onclick="exportarExcelTabla('tablaEsperandoAlta', 'facturas_esperando_alta')">Exportar a Excel</button>
+        </div>
+        <p class="help">
+            Facturas apartadas a mano (desde Corregir manualmente, Incidencias o Revisar facturas) porque el comprador o
+            el proveedor todavía no están dados de alta en la base de datos. Se quedan aquí sin tocarse; en cuanto se dé
+            de alta el CIF que falta, usa "Reprocesar" para que la factura siga su curso normal.
+        </p>
+
+        <div class="filtro-fecha">
+            <label>Desde <input type="date" id="eaFechaDesde" onchange="filtrarEsperandoAlta()"></label>
+            <label>Hasta <input type="date" id="eaFechaHasta" onchange="filtrarEsperandoAlta()"></label>
+            <label>Buyer <input type="text" id="eaFiltroBuyer" oninput="filtrarEsperandoAlta()" placeholder="CIF/NIF comprador"></label>
+            <label>Empresa <input type="text" id="eaFiltroEmpresa" oninput="filtrarEsperandoAlta()" placeholder="Empresa"></label>
+            <label>Nombre proveedor <input type="text" id="eaFiltroNombreProveedor" oninput="filtrarEsperandoAlta()" placeholder="Nombre proveedor"></label>
+            <label>Nº factura <input type="text" id="eaFiltroNumeroFactura" oninput="filtrarEsperandoAlta()" placeholder="Nº factura"></label>
+            <label>Pedido cliente <input type="text" id="eaFiltroPedidoCliente" oninput="filtrarEsperandoAlta()" placeholder="Pedido cliente"></label>
+            <label>Proveedor <input type="text" id="eaFiltroProveedor" oninput="filtrarEsperandoAlta()" placeholder="CIF/NIF proveedor"></label>
+            <button class="btn-secondary" onclick="limpiarFiltroEsperandoAlta()">Limpiar filtro</button>
+            <span class="help">Haz clic en el nombre del archivo para abrir el PDF.</span>
+        </div>
+
+        <div class="barra-reservas">
+            <label><input type="checkbox" onchange="alternarSeleccionTodo('tablaEsperandoAlta', this.checked)"> Seleccionar todas</label>
+            <button class="btn-secondary" onclick="reservarSeleccion('tablaEsperandoAlta', 'esperando_alta')">🔒 Reservar seleccionadas</button>
+            <button class="btn-secondary" onclick="liberarMiSeleccion('tablaEsperandoAlta', 'esperando_alta')">Liberar mi selección</button>
+            <span class="help">Marca las que vas a revisar tú y pulsa "Reservar" para que no las coja también otra persona.</span>
+        </div>
+
+        <div class="scroll-x" id="tablaEsperandoAlta">
             <span class="help">Cargando...</span>
         </div>
     </div>
@@ -935,6 +1197,8 @@ table.tabla-historial tr.fila-seleccionada td {
             Facturas con error de procesamiento
             <span id="badgeErrores" class="badge vacio">0</span>
             <button class="btn-secondary" style="margin-left:auto" onclick="cargarErroresCompleto()">Actualizar lista</button>
+            <button class="btn-secondary" id="btnReprocesarTodosErrores" onclick="reprocesarTodosLosErrores()">Reprocesar todos</button>
+            <button class="btn-secondary" onclick="exportarExcelTabla('tablaErrores', 'facturas_error')">Exportar a Excel</button>
         </div>
         <p class="help">
             La extracción automática ha fallado en estas facturas (fallo puntual de la API, PDF ilegible...) y no
@@ -971,6 +1235,7 @@ table.tabla-historial tr.fila-seleccionada td {
             </label>
             <button class="btn-secondary" onclick="cargarFacturasCompletadas()">Actualizar lista</button>
             <button class="btn-secondary" onclick="descargarFacturasDefinitivas()">Descargar Excel definitivo</button>
+            <button class="btn-secondary" onclick="exportarExcelTabla('tablaCompletadas', 'facturas_completadas')">Exportar a Excel</button>
         </div>
         <p class="help">
             Revisión final de las facturas ya completadas (extraídas automáticamente sin problemas o corregidas a mano).
@@ -987,8 +1252,16 @@ table.tabla-historial tr.fila-seleccionada td {
             <label>Nº factura <input type="text" id="revFiltroNumeroFactura" oninput="filtrarCompletadas()" placeholder="Nº factura"></label>
             <label>Pedido cliente <input type="text" id="revFiltroPedidoCliente" oninput="filtrarCompletadas()" placeholder="Pedido cliente"></label>
             <label>Proveedor <input type="text" id="revFiltroProveedor" oninput="filtrarCompletadas()" placeholder="CIF/NIF proveedor"></label>
+            <label>Email proveedor <input type="text" id="revFiltroEmail" oninput="filtrarCompletadas()" placeholder="Email proveedor"></label>
             <button class="btn-secondary" onclick="limpiarFiltroCompletadas()">Limpiar filtro</button>
             <span class="help">Haz clic en el nombre del archivo para abrir el PDF.</span>
+        </div>
+
+        <div class="barra-reservas">
+            <label><input type="checkbox" onchange="alternarSeleccionTodo('tablaCompletadas', this.checked)"> Seleccionar todas</label>
+            <button class="btn-secondary" onclick="reservarSeleccion('tablaCompletadas', 'completada')">🔒 Reservar seleccionadas</button>
+            <button class="btn-secondary" onclick="liberarMiSeleccion('tablaCompletadas', 'completada')">Liberar mi selección</button>
+            <span class="help">Marca las que vas a revisar tú y pulsa "Reservar" para que no las coja también otra persona.</span>
         </div>
 
         <div class="scroll-x" id="tablaCompletadas">
@@ -999,24 +1272,121 @@ table.tabla-historial tr.fila-seleccionada td {
 </div>
 
 <!-- ========================================================= -->
-<!-- PESTAÑA 4: SUBIR FACTURAS                                  -->
+<!-- PESTAÑA: DUPLICADOS (misma factura recibida más de una vez) -->
 <!-- ========================================================= -->
-<div class="tab-panel" id="tab-subir" style="display:none">
+<div class="tab-panel" id="tab-duplicados" style="display:none">
 
     <div class="card">
-        <div class="section-title">Subir factura</div>
+        <div class="section-title">
+            Facturas duplicadas
+            <span id="badgeDuplicados" class="badge vacio">0</span>
+            <button class="btn-secondary" style="margin-left:auto" onclick="cargarDuplicadosCompleto()">Actualizar lista</button>
+            <button class="btn-secondary" onclick="exportarExcelTabla('tablaDuplicados', 'facturas_duplicadas')">Exportar a Excel</button>
+        </div>
+        <p class="help">
+            Estas facturas comparten Nº factura, proveedor y cliente con otra ya guardada: es la misma factura
+            recibida más de una vez. Pulsa "Resolver duplicado" para comparar las copias y elegir cuál mantener;
+            las demás se moverán a "No es factura".
+        </p>
 
-        <div class="barra-subida">
-            <input type="file" id="inputFactura" accept="application/pdf">
-            <label class="chk-urgente">
-                <input type="checkbox" id="chkUrgente">
-                🔴 Factura urgente (prioridad)
-            </label>
-            <button class="btn-primary" id="btnSubir" onclick="subirFactura()">Subir factura</button>
-            <span class="estado-msg" id="estadoSubida"></span>
+        <div class="filtro-fecha">
+            <label>Desde <input type="date" id="dupFechaDesde" onchange="filtrarDuplicados()"></label>
+            <label>Hasta <input type="date" id="dupFechaHasta" onchange="filtrarDuplicados()"></label>
+            <label>Buyer <input type="text" id="dupFiltroBuyer" oninput="filtrarDuplicados()" placeholder="CIF/NIF comprador"></label>
+            <label>Empresa <input type="text" id="dupFiltroEmpresa" oninput="filtrarDuplicados()" placeholder="Empresa"></label>
+            <label>Nombre proveedor <input type="text" id="dupFiltroNombreProveedor" oninput="filtrarDuplicados()" placeholder="Nombre proveedor"></label>
+            <label>Nº factura <input type="text" id="dupFiltroNumeroFactura" oninput="filtrarDuplicados()" placeholder="Nº factura"></label>
+            <label>Pedido cliente <input type="text" id="dupFiltroPedidoCliente" oninput="filtrarDuplicados()" placeholder="Pedido cliente"></label>
+            <label>Proveedor <input type="text" id="dupFiltroProveedor" oninput="filtrarDuplicados()" placeholder="CIF/NIF proveedor"></label>
+            <button class="btn-secondary" onclick="limpiarFiltroDuplicados()">Limpiar filtro</button>
+            <span class="help">Haz clic en el nombre del archivo para abrir el PDF.</span>
         </div>
 
-        <p class="help">La factura se añade a la cola de "Corregir manualmente" (marcada como urgente si se indica).</p>
+        <div class="scroll-x" id="tablaDuplicados">
+            <span class="help">Cargando...</span>
+        </div>
+    </div>
+
+</div>
+
+<!-- ========================================================= -->
+<!-- PESTAÑA: NO ES FACTURA (documentos descartados, solo lectura) -->
+<!-- ========================================================= -->
+<div class="tab-panel" id="tab-no_factura" style="display:none">
+
+    <div class="card">
+        <div class="section-title">
+            Documentos que no son factura
+            <span id="badgeNoFactura" class="badge vacio">0</span>
+            <button class="btn-secondary" style="margin-left:auto" onclick="cargarNoFacturaCompleto()">Actualizar lista</button>
+            <button class="btn-secondary" onclick="abrirCarpetaNoFactura()">Abrir carpeta</button>
+            <button class="btn-secondary" onclick="exportarExcelTabla('tablaNoFactura', 'documentos_no_factura')">Exportar a Excel</button>
+        </div>
+        <p class="help">
+            Documentos descartados por no ser una factura (proveedores no dados de alta, duplicados resueltos,
+            adjuntos que no son facturas...). Es un listado de solo lectura, para trazabilidad y localización.
+        </p>
+
+        <div class="filtro-fecha">
+            <label>Desde <input type="date" id="noFacturaFechaDesde" onchange="filtrarNoFactura()"></label>
+            <label>Hasta <input type="date" id="noFacturaFechaHasta" onchange="filtrarNoFactura()"></label>
+            <label>Email proveedor <input type="text" id="noFacturaFiltroEmail" oninput="filtrarNoFactura()" placeholder="Email proveedor"></label>
+            <button class="btn-secondary" onclick="limpiarFiltroNoFactura()">Limpiar filtro</button>
+            <span class="help">Haz clic en la fila para abrir el PDF. El filtro de fechas busca por la fecha de entrada (cuando llegó el PDF originalmente).</span>
+        </div>
+
+        <div class="scroll-x" id="tablaNoFactura">
+            <span class="help">Cargando...</span>
+        </div>
+    </div>
+
+</div>
+
+<!-- ========================================================= -->
+<!-- PESTAÑA: VISTA GLOBAL (todas las colas juntas)             -->
+<!-- ========================================================= -->
+<div class="tab-panel" id="tab-vista_global" style="display:none">
+
+    <div class="card">
+        <div class="section-title">
+            Vista global de facturas
+            <span id="badgeVistaGlobal" class="badge vacio">0</span>
+            <button class="btn-secondary" style="margin-left:auto" onclick="cargarVistaGlobal()">Actualizar lista</button>
+            <button class="btn-secondary" onclick="exportarExcelTabla('tablaVistaGlobal', 'vista_global_facturas')">Exportar a Excel</button>
+        </div>
+        <p class="help">
+            Junta en una sola tabla, de solo lectura, las facturas de Corregir manualmente, Incidencias, Pendientes de
+            verificación, Revisadas, Esperando alta proveedor y Reenviadas. La columna "Procedencia" indica de cuál de
+            esas colas viene cada factura. Para actuar sobre una factura concreta, hazlo desde su pestaña propia.
+        </p>
+
+        <div class="filtro-fecha">
+            <label>Desde <input type="date" id="vgFechaDesde" onchange="filtrarVistaGlobal()"></label>
+            <label>Hasta <input type="date" id="vgFechaHasta" onchange="filtrarVistaGlobal()"></label>
+            <label>Procedencia
+                <select id="vgFiltroProcedencia" onchange="filtrarVistaGlobal()">
+                    <option value="">Todas</option>
+                    <option value="Corregir manualmente">Corregir manualmente</option>
+                    <option value="Incidencia">Incidencia</option>
+                    <option value="Pendiente de verificación">Pendiente de verificación</option>
+                    <option value="Revisada">Revisada</option>
+                    <option value="Esperando alta proveedor">Esperando alta proveedor</option>
+                    <option value="Reenviada">Reenviada</option>
+                </select>
+            </label>
+            <label>Buyer <input type="text" id="vgFiltroBuyer" oninput="filtrarVistaGlobal()" placeholder="CIF/NIF comprador"></label>
+            <label>Empresa <input type="text" id="vgFiltroEmpresa" oninput="filtrarVistaGlobal()" placeholder="Empresa"></label>
+            <label>Nombre proveedor <input type="text" id="vgFiltroNombreProveedor" oninput="filtrarVistaGlobal()" placeholder="Nombre proveedor"></label>
+            <label>Nº factura <input type="text" id="vgFiltroNumeroFactura" oninput="filtrarVistaGlobal()" placeholder="Nº factura"></label>
+            <label>Pedido cliente <input type="text" id="vgFiltroPedidoCliente" oninput="filtrarVistaGlobal()" placeholder="Pedido cliente"></label>
+            <label>Proveedor <input type="text" id="vgFiltroProveedor" oninput="filtrarVistaGlobal()" placeholder="CIF/NIF proveedor"></label>
+            <button class="btn-secondary" onclick="limpiarFiltroVistaGlobal()">Limpiar filtro</button>
+            <span class="help">Haz clic en el nombre del archivo para abrir el PDF.</span>
+        </div>
+
+        <div class="scroll-x" id="tablaVistaGlobal">
+            <span class="help">Cargando...</span>
+        </div>
     </div>
 
 </div>
@@ -1056,7 +1426,7 @@ table.tabla-historial tr.fila-seleccionada td {
         <textarea id="modalCorreoTextoLibre" style="display:none" placeholder="Redacta el motivo del correo..."></textarea>
 
         <p class="help" id="modalCorreoAvisoOtro" style="display:none">
-            Al confirmar se abrirá tu cliente de correo para redactarlo a mano y se abrirá el PDF para que lo adjuntes.
+            Al confirmar se creará un borrador en Outlook (buzón escanerIA@migasa.com) con el destinatario y el PDF ya adjuntos, listo para revisar y enviar.
         </p>
 
         <div class="modal-acciones">
@@ -1072,13 +1442,38 @@ table.tabla-historial tr.fila-seleccionada td {
 <div id="overlayEditarFactura" class="modal-overlay" style="display:none">
     <div class="modal-box modal-box-ancho">
         <div class="modal-titulo" id="editarFacturaTitulo">Editar factura</div>
-        <p class="help">Archivo: <strong id="editarFacturaArchivoNombre"></strong></p>
+        <p class="help">
+            Archivo: <strong id="editarFacturaArchivoNombre"></strong>
+            &nbsp;·&nbsp; ↓ / Enter: siguiente campo &nbsp;·&nbsp; ↑: campo anterior
+        </p>
 
-        <div id="editarFacturaCampos"></div>
+        <div id="editarFacturaAccionesExtra" class="acciones-extra-edicion"></div>
+
+        <div id="editarFacturaSplit">
+            <div id="editarFacturaPdfPanel">
+                <div class="panel-pdf-header">
+                    <span>Documento</span>
+                    <div class="panel-pdf-acciones">
+                        <button class="btn-secondary" id="btnSeleccionarEnPdf" style="padding:4px 10px;font-size:12px" onclick="alternarSeleccionManual()" title="Arrastra sobre el PDF para rellenar el campo activo con lo que haya ahí">🖉 Seleccionar en el PDF</button>
+                    </div>
+                </div>
+                <div id="editarFacturaPdfScroll">
+                    <div id="editarFacturaPdfPaginas"><span class="help">Cargando PDF...</span></div>
+                    <div id="editarFacturaCaja" class="caja-resaltado" style="display:none"></div>
+                    <div id="editarFacturaCajaManual" class="caja-manual" style="display:none"></div>
+                </div>
+            </div>
+
+            <div id="editarFacturaContenido">
+                <div id="editarFacturaCampos"></div>
+            </div>
+        </div>
 
         <div class="modal-acciones">
             <span class="estado-msg" id="estadoEdicionFactura" style="margin-right:auto"></span>
             <button class="btn-secondary" onclick="cerrarModalEditarFactura()">Cancelar</button>
+            <button class="btn-secondary" id="btnPasarSiguienteFactura" onclick="pasarALaSiguienteFactura()" title="Deja esta factura sin tocar (sigue reservada) y pasa a la siguiente de tu selección">Pasar a la siguiente</button>
+            <button class="btn-secondary" id="btnGuardarBorradorFactura" style="display:none" onclick="guardarBorradorFactura()">Guardar sin completar</button>
             <button class="btn-confirmar" id="btnGuardarEdicionFactura" onclick="guardarEdicionFactura()">Guardar</button>
         </div>
     </div>
@@ -1109,11 +1504,30 @@ table.tabla-historial tr.fila-seleccionada td {
     </div>
 </div>
 
+<!-- ========================================================= -->
+<!-- MODAL: RESOLVER FACTURA DUPLICADA                          -->
+<!-- ========================================================= -->
+<div id="overlayResolverDuplicado" class="modal-overlay" style="display:none">
+    <div class="modal-box modal-box-ancho">
+        <div class="modal-titulo">Resolver factura duplicada</div>
+        <p class="help">
+            Estas facturas comparten Nº factura, proveedor y cliente: elige cuál mantener. Las demás se moverán a
+            "No es factura" (y se quitarán del Excel definitivo, si alguna estaba marcada).
+        </p>
+        <div id="resolverDuplicadoContenido"></div>
+        <div class="modal-acciones">
+            <button class="btn-secondary" onclick="cerrarModalResolverDuplicado()">Cerrar</button>
+        </div>
+    </div>
+</div>
+
 <script>
 
 // =========================================================
 // NAVEGACIÓN ENTRE PESTAÑAS
 // =========================================================
+
+let pestanaActiva = "auto";
 
 function cambiarTab(nombre) {
     document.querySelectorAll(".tab-panel").forEach(el => el.style.display = "none");
@@ -1121,6 +1535,44 @@ function cambiarTab(nombre) {
     document.querySelectorAll(".tab-btn").forEach(el =>
         el.classList.toggle("active", el.dataset.tab === nombre)
     );
+    pestanaActiva = nombre;
+}
+
+// =========================================================
+// IDENTIDAD DE USUARIO (sin login real: cada persona escribe su usuario de
+// dominio una vez y el navegador lo recuerda; sirve para saber quién ha
+// reservado qué facturas y para que quede constancia de quién hizo cada
+// acción, en vez del valor fijo "escanerIA" de antes).
+// =========================================================
+
+function obtenerUsuarioActual() {
+    const guardado = localStorage.getItem("usuarioActual");
+    return guardado || pedirUsuarioActual();
+}
+
+function pedirUsuarioActual() {
+    let usuario = "";
+    while (!usuario) {
+        usuario = (window.prompt("¿Cuál es tu usuario de dominio?") || "").trim().toLowerCase();
+    }
+    localStorage.setItem("usuarioActual", usuario);
+    actualizarWidgetUsuario();
+    return usuario;
+}
+
+function cambiarUsuarioActual() {
+    const actual = localStorage.getItem("usuarioActual") || "";
+    const nuevo = (window.prompt("¿Cuál es tu usuario de dominio?", actual) || "").trim().toLowerCase();
+    if (nuevo && nuevo !== actual) {
+        localStorage.setItem("usuarioActual", nuevo);
+        actualizarWidgetUsuario();
+        mostrarToast(`Ahora eres "${nuevo}".`, "ok");
+    }
+}
+
+function actualizarWidgetUsuario() {
+    const el = document.getElementById("usuarioActualWidget");
+    if (el) el.textContent = "👤 " + (localStorage.getItem("usuarioActual") || "¿quién eres?");
 }
 
 // =========================================================
@@ -1147,10 +1599,9 @@ async function cargarEstadisticas(){
 
     document.getElementById("error").innerText = data.error || 0;
     document.getElementById("entrada").innerText = data.entrada || 0;
-    document.getElementById("procesadas").innerText = data.procesadas || 0;
-    document.getElementById("imagenes").innerText = data.imagenes || 0;
     document.getElementById("manual").innerText = data.manual || 0;
     document.getElementById("incidencias").innerText = data.incidencias || 0;
+    document.getElementById("esperando_alta").innerText = data.esperando_alta || 0;
     document.getElementById("completadas").innerText = data.completadas || 0;
     document.getElementById("revisadas").innerText = data.revisadas || 0;
     document.getElementById("no_es_factura").innerText = data.no_es_factura || 0;
@@ -1166,6 +1617,7 @@ function actualizarAlertas(data) {
     const manual = data.manual || 0;
     const reenviar = data.reenviar_pedido || 0;
     const error = data.error || 0;
+    const duplicados = data.duplicados || 0;
 
     if (manual > 0) {
         alertas.push(`
@@ -1190,6 +1642,15 @@ function actualizarAlertas(data) {
             <div class="alerta error" onclick="cambiarTab('errores')" title="Ir a Errores">
                 <span class="alerta-icono">❌</span>
                 <span>Hay ${error} factura${error === 1 ? "" : "s"} con error de procesamiento</span>
+            </div>
+        `);
+    }
+
+    if (duplicados > 0) {
+        alertas.push(`
+            <div class="alerta error" onclick="cambiarTab('duplicados')" title="Ir a Duplicados">
+                <span class="alerta-icono">⚠️</span>
+                <span>Hay ${duplicados} factura${duplicados === 1 ? "" : "s"} duplicada${duplicados === 1 ? "" : "s"} (mismo Nº factura, proveedor y cliente que otra)</span>
             </div>
         `);
     }
@@ -1299,7 +1760,7 @@ function formatearNombreArchivo(archivo) {
         urgente = true;
         nombre = nombre.slice("URGENTE__".length);
     }
-    nombre = nombre.replace(/__EMAIL__.*?__ENDMAIL__/, "");
+    nombre = nombre.replace(/__EMAIL__.*?__ENDMAIL__/, "").replace(/__MOTIVOENVIO__.*?__ENDMOTIVOENVIO__/, "");
     return (urgente ? "<span class='badge-urgente'>URGENTE</span>" : "") + nombre;
 }
 
@@ -1384,13 +1845,467 @@ function filtrosTextoConPrefijo(prefijo) {
 }
 
 // Renderizador genérico de tabla con columna de acciones opcional.
-// Debe coincidir exactamente con MENSAJE_CIF_NO_ENCONTRADO en logic.py
+// Deben coincidir exactamente con sus homónimos MENSAJE_CIF_* en logic.py
 const MENSAJE_CIF_NO_ENCONTRADO = "El CIF no se encuentra en la base de datos";
+const MENSAJE_CIF_CHECKSUM_INVALIDO = "CIF con dígito de control inválido (posible error de lectura)";
+const MENSAJE_CIF_EMPRESA_INACTIVA = "El CIF existe pero la empresa está inactiva";
+const MENSAJE_CIF_PROVEEDOR_BLOQUEADO = "El CIF existe pero el proveedor está bloqueado";
+const MENSAJES_CIF_ALERTA = new Set([
+    MENSAJE_CIF_NO_ENCONTRADO,
+    MENSAJE_CIF_CHECKSUM_INVALIDO,
+    MENSAJE_CIF_EMPRESA_INACTIVA,
+    MENSAJE_CIF_PROVEEDOR_BLOQUEADO,
+]);
+
+// =========================================================
+// RESERVAS (varias personas revisando a la vez, sin pisarse)
+// =========================================================
+//
+// misReservas: archivos que YO tengo reservados ahora mismo (todas las
+// pestañas juntas). reservasAjenas: archivo -> usuario, de reservas de
+// otras personas que se han visto en el último polling (ver
+// actualizarReservasVisibles). Ninguno de los dos se recalcula solo: hay
+// que volver a pintar la pestaña (volverAPintarTab) para que el cambio se
+// refleje en la tabla.
+let misReservas = new Set();
+let reservasAjenas = {};
+
+// misReservas solo vive en memoria del navegador: si se recarga la página
+// (F5, cerrar y volver a abrir la pestaña...) se perdía sin más, aunque el
+// servidor siguiera recordando esas reservas a tu nombre durante un rato
+// (laten hasta 3 minutos sin latido). El efecto era desconcertante: la
+// propia persona veía sus facturas recién reservadas como "las tiene
+// fulanito" -siendo fulanito ella misma-, porque el navegador ya no sabía
+// que eran suyas. Por eso al arrancar se recupera de
+// /reservas-mias lo que el servidor todavía recuerda a tu nombre, antes de
+// pintar ninguna tabla.
+async function cargarMisReservas() {
+    const usuario = obtenerUsuarioActual();
+    try {
+        const res = await fetch("/reservas-mias?usuario=" + encodeURIComponent(usuario));
+        const data = await res.json();
+        (data.archivos || []).forEach(a => misReservas.add(a));
+    } catch (e) {
+        // Si falla, no es grave: en cuanto se vuelva a marcar esa factura se
+        // recupera como propia igualmente.
+    }
+}
+
+// Vía de escape si alguna factura se queda marcada como "la tiene otra
+// persona" por error (p.ej. una reserva colgada de una sesión anterior):
+// vacía TODAS las reservas de golpe, sin esperar a que caduquen solas.
+async function liberarTodasLasReservas() {
+    const confirmado = confirm(
+        "¿Liberar TODAS las reservas (de cualquier persona)?\n\nÚsalo solo si alguna factura aparece bloqueada por error."
+    );
+    if (!confirmado) return;
+
+    try {
+        const res = await fetch("/reservas-liberar-todas", { method: "POST" });
+        if (!res.ok) {
+            mostrarToast("Error al liberar las reservas.", "error");
+            return;
+        }
+
+        misReservas.clear();
+        reservasAjenas = {};
+        mostrarToast("✓ Reservas liberadas.", "ok");
+
+        ["pendiente", "incidencia", "esperando_alta", "completada"].forEach(volverAPintarTab);
+    } catch (e) {
+        mostrarToast("Error de conexión al liberar las reservas.", "error");
+    }
+}
+
+function volverAPintarTab(tipo) {
+    if (tipo === "pendiente") filtrarPendientes();
+    else if (tipo === "incidencia") filtrarIncidencias();
+    else if (tipo === "esperando_alta") filtrarEsperandoAlta();
+    else if (tipo === "completada") filtrarCompletadas();
+}
+
+function alternarSeleccionTodo(containerId, marcar) {
+    const casillas = [...document.querySelectorAll(`#${containerId} .chk-seleccion-fila`)];
+    casillas.forEach(chk => { chk.checked = marcar; });
+    if (marcar && casillas.length > 0) programarAutoReservar(casillas[0]);
+}
+
+function archivosSeleccionados(containerId) {
+    return [...document.querySelectorAll(`#${containerId} .chk-seleccion-fila:checked`)]
+        .map(chk => chk.dataset.archivo)
+        .filter(Boolean);
+}
+
+// Selección rápida: arrastrar el ratón sobre varias casillas seguidas las
+// marca todas de una vez (como al arrastrar para seleccionar texto/celdas),
+// y Mayús+clic marca todo el rango entre la última casilla pinchada y la
+// actual (como en un explorador de archivos). Delegado en document porque
+// las casillas se regeneran en cada repintado de la tabla.
+//
+// El estado se decide y se aplica a mano en "mousedown" (no esperando al
+// "change" nativo): si el arrastre empieza en una casilla y termina en
+// otra, el navegador nunca dispara click en la de origen (un clic nativo
+// solo cuenta si mousedown y mouseup caen en el mismo elemento), así que
+// dejarlo por su cuenta significaría que la primera casilla del arrastre no
+// cambiara. Por eso se marca ella misma al vuelo en mousedown.
+//
+// Para un clic SIMPLE (sin arrastre) el navegador sigue disparando su
+// propio "click" justo después, con su propio volcado del valor -que puede
+// no coincidir con el que ya hemos puesto a mano-, así que en el propio
+// "click" se reafirma el valor decidido en mousedown para esa misma
+// casilla. Ese reafirmado se guarda en `ultimoMousedownCasilla`, NO en
+// `arrastreSeleccionActivo`: ese último se borra ya en "mouseup" (para que
+// el arrastre deje de propagarse en cuanto se suelta el botón), y
+// "mouseup" siempre se dispara ANTES que "click" para el mismo gesto -si
+// reafirmáramos leyendo `arrastreSeleccionActivo` en el "click" ya lo
+// encontraríamos vacío-.
+let arrastreSeleccionActivo = null;  // { estadoDestino: bool, tabla: <table> } — solo mientras el botón sigue pulsado
+let ultimoMousedownCasilla = null;   // { chk, estadoDestino } — el mousedown más reciente, para el "click" que le siga
+let ultimaCasillaClicada = null;
+
+function casillasDeLaMismaTabla(chk) {
+    const tabla = chk.closest("table");
+    return tabla ? [...tabla.querySelectorAll(".chk-seleccion-fila")] : [];
+}
+
+function marcarRangoCasillas(desde, hasta, estado) {
+    const casillas = casillasDeLaMismaTabla(desde);
+    const i1 = casillas.indexOf(desde);
+    const i2 = casillas.indexOf(hasta);
+    if (i1 === -1 || i2 === -1) return;
+    const [ini, fin] = i1 < i2 ? [i1, i2] : [i2, i1];
+    for (let i = ini; i <= fin; i++) casillas[i].checked = estado;
+}
+
+function tipoDeContainerId(containerId) {
+    if (containerId === "tablaPendientes") return "pendiente";
+    if (containerId === "tablaIncidencias") return "incidencia";
+    if (containerId === "tablaEsperandoAlta") return "esperando_alta";
+    return "completada";
+}
+
+// Al marcar/desmarcar casillas (clic suelto, arrastre o "seleccionar
+// todas") se reserva sola la selección un instante después, sin necesidad
+// de pulsar "Reservar seleccionadas" a mano (ese botón se deja como
+// alternativa explícita, por si se quiere forzar ya mismo). Es un debounce:
+// si se sigue marcando más mientras tanto, la espera se reinicia, para
+// reservar el lote completo de una vez en vez de ir abriendo facturas a
+// medio seleccionar.
+const temporizadoresAutoReservar = {};
+
+function programarAutoReservar(chk) {
+    const contenedor = chk.closest(".scroll-x");
+    if (!contenedor) return;
+    const containerId = contenedor.id;
+
+    clearTimeout(temporizadoresAutoReservar[containerId]);
+    temporizadoresAutoReservar[containerId] = setTimeout(() => {
+        if (archivosSeleccionados(containerId).length > 0) {
+            reservarSeleccion(containerId, tipoDeContainerId(containerId));
+        }
+    }, 400);
+}
+
+document.addEventListener("mousedown", (ev) => {
+    const chk = ev.target.closest(".chk-seleccion-fila");
+    if (!chk) return;
+
+    const estadoDestino = !chk.checked;
+
+    if (ev.shiftKey && ultimaCasillaClicada && ultimaCasillaClicada !== chk) {
+        marcarRangoCasillas(ultimaCasillaClicada, chk, estadoDestino);
+    } else {
+        chk.checked = estadoDestino;
+    }
+
+    arrastreSeleccionActivo = { estadoDestino, tabla: chk.closest("table") };
+    ultimoMousedownCasilla = { chk, estadoDestino };
+    ultimaCasillaClicada = chk;
+    programarAutoReservar(chk);
+});
+
+document.addEventListener("click", (ev) => {
+    const chk = ev.target.closest(".chk-seleccion-fila");
+    if (!chk) return;
+    if (ultimoMousedownCasilla && ultimoMousedownCasilla.chk === chk) {
+        chk.checked = ultimoMousedownCasilla.estadoDestino;
+    }
+});
+
+document.addEventListener("mouseover", (ev) => {
+    if (!arrastreSeleccionActivo) return;
+    const chk = ev.target.closest(".chk-seleccion-fila");
+    if (!chk || chk.closest("table") !== arrastreSeleccionActivo.tabla) return;
+    chk.checked = arrastreSeleccionActivo.estadoDestino;
+    programarAutoReservar(chk);
+});
+
+document.addEventListener("mouseup", () => { arrastreSeleccionActivo = null; });
+
+// Llamada de bajo nivel compartida: libera SOLO tus propias reservas (el
+// backend ya ignora archivos que no sean tuyos, pero además comprobamos
+// aquí para no vaciar misReservas de algo que no fuera nuestro).
+async function liberarReservas(archivos) {
+    archivos = (archivos || []).filter(a => misReservas.has(a));
+    if (archivos.length === 0) return;
+
+    archivos.forEach(a => misReservas.delete(a));
+    try {
+        await fetch("/reservas-liberar", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ archivos, usuario: obtenerUsuarioActual() }),
+        });
+    } catch (e) {
+        // Si falla, no bloqueamos nada: en el peor caso caduca sola a los
+        // pocos minutos sin latido.
+    }
+}
+
+async function reservarSeleccion(containerId, tipo) {
+    const archivos = archivosSeleccionados(containerId);
+    if (archivos.length === 0) {
+        mostrarToast("Selecciona al menos una factura.", "error");
+        return;
+    }
+
+    const usuario = obtenerUsuarioActual();
+
+    try {
+        const res = await fetch("/reservas", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ archivos, usuario }),
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+            // Un fallo real de conexión/base de datos NO es lo mismo que
+            // "ya las tiene otra persona": si se confunden, un problema de
+            // servidor se ve en pantalla como un conflicto con un
+            // compañero que no existe.
+            mostrarToast(data.detail || "No se pudo conectar con la base de datos para reservar.", "error");
+            return;
+        }
+
+        const reservas = data.reservas || {};
+
+        const conseguidas = archivos.filter(a => reservas[a] === usuario);
+        const ajenas = archivos.filter(a => reservas[a] && reservas[a] !== usuario);
+
+        conseguidas.forEach(a => misReservas.add(a));
+        ajenas.forEach(a => { reservasAjenas[a] = reservas[a]; });
+
+        if (conseguidas.length === 0) {
+            const otros = [...new Set(ajenas.map(a => reservas[a]))];
+            mostrarToast(
+                otros.length === 1
+                    ? `Todas esas facturas ya las está revisando ${otros[0]}.`
+                    : "Todas esas facturas ya las está revisando otra persona.",
+                "error"
+            );
+        } else if (ajenas.length > 0) {
+            mostrarToast(`✓ Reservadas ${conseguidas.length} de ${archivos.length}; las demás ya las tiene otra persona.`, "ok");
+        } else {
+            mostrarToast(`✓ Reservadas ${conseguidas.length} factura${conseguidas.length === 1 ? "" : "s"} para ti.`, "ok");
+        }
+
+        volverAPintarTab(tipo);
+        if (conseguidas.length > 0) abrirPrimeraReservada(containerId, tipo);
+    } catch (e) {
+        mostrarToast("Error de conexión al reservar.", "error");
+    }
+}
+
+// Al reservar un lote, abre directamente la primera factura reservada (en
+// vez de obligar a ir a buscarla y pincharla): así el flujo es reservar →
+// revisar la que se abre sola → guardar/lo que corresponda → salta sola a
+// la siguiente del lote (ver ejecutarYAvanzar), hasta acabar.
+function abrirPrimeraReservada(containerId, tipo) {
+    // Si ya hay una factura abierta en revisión (p.ej. se marcaron más
+    // casillas mientras se editaba la primera), no la interrumpe: esa
+    // siguiente ya le tocará sola vía ejecutarYAvanzar al terminar la actual.
+    if (edicionFactura) return;
+
+    const filas = [...document.querySelectorAll(`#${containerId} tr[data-archivo]`)];
+    const primeraFila = filas.find(tr => misReservas.has(tr.dataset.archivo));
+    if (!primeraFila) return;
+
+    const archivo = primeraFila.dataset.archivo;
+    const cache = cacheDeTipoReservable(tipo);
+    if (!cache) return;
+
+    const headers = cache[0];
+    const idxArchivo = headers.indexOf("Archivo");
+    const fila = cache.slice(1).find(r => r[idxArchivo] === archivo);
+    if (!fila) return;
+
+    if (tipo === "esperando_alta") {
+        abrirPanelPdf(archivo); // no tiene formulario de edición propio
+    } else {
+        abrirModalEditarFactura(fila, headers, tipo);
+    }
+}
+
+async function liberarMiSeleccion(containerId, tipo) {
+    const archivos = archivosSeleccionados(containerId).filter(a => misReservas.has(a));
+    if (archivos.length === 0) {
+        mostrarToast("No tienes ninguna de las seleccionadas reservada.", "error");
+        return;
+    }
+    await liberarReservas(archivos);
+    mostrarToast(`Liberadas ${archivos.length} factura${archivos.length === 1 ? "" : "s"}.`, "ok");
+    volverAPintarTab(tipo);
+}
+
+// Refresca los candados (🔒 usuario) de la tabla ya pintada en pantalla SIN
+// volver a renderizarla entera (perdería la selección de checkboxes que
+// alguien pueda tener a medias): solo actualiza la celda de reserva de cada
+// fila visible.
+async function actualizarReservasVisibles(containerId) {
+    const filas = [...document.querySelectorAll(`#${containerId} tr[data-archivo]`)];
+    if (filas.length === 0) return;
+
+    const archivos = filas.map(tr => tr.dataset.archivo);
+
+    try {
+        const res = await fetch("/reservas-estado?archivos=" + encodeURIComponent(archivos.join(",")));
+        const data = await res.json();
+        const reservas = data.reservas || {};
+
+        archivos.forEach(a => {
+            if (misReservas.has(a)) return; // la mía manda, no se pisa con lo que diga el polling
+            if (reservas[a]) reservasAjenas[a] = reservas[a];
+            else delete reservasAjenas[a];
+        });
+
+        filas.forEach(tr => {
+            const archivo = tr.dataset.archivo;
+            const celda = tr.querySelector(".celda-reserva");
+            if (!celda) return;
+
+            if (misReservas.has(archivo)) {
+                celda.innerHTML = "<span class='badge-reserva-mia'>Tú</span>";
+                tr.classList.add("fila-reservada-mia");
+            } else if (reservasAjenas[archivo]) {
+                celda.innerHTML = `<span class="badge-reserva-ajena" title="La está revisando ${escaparAttr(reservasAjenas[archivo])}">🔒 ${escaparAttr(reservasAjenas[archivo])}</span>`;
+                tr.classList.remove("fila-reservada-mia");
+            } else {
+                celda.innerHTML = "";
+                tr.classList.remove("fila-reservada-mia");
+            }
+        });
+    } catch (e) {
+        // Polling en segundo plano: si falla, simplemente se reintenta en
+        // la siguiente vuelta, sin molestar con un toast.
+    }
+}
+
+const CONTENEDOR_POR_PESTANA_RESERVABLE = {
+    manual: "tablaPendientes",
+    incidencias: "tablaIncidencias",
+    esperando_alta: "tablaEsperandoAlta",
+    revisar: "tablaCompletadas",
+};
+
+// Latido de actividad: mientras se siga interactuando con la página, refresca
+// la reserva cada minuto para que no caduque; a los 30 minutos sin tocar
+// nada (ver ultimaInteraccionUsuario) se libera sola, tal como se pidió.
+let ultimaInteraccionUsuario = Date.now();
+["mousemove", "keydown", "click", "scroll"].forEach(evento =>
+    document.addEventListener(evento, () => { ultimaInteraccionUsuario = Date.now(); }, { passive: true })
+);
+
+const MINUTOS_INACTIVIDAD_MAX_RESERVA = 30;
+
+async function latidoReservas() {
+    if (misReservas.size === 0) return;
+
+    const minutosInactivo = (Date.now() - ultimaInteraccionUsuario) / 60000;
+    if (minutosInactivo >= MINUTOS_INACTIVIDAD_MAX_RESERVA) {
+        const archivos = [...misReservas];
+        await liberarReservas(archivos);
+        Object.values(CONTENEDOR_POR_PESTANA_RESERVABLE).forEach(actualizarReservasVisibles);
+        return;
+    }
+
+    try {
+        await fetch("/reservas-latido", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ archivos: [...misReservas], usuario: obtenerUsuarioActual() }),
+        });
+    } catch (e) {
+        // silencioso: si la red falla unas cuantas veces seguidas, el
+        // servidor las dará por caducadas por su cuenta (red de seguridad)
+    }
+}
+
+setInterval(latidoReservas, 60000);
+
+setInterval(() => {
+    if (document.visibilityState !== "visible") return;
+    const containerId = CONTENEDOR_POR_PESTANA_RESERVABLE[pestanaActiva];
+    if (containerId) actualizarReservasVisibles(containerId);
+}, 25000);
+
+// Cerrar la pestaña/el navegador libera al momento (con sendBeacon, que
+// sigue funcionando durante el cierre a diferencia de un fetch normal que
+// se puede cancelar a medias) en vez de esperar a que caduque sola.
+function liberarTodoAlCerrar() {
+    if (misReservas.size === 0) return;
+    const payload = JSON.stringify({ archivos: [...misReservas], usuario: obtenerUsuarioActual() });
+    navigator.sendBeacon("/reservas-liberar", new Blob([payload], { type: "application/json" }));
+    misReservas.clear();
+}
+
+window.addEventListener("pagehide", liberarTodoAlCerrar);
+window.addEventListener("beforeunload", liberarTodoAlCerrar);
+
+// Reserva silenciosa al abrir UNA factura suelta (clic en el nombre o en
+// "Editar"), aunque no se haya pasado por la selección por lote: si ya la
+// tiene otra persona, se avisa con un toast pero se deja seguir viéndola
+// (aviso, no bloqueo duro — puede haber motivos legítimos para mirarla).
+async function intentarReservarUnaFactura(archivo) {
+    if (!archivo || misReservas.has(archivo)) return;
+
+    const usuario = obtenerUsuarioActual();
+    try {
+        const res = await fetch("/reservas", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ archivos: [archivo], usuario }),
+        });
+
+        if (!res.ok) {
+            mostrarToast("No se pudo conectar con la base de datos para reservar esta factura.", "error");
+            return;
+        }
+
+        const data = await res.json();
+        const dueno = (data.reservas || {})[archivo];
+
+        if (dueno === usuario) {
+            misReservas.add(archivo);
+        } else if (dueno) {
+            reservasAjenas[archivo] = dueno;
+            mostrarToast(`⚠️ Esta factura ya la está revisando ${dueno}.`, "error");
+        }
+    } catch (e) {
+        // silencioso: si falla, simplemente no se sabe si alguien más la tiene
+    }
+}
+
+// Última tabla (con filtros ya aplicados) pintada en cada contenedor, por
+// containerId. Alimenta el botón "Exportar a Excel" de cada pestaña sin que
+// cada una tenga que guardar su propia copia por separado.
+let ultimasTablasRenderizadas = {};
 
 // opciones: { archivoClickable: bool, acciones: [{ titulo, icono(row), onClick(row, headers) }] }
 function renderTablaGenerica(tabla, containerId, mensajeVacio, opciones) {
     opciones = opciones || {};
     const cont = document.getElementById(containerId);
+    ultimasTablasRenderizadas[containerId] = tabla;
 
     if (!tabla || tabla.length <= 1) {
         cont.innerHTML = `<span class="help">${mensajeVacio}</span>`;
@@ -1401,22 +2316,37 @@ function renderTablaGenerica(tabla, containerId, mensajeVacio, opciones) {
     const rows = tabla.slice(1);
     const idxArchivo = headers.indexOf("Archivo");
     const acciones = opciones.acciones || [];
+    const seleccionable = !!opciones.seleccionable && idxArchivo !== -1;
 
     let html = "<table class='tabla-historial'><tr>";
+    if (seleccionable) html += `<th style="width:22px"></th><th style="width:95px">Reserva</th>`;
     headers.forEach(h => { html += `<th>${h ?? ""}</th>`; });
     if (acciones.length > 0) html += "<th class='th-acciones'>Acciones</th>";
     html += "</tr>";
 
     rows.forEach((row, i) => {
+        const archivo = idxArchivo !== -1 ? row[idxArchivo] : null;
         const archivoFila = idxArchivo !== -1 ? escaparAttr(row[idxArchivo]) : "";
-        html += `<tr${archivoFila ? ` data-archivo="${archivoFila}"` : ""}>`;
+        const esMia = seleccionable && misReservas.has(archivo);
+        html += `<tr${archivoFila ? ` data-archivo="${archivoFila}" data-row-idx="${i}"` : ""}${esMia ? ` class="fila-reservada-mia"` : ""}>`;
+
+        if (seleccionable) {
+            const otroUsuario = reservasAjenas[archivo];
+            html += `<td><input type="checkbox" class="chk-seleccion-fila" data-archivo="${archivoFila}"></td>`;
+            html += `<td class="celda-reserva">${
+                esMia ? "<span class='badge-reserva-mia'>Tú</span>" :
+                otroUsuario ? `<span class="badge-reserva-ajena" title="La está revisando ${escaparAttr(otroUsuario)}">🔒 ${escaparAttr(otroUsuario)}</span>` :
+                ""
+            }</td>`;
+        }
+
         row.forEach((c, ci) => {
             if (ci === idxArchivo && opciones.archivoClickable) {
                 html += `<td><a href="#" class="link-abrir-pdf" data-row-idx="${i}">${formatearNombreArchivo(c ?? "")}</a></td>`;
                 return;
             }
             const valorCelda = (c ?? "").toString().trim();
-            const esAlerta = valorCelda === MENSAJE_CIF_NO_ENCONTRADO;
+            const esAlerta = MENSAJES_CIF_ALERTA.has(valorCelda);
             const esVacio = !esAlerta && (valorCelda === "-" || valorCelda === "");
             const contenido = esAlerta ? `⚠️ ${valorCelda}` : (c ?? "");
             html += `<td class="${esAlerta ? "celda-alerta" : (esVacio ? "celda-vacia" : "")}">${contenido}</td>`;
@@ -1435,12 +2365,20 @@ function renderTablaGenerica(tabla, containerId, mensajeVacio, opciones) {
     cont.innerHTML = html;
 
     if (opciones.archivoClickable && idxArchivo !== -1) {
-        cont.querySelectorAll(".link-abrir-pdf").forEach(a => {
-            const idx = parseInt(a.dataset.rowIdx, 10);
-            const archivo = rows[idx][idxArchivo];
-            a.onclick = (e) => {
+        cont.querySelectorAll("tr[data-row-idx]").forEach(tr => {
+            tr.onclick = (e) => {
+                if (e.target.closest(".chk-seleccion-fila, .btn-accion-tabla")) return;
                 e.preventDefault();
-                abrirPanelPdf(archivo);
+                const idx = parseInt(tr.dataset.rowIdx, 10);
+                const archivo = rows[idx][idxArchivo];
+                // Si la pestaña define onClickArchivo (pendientes/incidencias/
+                // completadas), pinchar en la fila abre directamente la
+                // revisión en pantalla dividida en vez del simple visor lateral.
+                if (opciones.onClickArchivo) {
+                    opciones.onClickArchivo(rows[idx], headers);
+                } else {
+                    abrirPanelPdf(archivo);
+                }
             };
         });
     }
@@ -1469,16 +2407,25 @@ async function obtenerMotivosEnvioCorreo() {
     return motivosEnvioCorreoCache;
 }
 
-function extraerEmailDeNombre(archivo) {
-    const m = /__EMAIL__(.*?)__ENDMAIL__/.exec(archivo);
-    return m ? m[1] : null;
-}
-
-function abrirCorreoYPdf(archivo, asunto) {
-    const email = extraerEmailDeNombre(archivo) || "";
-    const mailto = `mailto:${email}?subject=${encodeURIComponent(asunto)}`;
-    window.location.href = mailto;
-    window.open(`/pdf-factura/${encodeURIComponent(archivo)}`, "_blank");
+async function abrirCorreoYPdf(archivo, asunto) {
+    try {
+        const res = await fetch("/crear-borrador-outlook", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ archivo, asunto })
+        });
+        if (!res.ok) {
+            const err = await res.json();
+            mostrarToast(err.detail || "No se pudo crear el borrador en Outlook.", "error");
+            return false;
+        }
+        const data = await res.json();
+        window.open(data.webLink, "_blank");
+        return true;
+    } catch (e) {
+        mostrarToast("Error de conexión al crear el borrador de Outlook.", "error");
+        return false;
+    }
 }
 
 async function abrirModalEnviarCorreo(archivo, motivoPreseleccionado) {
@@ -1531,11 +2478,35 @@ async function confirmarEnvioCorreo() {
         return;
     }
 
+    const mueveElPdf = motivo === "falta_pedido_cliente" || motivo === "dos_facturas_una_pagina" || motivo === "otros";
+
+    // Este modal también se abre desde dentro del modal de edición (revisión
+    // de lote reservado). Si el motivo mueve el PDF fuera de su cola, hay
+    // que pasar a la siguiente factura del lote al terminar -igual que el
+    // resto de acciones del modal de edición- en vez de dejarlo abierto
+    // mostrando una factura que ya no está donde estaba. Se calcula ANTES
+    // de enviar, mientras la fila todavía está en su tabla.
+    const edicionAAvanzar = (mueveElPdf && edicionFactura && edicionFactura.archivo === archivoModalCorreo)
+        ? edicionFactura : null;
+    const contenedorEdicion = edicionAAvanzar ? containerIdDeTipo(edicionAAvanzar.tipo) : null;
+    const siguienteEnEdicion = edicionAAvanzar
+        ? obtenerSiguienteArchivoDeTabla(contenedorEdicion, archivoModalCorreo) : null;
+
     const btn = document.getElementById("btnModalCorreoEnviar");
     btn.disabled = true;
     btn.textContent = "Enviando...";
 
     try {
+        // Para "otros" el correo se redacta y envía a mano desde Outlook, no
+        // hay flujo automático detrás: hay que abrir Outlook ANTES de mover
+        // el PDF, para que si Outlook no llega a abrirse (no instalado/mal
+        // configurado) la factura se quede donde estaba en vez de darse por
+        // reenviada sin que nadie haya llegado a redactar el correo.
+        if (motivo === "otros") {
+            const abierto = await abrirCorreoYPdf(archivoModalCorreo, `Factura ${archivoModalCorreo} — ${motivoOtro}`);
+            if (!abierto) return;
+        }
+
         const res = await fetch("/solicitar-envio-correo", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -1552,27 +2523,46 @@ async function confirmarEnvioCorreo() {
             return;
         }
 
-        if (motivo === "otros") {
-            abrirCorreoYPdf(archivoModalCorreo, `Factura ${archivoModalCorreo} — ${motivoOtro}`);
+        const data = await res.json();
+
+        mostrarToast(
+            motivo === "otros"
+                ? `✓ ${archivoModalCorreo} reenviada.`
+                : `✓ ${archivoModalCorreo} añadida a la cola de envío de correo.`,
+            "ok"
+        );
+        if (data.aviso) {
+            mostrarToast(data.aviso, "error");
         }
 
-        mostrarToast(`✓ ${archivoModalCorreo} añadida a la cola de envío de correo.`, "ok");
-
-        // "falta_pedido_cliente" y "dos_facturas_una_pagina" mueven el PDF
-        // fuera de su cola actual (lo asume Power Automate), así que
-        // desaparece al instante sin recargar la página.
-        if (motivo === "falta_pedido_cliente" || motivo === "dos_facturas_una_pagina") {
+        // Los tres motivos mueven el PDF fuera de su cola actual (los dos
+        // primeros los asume Power Automate; "otros" ya se dio por
+        // reenviado en cuanto se abrió Outlook, justo arriba), así que
+        // desaparece al instante sin recargar la página. Este modal se abre
+        // desde varias pestañas (Pendientes, Incidencias, Esperando alta,
+        // Completadas, Errores) sin decirnos de cuál venía, así que se
+        // limpia de todas: quitarDeXCache es un no-op si el archivo no
+        // estaba en esa caché.
+        if (mueveElPdf) {
             quitarDePendientesCache(archivoModalCorreo);
+            quitarDeIncidenciasCache(archivoModalCorreo);
+            quitarDeEsperandoAltaCache(archivoModalCorreo);
             cargarFacturasCompletadas();
+            liberarReservas([archivoModalCorreo]);
         }
 
-        // El modal de "Enviar correo" también se abre desde la pestaña de
-        // errores; si ese PDF estaba ahí y este motivo lo mueve, hay que
-        // refrescarla (no-op si el archivo no era de esa cola).
+        // También puede haber estado en errores (no-op si no era el caso).
         cargarErroresCompleto();
 
         cerrarModalEnviarCorreo();
         cargarEstadisticas();
+
+        if (edicionAAvanzar) {
+            await abrirSiguienteEnListaOTerminar(
+                contenedorEdicion, cacheDeTipoReservable(edicionAAvanzar.tipo), edicionAAvanzar.tipo,
+                siguienteEnEdicion, async () => {}
+            );
+        }
 
     } catch (e) {
         mostrarToast("Error de conexión.", "error");
@@ -1655,6 +2645,11 @@ function filtrarErrores() {
                 icono: () => "📦",
                 onClick: (row, headers) => clasificarError(row[headers.indexOf("Archivo")], "pesa_mucho"),
             },
+            {
+                titulo: "Otro motivo (abrir correo con el PDF adjunto)",
+                icono: () => "📨",
+                onClick: (row, headers) => clasificarError(row[headers.indexOf("Archivo")], "otro"),
+            },
         ],
     });
 }
@@ -1687,6 +2682,10 @@ async function clasificarError(archivo, motivo) {
         mostrarToast(`✓ ${archivo} clasificada.`, "ok");
         quitarDeErroresCache(archivo);
         cargarEstadisticas();
+
+        if (motivo === "otro") {
+            await abrirCorreoYPdf(archivo);
+        }
 
     } catch (e) {
         mostrarToast("Error de conexión.", "error");
@@ -1755,6 +2754,165 @@ async function reprocesarError(archivo) {
     }
 }
 
+async function reprocesarTodosLosErrores() {
+    const btnActualizar = document.querySelector('#tab-errores button[onclick="cargarErroresCompleto()"]');
+    const btnMasivo = document.getElementById("btnReprocesarTodosErrores");
+    [btnActualizar, btnMasivo].forEach(b => b && (b.disabled = true));
+    const textoOriginal = btnMasivo.textContent;
+    btnMasivo.textContent = "Reprocesando... (puede tardar)";
+
+    try {
+        const res = await fetch("/reprocesar-errores", { method: "POST" });
+
+        if (res.status === 409) {
+            mostrarToast("Ya hay un procesamiento en curso, inténtalo de nuevo en unos segundos.", "error");
+            return;
+        }
+        if (!res.ok) {
+            const err = await res.json();
+            mostrarToast(err.detail || "Error al reprocesar los errores.", "error");
+            return;
+        }
+
+        const data = await res.json();
+        mostrarToast(`${data.exitosos} reprocesada(s), ${data.fallidos} siguen en error.`, data.exitosos > 0 ? "ok" : "error");
+        await cargarErroresCompleto();
+        cargarEstadisticas();
+
+    } catch (e) {
+        mostrarToast("Error de conexión.", "error");
+    } finally {
+        [btnActualizar, btnMasivo].forEach(b => b && (b.disabled = false));
+        btnMasivo.textContent = textoOriginal;
+    }
+}
+
+// =========================================================
+// PESTAÑA: NO ES FACTURA (documentos descartados, solo lectura)
+// =========================================================
+
+let noFacturaCompletoCache = null;
+
+async function cargarNoFacturaCompleto() {
+    document.getElementById("tablaNoFactura").innerHTML = "<span class='help'><span class='spinner'></span>Cargando...</span>";
+
+    try {
+        const res = await fetch("/no-factura-completo-json");
+        const data = await res.json();
+        noFacturaCompletoCache = data.tabla || [];
+        actualizarBadgeNoFactura();
+        filtrarNoFactura();
+    } catch (e) {
+        document.getElementById("tablaNoFactura").innerHTML = "<span class='help'>Error al cargar los documentos.</span>";
+    }
+}
+
+function actualizarBadgeNoFactura() {
+    const n = noFacturaCompletoCache ? Math.max(noFacturaCompletoCache.length - 1, 0) : 0;
+    [document.getElementById("badgeNoFactura"), document.getElementById("badgeNoFacturaTab")].forEach(b => {
+        b.textContent = n;
+        b.className = "badge" + (n === 0 ? " vacio" : "");
+    });
+}
+
+function filtrarNoFactura() {
+    if (!noFacturaCompletoCache) return;
+
+    const tabla = aplicarFiltros(noFacturaCompletoCache, {
+        fechaDesdeId: "noFacturaFechaDesde",
+        fechaHastaId: "noFacturaFechaHasta",
+        columnaFecha: "FechaEntrada",
+        textos: [{ id: "noFacturaFiltroEmail", columna: "Email" }],
+    });
+
+    renderTablaGenerica(tabla, "tablaNoFactura", "No hay documentos que coincidan con el filtro.", {
+        archivoClickable: true,
+    });
+}
+
+function limpiarFiltroNoFactura() {
+    document.getElementById("noFacturaFechaDesde").value = "";
+    document.getElementById("noFacturaFechaHasta").value = "";
+    document.getElementById("noFacturaFiltroEmail").value = "";
+    filtrarNoFactura();
+}
+
+// =========================================================
+// PESTAÑA: VISTA GLOBAL (todas las colas juntas, solo lectura)
+// =========================================================
+
+let vistaGlobalCache = null;
+
+async function cargarVistaGlobal() {
+    document.getElementById("tablaVistaGlobal").innerHTML = "<span class='help'><span class='spinner'></span>Cargando...</span>";
+
+    try {
+        const res = await fetch("/vista-global-json");
+        const data = await res.json();
+        vistaGlobalCache = data.tabla || [];
+        filtrarVistaGlobal();
+    } catch (e) {
+        document.getElementById("tablaVistaGlobal").innerHTML = "<span class='help'>Error al cargar la vista global.</span>";
+    }
+}
+
+function filasVistaGlobalVisibles() {
+    if (!vistaGlobalCache) return null;
+
+    const headers = vistaGlobalCache[0];
+    const idxProcedencia = headers.indexOf("Procedencia");
+    const procedencia = document.getElementById("vgFiltroProcedencia").value;
+
+    const filas = procedencia
+        ? vistaGlobalCache.slice(1).filter(row => row[idxProcedencia] === procedencia)
+        : vistaGlobalCache.slice(1);
+
+    return [headers, ...filas];
+}
+
+function actualizarBadgeVistaGlobal() {
+    const visibles = filasVistaGlobalVisibles();
+    const n = visibles ? visibles.length - 1 : 0;
+    const b = document.getElementById("badgeVistaGlobal");
+    b.textContent = n;
+    b.className = "badge" + (n === 0 ? " vacio" : "");
+}
+
+function filtrarVistaGlobal() {
+    if (!vistaGlobalCache) return;
+
+    actualizarBadgeVistaGlobal();
+
+    const tabla = aplicarFiltros(filasVistaGlobalVisibles(), {
+        fechaDesdeId: "vgFechaDesde",
+        fechaHastaId: "vgFechaHasta",
+        columnaFecha: "FEscaneo",
+        textos: filtrosTextoConPrefijo("vg"),
+    });
+
+    renderTablaGenerica(tabla, "tablaVistaGlobal", "No hay facturas que coincidan con el filtro.", {
+        archivoClickable: true,
+    });
+}
+
+function limpiarFiltroVistaGlobal() {
+    limpiarInputsFiltro(["vgFechaDesde", "vgFechaHasta", ...filtrosTextoConPrefijo("vg").map(f => f.id)]);
+    document.getElementById("vgFiltroProcedencia").value = "";
+    filtrarVistaGlobal();
+}
+
+async function abrirCarpetaNoFactura() {
+    try {
+        const res = await fetch("/abrir-carpeta-no-factura", { method: "POST" });
+        if (!res.ok) {
+            const err = await res.json();
+            mostrarToast(err.detail || "No se pudo abrir la carpeta.", "error");
+        }
+    } catch (e) {
+        mostrarToast("Error de conexión.", "error");
+    }
+}
+
 // =========================================================
 // PESTAÑA 2: CORREGIR MANUALMENTE (tabla filtrable)
 // =========================================================
@@ -1807,6 +2965,8 @@ function filtrarPendientes() {
 
     renderTablaGenerica(tabla, "tablaPendientes", "No hay facturas pendientes que coincidan con el filtro.", {
         archivoClickable: true,
+        seleccionable: true,
+        onClickArchivo: (row, headers) => abrirModalEditarFactura(row, headers, "pendiente"),
         acciones: [
             {
                 titulo: "Editar / completar campos",
@@ -1822,6 +2982,11 @@ function filtrarPendientes() {
                 titulo: "No es factura",
                 icono: () => "🗑️",
                 onClick: (row, headers) => descartarPendiente(row[headers.indexOf("Archivo")]),
+            },
+            {
+                titulo: "Este proveedor/empresa todavía no está dado de alta en la base de datos",
+                icono: () => "🏷️",
+                onClick: (row, headers) => enviarAEsperandoAlta(row[headers.indexOf("Archivo")], "pendiente"),
             },
             {
                 titulo: "Marcar/desmarcar como revisada",
@@ -1843,7 +3008,7 @@ async function descartarPendiente(archivo) {
     const confirmado = confirm(
         `¿Mover "${archivo}" a la carpeta "No es factura"?\n\nNo se elimina el PDF, solo se aparta de la cola de corrección manual por si la clasificación se hubiera equivocado.`
     );
-    if (!confirmado) return;
+    if (!confirmado) return false;
 
     try {
         const res = await fetch("/descartar-pendiente", {
@@ -1855,15 +3020,18 @@ async function descartarPendiente(archivo) {
         if (!res.ok) {
             const err = await res.json();
             mostrarToast(err.detail || "Error al mover el PDF.", "error");
-            return;
+            return false;
         }
 
         mostrarToast(`✓ ${archivo} movido a "No es factura".`, "ok");
         quitarDePendientesCache(archivo);
         cargarEstadisticas();
+        liberarReservas([archivo]);
+        return true;
 
     } catch (e) {
         mostrarToast("Error de conexión.", "error");
+        return false;
     }
 }
 
@@ -1919,6 +3087,8 @@ function filtrarIncidencias() {
 
     renderTablaGenerica(tabla, "tablaIncidencias", "No hay incidencias que coincidan con el filtro.", {
         archivoClickable: true,
+        seleccionable: true,
+        onClickArchivo: (row, headers) => abrirModalEditarFactura(row, headers, "incidencia"),
         acciones: [
             {
                 titulo: "Editar / completar campos",
@@ -1934,6 +3104,11 @@ function filtrarIncidencias() {
                 titulo: "No es factura",
                 icono: () => "🗑️",
                 onClick: (row, headers) => descartarIncidencia(row[headers.indexOf("Archivo")]),
+            },
+            {
+                titulo: "Este proveedor/empresa todavía no está dado de alta en la base de datos",
+                icono: () => "🏷️",
+                onClick: (row, headers) => enviarAEsperandoAlta(row[headers.indexOf("Archivo")], "incidencia"),
             },
             {
                 titulo: "Marcar/desmarcar como revisada",
@@ -1955,6 +3130,155 @@ async function descartarIncidencia(archivo) {
     const confirmado = confirm(
         `¿Mover "${archivo}" a la carpeta "No es factura"?\n\nNo se elimina el PDF, solo se aparta de la cola de incidencias por si la clasificación se hubiera equivocado.`
     );
+    if (!confirmado) return false;
+
+    try {
+        const res = await fetch("/descartar-pendiente", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ archivo })
+        });
+
+        if (!res.ok) {
+            const err = await res.json();
+            mostrarToast(err.detail || "Error al mover el PDF.", "error");
+            return false;
+        }
+
+        mostrarToast(`✓ ${archivo} movido a "No es factura".`, "ok");
+        quitarDeIncidenciasCache(archivo);
+        cargarEstadisticas();
+        liberarReservas([archivo]);
+        return true;
+
+    } catch (e) {
+        mostrarToast("Error de conexión.", "error");
+        return false;
+    }
+}
+
+// =========================================================
+// ENVIAR A "ESPERANDO ALTA" (desde pendientes, incidencias o completadas)
+// =========================================================
+
+async function enviarAEsperandoAlta(archivo, tipoOrigen) {
+    const confirmado = confirm(
+        `¿Apartar "${archivo}" a "Esperando alta"?\n\nSe quitará de esta lista y se quedará ahí hasta que se dé de alta el proveedor o la empresa y se pulse "Reprocesar".`
+    );
+    if (!confirmado) return false;
+
+    try {
+        const res = await fetch("/marcar-esperando-alta", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ archivo, usuario: obtenerUsuarioActual() }),
+        });
+
+        if (!res.ok) {
+            const err = await res.json();
+            mostrarToast(err.detail || "Error al apartar la factura.", "error");
+            return false;
+        }
+
+        mostrarToast(`✓ ${archivo} apartada a "Esperando alta".`, "ok");
+
+        if (tipoOrigen === "pendiente") quitarDePendientesCache(archivo);
+        else if (tipoOrigen === "incidencia") quitarDeIncidenciasCache(archivo);
+        else await cargarFacturasCompletadas();
+
+        await cargarEsperandoAltaCompleto();
+        cargarEstadisticas();
+        liberarReservas([archivo]);
+        return true;
+
+    } catch (e) {
+        mostrarToast("Error de conexión.", "error");
+        return false;
+    }
+}
+
+// =========================================================
+// PESTAÑA: ESPERANDO ALTA (proveedor/empresa aún sin dar de alta)
+// =========================================================
+
+let esperandoAltaCompletoCache = null;
+
+async function cargarEsperandoAltaCompleto() {
+    document.getElementById("tablaEsperandoAlta").innerHTML = "<span class='help'><span class='spinner'></span>Cargando...</span>";
+
+    try {
+        const res = await fetch("/esperando-alta-completo-json");
+        const data = await res.json();
+        esperandoAltaCompletoCache = data.tabla || [];
+        actualizarBadgeEsperandoAlta();
+        filtrarEsperandoAlta();
+    } catch (e) {
+        document.getElementById("tablaEsperandoAlta").innerHTML = "<span class='help'>Error al cargar las facturas esperando alta.</span>";
+    }
+}
+
+function quitarDeEsperandoAltaCache(archivo) {
+    if (!esperandoAltaCompletoCache) return;
+    const headers = esperandoAltaCompletoCache[0];
+    const idxArchivo = headers.indexOf("Archivo");
+    esperandoAltaCompletoCache = [
+        headers,
+        ...esperandoAltaCompletoCache.slice(1).filter(row => row[idxArchivo] !== archivo),
+    ];
+    actualizarBadgeEsperandoAlta();
+    filtrarEsperandoAlta();
+}
+
+function actualizarBadgeEsperandoAlta() {
+    const n = esperandoAltaCompletoCache ? Math.max(esperandoAltaCompletoCache.length - 1, 0) : 0;
+    [document.getElementById("badgeEsperandoAlta"), document.getElementById("badgeEsperandoAltaTab")].forEach(b => {
+        b.textContent = n;
+        b.className = "badge" + (n === 0 ? " vacio" : "");
+    });
+}
+
+function filtrarEsperandoAlta() {
+    if (!esperandoAltaCompletoCache) return;
+
+    const tabla = aplicarFiltros(esperandoAltaCompletoCache, {
+        fechaDesdeId: "eaFechaDesde",
+        fechaHastaId: "eaFechaHasta",
+        columnaFecha: "FEscaneo",
+        textos: filtrosTextoConPrefijo("ea"),
+    });
+
+    renderTablaGenerica(tabla, "tablaEsperandoAlta", "No hay facturas esperando alta que coincidan con el filtro.", {
+        archivoClickable: true,
+        seleccionable: true,
+        onClickArchivo: (row, headers) => {
+            const archivo = row[headers.indexOf("Archivo")];
+            intentarReservarUnaFactura(archivo);
+            abrirPanelPdf(archivo);
+        },
+        acciones: [
+            {
+                titulo: "Reprocesar (ya se dio de alta)",
+                icono: () => "🔄",
+                onClick: (row, headers) => reprocesarEsperandoAlta(row[headers.indexOf("Archivo")]),
+            },
+            {
+                titulo: "Enviar correo",
+                icono: () => "✉️",
+                onClick: (row, headers) => abrirModalEnviarCorreo(row[headers.indexOf("Archivo")]),
+            },
+            {
+                titulo: "No es factura",
+                icono: () => "🗑️",
+                onClick: (row, headers) => descartarEsperandoAlta(row[headers.indexOf("Archivo")]),
+            },
+        ],
+    });
+}
+
+async function descartarEsperandoAlta(archivo) {
+    const confirmado = confirm(
+        `¿Mover "${archivo}" a la carpeta "No es factura"?\n\nNo se elimina el PDF, solo se aparta de la cola de "Esperando alta".`
+    );
     if (!confirmado) return;
 
     try {
@@ -1971,11 +3295,61 @@ async function descartarIncidencia(archivo) {
         }
 
         mostrarToast(`✓ ${archivo} movido a "No es factura".`, "ok");
-        quitarDeIncidenciasCache(archivo);
+        quitarDeEsperandoAltaCache(archivo);
         cargarEstadisticas();
+        liberarReservas([archivo]);
 
     } catch (e) {
         mostrarToast("Error de conexión.", "error");
+    }
+}
+
+function limpiarFiltroEsperandoAlta() {
+    document.getElementById("eaFechaDesde").value = "";
+    document.getElementById("eaFechaHasta").value = "";
+    limpiarInputsFiltro(filtrosTextoConPrefijo("ea").map(f => f.id));
+    filtrarEsperandoAlta();
+}
+
+function _botonesFilaEsperandoAlta(archivo) {
+    const fila = document.querySelector(`#tablaEsperandoAlta tr[data-archivo="${CSS.escape(archivo)}"]`);
+    return fila ? fila.querySelectorAll("button") : [];
+}
+
+async function reprocesarEsperandoAlta(archivo) {
+    const botones = _botonesFilaEsperandoAlta(archivo);
+    botones.forEach(b => b.disabled = true);
+
+    try {
+        const res = await fetch("/reprocesar-esperando-alta", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ archivo }),
+        });
+
+        if (!res.ok) {
+            const err = await res.json();
+            mostrarToast(err.detail || "Error al reprocesar la factura.", "error");
+            return;
+        }
+
+        const data = await res.json();
+
+        if (data.movida) {
+            mostrarToast(`✓ ${archivo} ya tenía los datos resueltos: movida a "${data.estado === "completada" ? "completadas" : "corregir manualmente"}".`, "ok");
+            quitarDeEsperandoAltaCache(archivo);
+            if (data.estado === "completada") await cargarFacturasCompletadas();
+            else await cargarPendientesCompleto();
+            cargarEstadisticas();
+            liberarReservas([archivo]);
+        } else {
+            mostrarToast(`${archivo} sigue sin resolverse: comprueba que el CIF ya está dado de alta.`, "error");
+        }
+
+    } catch (e) {
+        mostrarToast("Error de conexión.", "error");
+    } finally {
+        botones.forEach(b => b.disabled = false);
     }
 }
 
@@ -1991,13 +3365,31 @@ async function alternarRevisada(row, headers, tipo) {
         const res = await fetch("/marcar-revisada", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ archivo, revisada: nuevoEstado, usuario: "marqueros" }),
+            body: JSON.stringify({ archivo, revisada: nuevoEstado, usuario: obtenerUsuarioActual(), tipo }),
         });
 
+        const data = await res.json();
+
         if (!res.ok) {
-            const err = await res.json();
-            mostrarToast(err.detail || "Error al marcar como revisada.", "error");
-            return;
+            mostrarToast(data.detail || "Error al marcar como revisada.", "error");
+            return false;
+        }
+
+        // Marcar como revisada (en Pendientes o en Incidencias) da la
+        // factura por buena tal como está: se guarda en FacturasExaminadas
+        // y se mueve directamente a facturas_revisadas, así que desaparece
+        // de la lista en la que estuviera en vez de solo actualizar su
+        // columna "Revisada".
+        if (data.accion === "definitiva") {
+            if (tipo === "incidencia") quitarDeIncidenciasCache(archivo);
+            else quitarDePendientesCache(archivo);
+
+            mostrarToast(`✓ ${archivo} confirmada y movida a revisadas.`, "ok");
+
+            await cargarFacturasCompletadas();
+            cargarEstadisticas();
+            liberarReservas([archivo]);
+            return true;
         }
 
         const cache = tipo === "pendiente" ? pendientesCompletoCache : incidenciasCompletoCache;
@@ -2014,9 +3406,11 @@ async function alternarRevisada(row, headers, tipo) {
         );
 
         if (tipo === "pendiente") filtrarPendientes(); else filtrarIncidencias();
+        return true;
 
     } catch (e) {
         mostrarToast("Error de conexión.", "error");
+        return false;
     }
 }
 
@@ -2025,7 +3419,6 @@ async function alternarRevisada(row, headers, tipo) {
 // =========================================================
 
 let completadasCache = null;
-
 async function cargarFacturasCompletadas() {
     document.getElementById("tablaCompletadas").innerHTML = "<span class='help'><span class='spinner'></span>Cargando...</span>";
 
@@ -2070,11 +3463,12 @@ function filtrarCompletadas() {
         fechaDesdeId: "revFechaDesde",
         fechaHastaId: "revFechaHasta",
         columnaFecha: "FEscaneo",
-        textos: filtrosTextoConPrefijo("rev"),
+        textos: [...filtrosTextoConPrefijo("rev"), { id: "revFiltroEmail", columna: "Archivo" }],
     });
-
     renderTablaGenerica(tabla, "tablaCompletadas", "No hay facturas completadas que coincidan con el filtro.", {
         archivoClickable: true,
+        seleccionable: true,
+        onClickArchivo: (row, headers) => abrirModalEditarFactura(row, headers, "completada"),
         acciones: [
             {
                 titulo: "Editar",
@@ -2092,6 +3486,11 @@ function filtrarCompletadas() {
                 onClick: (row, headers) => descartarFacturaCompletada(row[headers.indexOf("Archivo")]),
             },
             {
+                titulo: "Este proveedor/empresa todavía no está dado de alta en la base de datos",
+                icono: () => "🏷️",
+                onClick: (row, headers) => enviarAEsperandoAlta(row[headers.indexOf("Archivo")], "completada"),
+            },
+            {
                 titulo: "Marcar/desmarcar como 100% definitiva",
                 icono: (row, headers) => row[headers.indexOf("Definitiva")] === "Sí" ? "✅" : "☐",
                 onClick: (row, headers) => alternarDefinitiva(row, headers),
@@ -2104,6 +3503,7 @@ function limpiarFiltroCompletadas() {
     document.getElementById("revFechaDesde").value = "";
     document.getElementById("revFechaHasta").value = "";
     limpiarInputsFiltro(filtrosTextoConPrefijo("rev").map(f => f.id));
+    document.getElementById("revFiltroEmail").value = "";
     filtrarCompletadas();
 }
 
@@ -2115,13 +3515,13 @@ async function alternarDefinitiva(row, headers) {
         const res = await fetch("/marcar-factura-definitiva", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ archivo, definitiva: nuevoEstado, usuario: "marqueros" }),
+            body: JSON.stringify({ archivo, definitiva: nuevoEstado, usuario: obtenerUsuarioActual() }),
         });
 
         if (!res.ok) {
             const err = await res.json();
             mostrarToast(err.detail || "Error al actualizar el estado.", "error");
-            return;
+            return false;
         }
 
         mostrarToast(
@@ -2130,9 +3530,12 @@ async function alternarDefinitiva(row, headers) {
         );
         await cargarFacturasCompletadas();
         cargarEstadisticas();
+        if (nuevoEstado) liberarReservas([archivo]);
+        return true;
 
     } catch (e) {
         mostrarToast("Error de conexión.", "error");
+        return false;
     }
 }
 
@@ -2140,7 +3543,7 @@ async function descartarFacturaCompletada(archivo) {
     const confirmado = confirm(
         `¿Mover "${archivo}" a la carpeta "No es factura"?\n\nSe quitará de "Revisar facturas" (y del Excel definitivo, si estaba marcada).`
     );
-    if (!confirmado) return;
+    if (!confirmado) return false;
 
     try {
         const res = await fetch("/descartar-factura-completada", {
@@ -2152,15 +3555,18 @@ async function descartarFacturaCompletada(archivo) {
         if (!res.ok) {
             const err = await res.json();
             mostrarToast(err.detail || "Error al descartar la factura.", "error");
-            return;
+            return false;
         }
 
         mostrarToast(`✓ ${archivo} movida a "No es factura".`, "ok");
         await cargarFacturasCompletadas();
         cargarEstadisticas();
+        liberarReservas([archivo]);
+        return true;
 
     } catch (e) {
         mostrarToast("Error de conexión.", "error");
+        return false;
     }
 }
 
@@ -2174,6 +3580,186 @@ async function descargarFacturasDefinitivas() {
     a.download = "facturas_100_definitivas.xlsx";
     a.click();
     URL.revokeObjectURL(url);
+}
+
+async function descargarTablaComoExcel(tabla, nombre) {
+    if (!tabla || tabla.length < 2) { mostrarToast("No hay filas para exportar.", "error"); return; }
+
+    const res = await fetch("/exportar-excel-listado", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tabla, nombre }),
+    });
+    if (!res.ok) { mostrarToast("No se pudo generar el Excel.", "error"); return; }
+
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${nombre}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+function exportarExcelTabla(containerId, nombre) {
+    descargarTablaComoExcel(ultimasTablasRenderizadas[containerId], nombre);
+}
+
+// =========================================================
+// PESTAÑA: DUPLICADOS (misma factura recibida más de una vez)
+// =========================================================
+
+let duplicadosCompletoCache = null;
+
+async function cargarDuplicadosCompleto() {
+    document.getElementById("tablaDuplicados").innerHTML = "<span class='help'><span class='spinner'></span>Cargando...</span>";
+
+    try {
+        const res = await fetch("/duplicados-completo-json");
+        const data = await res.json();
+        duplicadosCompletoCache = data.tabla || [];
+        actualizarBadgeDuplicados();
+        filtrarDuplicados();
+    } catch (e) {
+        document.getElementById("tablaDuplicados").innerHTML = "<span class='help'>Error al cargar los duplicados.</span>";
+    }
+}
+
+function actualizarBadgeDuplicados() {
+    const n = duplicadosCompletoCache ? Math.max(duplicadosCompletoCache.length - 1, 0) : 0;
+    [document.getElementById("badgeDuplicados"), document.getElementById("badgeDuplicadosTab")].forEach(b => {
+        b.textContent = n;
+        b.className = "badge" + (n === 0 ? " vacio" : "");
+    });
+}
+
+function filtrarDuplicados() {
+    if (!duplicadosCompletoCache) return;
+
+    const tabla = aplicarFiltros(duplicadosCompletoCache, {
+        fechaDesdeId: "dupFechaDesde",
+        fechaHastaId: "dupFechaHasta",
+        columnaFecha: "FEscaneo",
+        textos: filtrosTextoConPrefijo("dup"),
+    });
+
+    renderTablaGenerica(tabla, "tablaDuplicados", "No hay facturas duplicadas que coincidan con el filtro.", {
+        archivoClickable: true,
+        acciones: [
+            {
+                titulo: "Resolver duplicado",
+                icono: () => "⚠️",
+                onClick: (row, headers) => abrirModalResolverDuplicado(row, headers),
+            },
+        ],
+    });
+}
+
+function limpiarFiltroDuplicados() {
+    document.getElementById("dupFechaDesde").value = "";
+    document.getElementById("dupFechaHasta").value = "";
+    limpiarInputsFiltro(filtrosTextoConPrefijo("dup").map(f => f.id));
+    filtrarDuplicados();
+}
+
+// Otras filas de duplicadosCompletoCache con el mismo NumeroFactura+Proveedor+Buyer que `row`.
+function grupoDuplicados(row, headers) {
+    if (!duplicadosCompletoCache) return [row];
+
+    const idxNF = headers.indexOf("NumeroFactura");
+    const idxProv = headers.indexOf("Proveedor");
+    const idxBuyer = headers.indexOf("Buyer");
+    const clave = [row[idxNF], row[idxProv], row[idxBuyer]].join("|");
+
+    return duplicadosCompletoCache.slice(1).filter(r =>
+        [r[idxNF], r[idxProv], r[idxBuyer]].join("|") === clave
+    );
+}
+
+function abrirModalResolverDuplicado(row, headers) {
+    const grupo = grupoDuplicados(row, headers);
+    const idx = {
+        archivo: headers.indexOf("Archivo"),
+        numeroFactura: headers.indexOf("NumeroFactura"),
+        pedidoCliente: headers.indexOf("PedidoCliente"),
+        proveedor: headers.indexOf("Proveedor"),
+        nombreProveedor: headers.indexOf("NombreProveedor"),
+        buyer: headers.indexOf("Buyer"),
+        empresa: headers.indexOf("Empresa"),
+        total: headers.indexOf("TotalFact"),
+        fFactura: headers.indexOf("FFactura"),
+        origen: headers.indexOf("Origen"),
+        definitiva: headers.indexOf("Definitiva"),
+    };
+
+    let html = "<table class='tabla-historial'><tr>"
+        + "<th>Archivo</th><th>Nº factura</th><th>Pedido cliente</th><th>Proveedor</th><th>Cliente</th><th>Total</th>"
+        + "<th>Fecha factura</th><th>Origen</th><th>Definitiva</th><th></th></tr>";
+
+    grupo.forEach((r, i) => {
+        html += `<tr>
+            <td>${formatearNombreArchivo(r[idx.archivo] ?? "")}</td>
+            <td>${r[idx.numeroFactura] ?? "-"}</td>
+            <td>${r[idx.pedidoCliente] ?? "-"}</td>
+            <td>${r[idx.nombreProveedor] ?? "-"} (${r[idx.proveedor] ?? "-"})</td>
+            <td>${r[idx.empresa] ?? "-"} (${r[idx.buyer] ?? "-"})</td>
+            <td>${r[idx.total] ?? "-"}</td>
+            <td>${r[idx.fFactura] ?? "-"}</td>
+            <td>${r[idx.origen] ?? "-"}</td>
+            <td>${r[idx.definitiva] ?? "-"}</td>
+            <td><button class="btn-confirmar btn-mantener-duplicado" data-idx="${i}">Mantener esta</button></td>
+        </tr>`;
+    });
+
+    html += "</table>";
+
+    const cont = document.getElementById("resolverDuplicadoContenido");
+    cont.innerHTML = html;
+
+    cont.querySelectorAll(".btn-mantener-duplicado").forEach(btn => {
+        const i = parseInt(btn.dataset.idx, 10);
+        btn.onclick = () => {
+            const archivoMantener = grupo[i][idx.archivo];
+            const archivosEliminar = grupo.filter((_, j) => j !== i).map(r => r[idx.archivo]);
+            resolverDuplicado(archivoMantener, archivosEliminar);
+        };
+    });
+
+    document.getElementById("overlayResolverDuplicado").style.display = "flex";
+}
+
+function cerrarModalResolverDuplicado() {
+    document.getElementById("overlayResolverDuplicado").style.display = "none";
+}
+
+async function resolverDuplicado(archivoMantener, archivosEliminar) {
+    const confirmado = confirm(
+        `¿Mantener "${archivoMantener}" y mover ${archivosEliminar.length === 1 ? "la otra copia" : "las otras " + archivosEliminar.length + " copias"} a "No es factura"?`
+    );
+    if (!confirmado) return;
+
+    try {
+        const res = await fetch("/resolver-duplicado", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ archivo_mantener: archivoMantener, archivos_eliminar: archivosEliminar }),
+        });
+
+        if (!res.ok) {
+            const err = await res.json();
+            mostrarToast(err.detail || "Error al resolver el duplicado.", "error");
+            return;
+        }
+
+        mostrarToast(`✓ Duplicado resuelto: se mantiene ${archivoMantener}.`, "ok");
+        cerrarModalResolverDuplicado();
+        await cargarDuplicadosCompleto();
+        cargarFacturasCompletadas();
+        cargarEstadisticas();
+
+    } catch (e) {
+        mostrarToast("Error de conexión.", "error");
+    }
 }
 
 // =========================================================
@@ -2192,12 +3778,28 @@ function extraerCamposFactura(headers, row) {
     };
 }
 
+// Campos que nunca se navegan/resaltan (no aparecen en la factura, o no
+// son datos editables de la factura en sí). Compartido por pintarCamposEdicion
+// (qué filas son readonly) y por abrirModalEditarFactura (orden de navegación
+// por teclado).
+const CAMPOS_READONLY_EDICION = new Set(["Archivo", "FEscaneo"]);
+
 function abrirModalEditarFactura(rowCompleta, headersCompletos, tipo) {
     const { headers, fila } = extraerCamposFactura(headersCompletos, rowCompleta);
     const archivo = fila[headers.indexOf("Archivo")];
     const origen = tipo === "completada" ? rowCompleta[headersCompletos.indexOf("Origen")] : null;
 
-    edicionFactura = { archivo, tipo, origen, headers, fila: [...fila], edits: {} };
+    edicionFactura = {
+        archivo, tipo, origen, headers, fila: [...fila], edits: {},
+        rowCompleta, headersCompletos,
+        camposNavegables: headers.filter(h => !CAMPOS_READONLY_EDICION.has(h)),
+        campoActivoIdx: 0,
+        paginasInfo: [],
+        cajasCampos: {},
+        seleccionManualActiva: false,
+    };
+
+    intentarReservarUnaFactura(archivo);
 
     document.getElementById("editarFacturaTitulo").textContent =
         tipo === "pendiente" ? "Completar factura pendiente" :
@@ -2206,31 +3808,406 @@ function abrirModalEditarFactura(rowCompleta, headersCompletos, tipo) {
     document.getElementById("editarFacturaArchivoNombre").textContent = archivo;
     document.getElementById("estadoEdicionFactura").textContent = "";
 
+    const esPendienteOIncidencia = tipo === "pendiente" || tipo === "incidencia";
+
     const btnGuardar = document.getElementById("btnGuardarEdicionFactura");
-    btnGuardar.textContent = (tipo === "pendiente" || tipo === "incidencia") ? "Guardar y mover a completadas" : "Guardar cambios";
+    btnGuardar.textContent = esPendienteOIncidencia ? "Guardar y mover a revisadas" : "Guardar cambios";
     btnGuardar.disabled = false;
 
+    const btnBorrador = document.getElementById("btnGuardarBorradorFactura");
+    btnBorrador.style.display = esPendienteOIncidencia ? "inline-block" : "none";
+    btnBorrador.disabled = false;
+    btnBorrador.textContent = "Guardar sin completar";
+
+    document.getElementById("btnSeleccionarEnPdf").classList.remove("activo");
+    document.getElementById("editarFacturaPdfScroll").style.cursor = "";
+
+    construirAccionesExtraEdicion(tipo, rowCompleta, headersCompletos);
     pintarCamposEdicion(headers, fila);
     document.getElementById("overlayEditarFactura").style.display = "flex";
+
+    document.addEventListener("keydown", manejarTecladoEdicion);
+    cargarPdfEnEdicion(archivo);
+    cargarPosicionesEdicion();
+
+    if (edicionFactura.camposNavegables.length) {
+        activarCampoEdicion(0);
+    }
 }
 
-function pintarCamposEdicion(headers, fila) {
-    const camposReadonly = new Set(["Archivo", "FEscaneo"]);
+// Botones de "lo que ya hacían los iconos de la fila" (enviar correo, no es
+// factura, esperando alta, marcar revisada/definitiva), reunidos dentro del
+// propio modal de revisión: al abrir la factura pinchando en su nombre ya
+// no hace falta cerrar y volver a la tabla para hacer estas acciones.
+// Reutiliza tal cual las mismas funciones que usan esos iconos; solo se les
+// añade el cierre del modal cuando la acción tiene éxito (devuelven true).
+// Archivo de la siguiente factura de TU LOTE RESERVADO dentro de esta tabla
+// (en el orden en que aparecen ahora en pantalla), o null si ya no te queda
+// ninguna reservada aquí. Cada <tr> de renderTablaGenerica ya lleva
+// data-archivo.
+// Tabla/caché en la que vive cada tipo de factura reservable, para poder
+// calcular "la siguiente de tu lote" y refrescar sin tener que repetir este
+// mapeo en cada sitio que necesita avanzar automáticamente.
+function containerIdDeTipo(tipo) {
+    if (tipo === "pendiente") return "tablaPendientes";
+    if (tipo === "incidencia") return "tablaIncidencias";
+    if (tipo === "esperando_alta") return "tablaEsperandoAlta";
+    return "tablaCompletadas";
+}
 
+function cacheDeTipoReservable(tipo) {
+    if (tipo === "pendiente") return pendientesCompletoCache;
+    if (tipo === "incidencia") return incidenciasCompletoCache;
+    if (tipo === "esperando_alta") return esperandoAltaCompletoCache;
+    return completadasCache;
+}
+
+// Envuelve cualquier acción que complete la revisión de una factura
+// (guardar, marcar revisada/definitiva, descartar, mandar a esperando
+// alta...): calcula ANTES de ejecutar la acción cuál es la siguiente de tu
+// lote reservado (una vez ejecutada, la fila puede haber desaparecido de la
+// tabla), y si tiene éxito pasa a esa siguiente automáticamente; si no
+// queda ninguna, avisa y cierra. Así "revisar el lote" es: reservas,
+// se abre la primera sola, revisas/corriges, guardas (o la acción que
+// corresponda) y salta a la próxima, hasta acabar.
+async function ejecutarYAvanzar(tipo, archivo, accionAsync, opciones) {
+    const refrescarEstadisticas = !(opciones && opciones.refrescarEstadisticas === false);
+    const contenedor = containerIdDeTipo(tipo);
+    const siguiente = obtenerSiguienteArchivoDeTabla(contenedor, archivo);
+
+    const exito = await accionAsync();
+    if (!exito) return;
+
+    // /estadisticas recorre ~15 carpetas de FACTURAS_DIR (en OneDrive) más un
+    // par de consultas SQL: en frío puede tardar >1s (medido), justo el
+    // tiempo que no sobra cuando se están repasando facturas reservadas una
+    // detrás de otra. Se salta cuando la propia acción no puede haber
+    // cambiado ninguna de esas cifras (p.ej. marcar/desmarcar 100%
+    // definitiva: ni mueve un PDF de carpeta ni toca ningún contador de la
+    // barra de arriba), para no pagar ese coste sin necesidad en el punto
+    // más repetitivo del flujo de revisión.
+    if (refrescarEstadisticas) cargarEstadisticas();
+
+    if (!siguiente) {
+        mostrarToast("Ya no quedan más facturas en tu selección reservada — reserva más de la lista.", "ok");
+    }
+
+    await abrirSiguienteEnListaOTerminar(contenedor, cacheDeTipoReservable(tipo), tipo, siguiente, async () => {
+        if (tipo === "pendiente" || tipo === "incidencia" || tipo === "completada") {
+            await cargarFacturasCompletadas();
+        }
+    });
+}
+
+function obtenerSiguienteArchivoDeTabla(containerId, archivoActual) {
+    const filas = [...document.querySelectorAll(`#${containerId} tr[data-archivo]`)];
+    const idx = filas.findIndex(tr => tr.dataset.archivo === archivoActual);
+    if (idx === -1) return null;
+
+    for (let i = idx + 1; i < filas.length; i++) {
+        if (misReservas.has(filas[i].dataset.archivo)) return filas[i].dataset.archivo;
+    }
+    return null;
+}
+
+// Al terminar una acción que hace desaparecer la factura actual de su lista
+// (marcar definitiva, descartar, esperando alta...) se pasa directamente a
+// la siguiente de la tabla en vez de cerrar y obligar a volver a pinchar:
+// si no queda ninguna, entonces sí se cierra y se ve el listado. `alCerrar`
+// (opcional) se ejecuta solo cuando de verdad se cierra (para refrescos
+// caros que no tiene sentido pagar si vamos a abrir otra factura ya mismo).
+async function abrirSiguienteEnListaOTerminar(containerId, cache, tipo, siguienteArchivo, alCerrar) {
+    if (siguienteArchivo && cache) {
+        const headers = cache[0];
+        const idxArchivo = headers.indexOf("Archivo");
+        const fila = cache.slice(1).find(r => r[idxArchivo] === siguienteArchivo);
+        if (fila) {
+            cerrarModalEditarFactura();
+            abrirModalEditarFactura(fila, headers, tipo);
+            return;
+        }
+    }
+    cerrarModalEditarFactura();
+    if (alCerrar) await alCerrar();
+}
+
+// "Pasar a la siguiente": para cuando hay dudas sobre la factura actual y no
+// se quiere tocar nada (ni guardar, ni marcar, ni descartar). A diferencia
+// de ejecutarYAvanzar, aquí no se ejecuta ninguna acción ni se toca su
+// reserva -sigue reservada, para volver a ella más tarde-, simplemente se
+// abre la siguiente de tu lote reservado en esta misma tabla.
+async function pasarALaSiguienteFactura() {
+    if (!edicionFactura) return;
+    const { tipo, archivo } = edicionFactura;
+    const contenedor = containerIdDeTipo(tipo);
+    const siguiente = obtenerSiguienteArchivoDeTabla(contenedor, archivo);
+
+    if (!siguiente) {
+        mostrarToast("Ya no quedan más facturas en tu selección reservada — reserva más de la lista.", "ok");
+    }
+
+    await abrirSiguienteEnListaOTerminar(contenedor, cacheDeTipoReservable(tipo), tipo, siguiente, async () => {});
+}
+
+// Versión ligera de alternarDefinitiva para el flujo "marcar y pasar a la
+// siguiente": actualiza el estado y el aviso igual, pero NO vuelve a pedir
+// las ~800 facturas completadas ni repinta esa tabla entera (cargarFacturas
+// Completadas tarda >1s solo en la consulta SQL) cuando ni siquiera se va a
+// ver esa tabla porque se abre ya la siguiente factura. Solo parchea
+// completadasCache en memoria para que la propia navegación a "siguiente"
+// seguida vea el estado correcto.
+async function marcarDefinitivaLigero(archivo, nuevoEstado) {
+    try {
+        const res = await fetch("/marcar-factura-definitiva", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ archivo, definitiva: nuevoEstado, usuario: obtenerUsuarioActual() }),
+        });
+
+        if (!res.ok) {
+            const err = await res.json();
+            mostrarToast(err.detail || "Error al actualizar el estado.", "error");
+            return false;
+        }
+
+        if (completadasCache) {
+            const headers = completadasCache[0];
+            const idxArchivo = headers.indexOf("Archivo");
+            const idxDefinitiva = headers.indexOf("Definitiva");
+            const fila = completadasCache.slice(1).find(r => r[idxArchivo] === archivo);
+            if (fila) fila[idxDefinitiva] = nuevoEstado ? "Sí" : "No";
+        }
+
+        mostrarToast(
+            nuevoEstado ? `✓ ${archivo} marcada como 100% definitiva.` : `${archivo} desmarcada como definitiva.`,
+            "ok"
+        );
+        if (nuevoEstado) liberarReservas([archivo]);
+        return true;
+
+    } catch (e) {
+        mostrarToast("Error de conexión.", "error");
+        return false;
+    }
+}
+
+// Versión ligera de alternarRevisada, mismo motivo que marcarDefinitivaLigero:
+// cuando de verdad confirma y mueve la factura a completadas, NO vuelve a
+// pedir esa lista entera (era la causa de la lentitud al marcar revisada
+// dentro del flujo de "revisar el lote reservado").
+async function alternarRevisadaLigero(row, headers, tipo) {
+    const archivo = row[headers.indexOf("Archivo")];
+    const nuevoEstado = row[headers.indexOf("Revisada")] !== "Sí";
+
+    try {
+        const res = await fetch("/marcar-revisada", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ archivo, revisada: nuevoEstado, usuario: obtenerUsuarioActual(), tipo }),
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+            mostrarToast(data.detail || "Error al marcar como revisada.", "error");
+            return false;
+        }
+
+        if (data.accion === "definitiva") {
+            if (tipo === "incidencia") quitarDeIncidenciasCache(archivo);
+            else quitarDePendientesCache(archivo);
+
+            mostrarToast(`✓ ${archivo} confirmada y movida a revisadas.`, "ok");
+            liberarReservas([archivo]);
+            return true;
+        }
+
+        const cache = tipo === "pendiente" ? pendientesCompletoCache : incidenciasCompletoCache;
+        if (cache) {
+            const idxArchivo = cache[0].indexOf("Archivo");
+            const idxRevisada = cache[0].indexOf("Revisada");
+            const fila = cache.slice(1).find(r => r[idxArchivo] === archivo);
+            if (fila) fila[idxRevisada] = nuevoEstado ? "Sí" : "No";
+        }
+
+        mostrarToast(
+            nuevoEstado ? `✓ ${archivo} marcada como revisada.` : `${archivo} desmarcada como revisada.`,
+            "ok"
+        );
+
+        if (tipo === "pendiente") filtrarPendientes(); else filtrarIncidencias();
+        return true;
+
+    } catch (e) {
+        mostrarToast("Error de conexión.", "error");
+        return false;
+    }
+}
+
+// Los botones de "Marcar revisada"/"Marcar definitiva" son atajos que solo
+// cambian ese estado en el servidor (ver alternarRevisadaLigero /
+// marcarDefinitivaLigero): no llevan consigo los campos que se hayan tocado
+// en este modal (a mano o con el selector sobre el PDF). Si se pulsan con
+// cambios pendientes sin guardar, esos cambios se perdían en silencio -el
+// usuario veía el campo relleno en el modal, pero nunca llegaba al
+// servidor-. Por eso, antes de ejecutar el atajo, se guardan primero los
+// campos pendientes (si hay alguno) por la misma vía que usa el botón
+// "Guardar", para que marcar revisada/definitiva nunca descarte una
+// corrección ya hecha en pantalla.
+async function guardarEdicionSiHayCambios() {
+    if (!edicionFactura || Object.keys(edicionFactura.edits).length === 0) return true;
+
+    const filaFinal = construirFilaFinalEdicion();
+    const tipo = edicionFactura.tipo;
+
+    try {
+        const res = tipo === "completada"
+            ? await fetch("/actualizar-factura-completada", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    archivo: edicionFactura.archivo,
+                    fila_completa: filaFinal,
+                    origen: edicionFactura.origen || "manual",
+                    usuario: obtenerUsuarioActual(),
+                }),
+            })
+            : await fetch("/guardar-cambios-pendiente", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    archivo: edicionFactura.archivo,
+                    fila_completa: filaFinal,
+                    usuario: obtenerUsuarioActual(),
+                }),
+            });
+
+        if (!res.ok) {
+            const err = await res.json();
+            mostrarToast(err.detail || "Error al guardar los cambios pendientes.", "error");
+            return false;
+        }
+
+        edicionFactura.edits = {};
+        return true;
+    } catch (e) {
+        mostrarToast("Error de conexión al guardar los cambios pendientes.", "error");
+        return false;
+    }
+}
+
+function construirAccionesExtraEdicion(tipo, rowCompleta, headersCompletos) {
+    const archivo = edicionFactura.archivo;
+    const cont = document.getElementById("editarFacturaAccionesExtra");
+    const botones = [];
+
+    if (tipo === "completada") {
+        const definitiva = rowCompleta[headersCompletos.indexOf("Definitiva")] === "Sí";
+        botones.push({
+            titulo: "Marcar/desmarcar como 100% definitiva",
+            texto: definitiva ? "✅ Definitiva" : "☐ Marcar 100% definitiva",
+            onClick: () => ejecutarYAvanzar(tipo, archivo, async () => {
+                if (!(await guardarEdicionSiHayCambios())) return false;
+                return marcarDefinitivaLigero(archivo, !definitiva);
+            }, { refrescarEstadisticas: false }),
+        });
+    } else {
+        const revisada = rowCompleta[headersCompletos.indexOf("Revisada")] === "Sí";
+        botones.push({
+            titulo: "Marcar/desmarcar como revisada",
+            texto: revisada ? "✅ Revisada" : "☐ Marcar revisada",
+            onClick: () => ejecutarYAvanzar(tipo, archivo, async () => {
+                if (!(await guardarEdicionSiHayCambios())) return false;
+                return alternarRevisadaLigero(rowCompleta, headersCompletos, tipo);
+            }),
+        });
+    }
+
+    botones.push({
+        titulo: "Enviar correo",
+        texto: "✉️ Enviar correo",
+        onClick: () => abrirModalEnviarCorreo(archivo),
+    });
+
+    botones.push({
+        titulo: "Este proveedor/empresa todavía no está dado de alta en la base de datos",
+        texto: "🏷️ Esperando alta",
+        onClick: () => ejecutarYAvanzar(tipo, archivo, () => enviarAEsperandoAlta(archivo, tipo)),
+    });
+
+    const descartar = tipo === "pendiente" ? descartarPendiente
+        : tipo === "incidencia" ? descartarIncidencia
+        : descartarFacturaCompletada;
+    botones.push({
+        titulo: "No es factura",
+        texto: "🗑️ No es factura",
+        onClick: () => ejecutarYAvanzar(tipo, archivo, () => descartar(archivo)),
+    });
+
+    cont.innerHTML = "";
+    botones.forEach(b => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "btn-secondary";
+        btn.title = b.titulo;
+        btn.textContent = b.texto;
+        btn.onclick = b.onClick;
+        cont.appendChild(btn);
+    });
+}
+
+// CIF de Buyer/Proveedor y nombre de Empresa/NombreProveedor: al escribir en
+// cualquiera de los cuatro campos se sugieren coincidencias de la tabla
+// maestra correspondiente (EmpresasClasificadas/ProveedoresClasificados) vía
+// /empresas-buscar y /proveedores-buscar, tanto por CIF como por nombre
+// (p.ej. escribir "ybarra" encuentra todas las empresas de Ybarra dadas de
+// alta); al elegir una, se rellena también el campo contrario (CIF <-> nombre)
+// automáticamente. Escribir sin elegir ninguna sugerencia sigue funcionando
+// igual que antes (input libre).
+const CAMPOS_AUTOCOMPLETAR = {
+    "Buyer":           { tipo: "empresa",   propio: "cif",    contraparte: "Empresa" },
+    "Empresa":         { tipo: "empresa",   propio: "nombre", contraparte: "Buyer" },
+    "Proveedor":       { tipo: "proveedor", propio: "cif",    contraparte: "NombreProveedor" },
+    "NombreProveedor": { tipo: "proveedor", propio: "nombre", contraparte: "Proveedor" },
+};
+
+function pintarCamposEdicion(headers, fila) {
     let html = "<table class='tabla-campos'>";
     html += "<tr><th style='width:160px'>Campo</th><th>Valor</th></tr>";
 
     headers.forEach((h, i) => {
         const val = String(fila[i] ?? "-").trim();
-        const esAlerta = val === MENSAJE_CIF_NO_ENCONTRADO;
+        const esAlerta = MENSAJES_CIF_ALERTA.has(val);
         const esGuion = !esAlerta && (val === "-" || val === "" || val === "None" || val === "null");
-        const readonly = camposReadonly.has(h);
+        const readonly = CAMPOS_READONLY_EDICION.has(h);
+        const autocompletar = CAMPOS_AUTOCOMPLETAR[h];
 
-        html += "<tr>";
+        html += `<tr data-campo="${h}" ${readonly ? "" : `onclick="activarCampoEdicion(edicionFactura.camposNavegables.indexOf('${h}'))"`}>`;
         html += `<td class="campo-nombre">${h}</td>`;
 
         if (readonly) {
             html += `<td class="campo-valor campo-readonly">${val}</td>`;
+        } else if (autocompletar) {
+            const valorInicial = (esAlerta || esGuion) ? "" : val;
+            const placeholderPropio = autocompletar.propio === "cif"
+                ? "CIF/NIF..."
+                : (autocompletar.tipo === "empresa" ? "Nombre empresa..." : "Nombre proveedor...");
+            html += `<td class="campo-valor campo-cif-wrap">
+                        <input
+                            type="text"
+                            data-col="${i}"
+                            data-autocompletar="${autocompletar.tipo}"
+                            data-propio="${autocompletar.propio}"
+                            data-contraparte="${autocompletar.contraparte}"
+                            value="${escaparAttr(valorInicial)}"
+                            placeholder="${esAlerta ? "⚠️ " + val : placeholderPropio}"
+                            autocomplete="off"
+                            oninput="registrarEditFactura(${i}, this.value); buscarSugerenciasCIF(this)"
+                            onfocus="buscarSugerenciasCIF(this)"
+                            onblur="ocultarSugerenciasCIFConRetraso(this)"
+                        >
+                        <div class="lista-sugerencias-cif" style="display:none"></div>
+                     </td>`;
         } else if (esAlerta) {
             html += `<td class="campo-valor campo-alerta">
                         <input
@@ -2275,9 +4252,363 @@ function pintarCamposEdicion(headers, fila) {
     document.getElementById("editarFacturaCampos").innerHTML = html;
 }
 
+// =========================================================
+// PANTALLA DIVIDIDA: VISOR DE PDF PROPIO, NAVEGACIÓN POR TECLADO,
+// RECUADRO AUTOMÁTICO Y SELECCIÓN MANUAL CON ARRASTRE
+// =========================================================
+
+async function cargarPdfEnEdicion(archivo) {
+    const cont = document.getElementById("editarFacturaPdfPaginas");
+    cont.innerHTML = "<span class='help'><span class='spinner'></span>Cargando PDF...</span>";
+    document.getElementById("editarFacturaCaja").style.display = "none";
+
+    try {
+        const res = await fetch("/pdf-factura-paginas/" + encodeURIComponent(archivo));
+        if (!res.ok) throw new Error("respuesta no ok");
+        const data = await res.json();
+
+        if (!edicionFactura || edicionFactura.archivo !== archivo) return; // se cerró/cambió mientras cargaba
+
+        edicionFactura.paginasInfo = data.paginas || [];
+
+        cont.innerHTML = "";
+        edicionFactura.paginasInfo.forEach((pagina, i) => {
+            const img = document.createElement("img");
+            img.src = "data:image/png;base64," + pagina.imagen_base64;
+            img.dataset.pagina = i;
+            img.alt = `Página ${i + 1}`;
+            img.onload = () => {
+                if (edicionFactura && edicionFactura.camposNavegables.length) {
+                    pintarCajaCampoActivo(edicionFactura.camposNavegables[edicionFactura.campoActivoIdx]);
+                }
+            };
+            cont.appendChild(img);
+        });
+
+        if (edicionFactura.paginasInfo.length === 0) {
+            cont.innerHTML = "<span class='help'>No se ha podido renderizar el PDF.</span>";
+        }
+    } catch (e) {
+        if (edicionFactura && edicionFactura.archivo === archivo) {
+            cont.innerHTML = "<span class='help'>No se ha podido cargar el PDF.</span>";
+        }
+    }
+}
+
+async function cargarPosicionesEdicion() {
+    const archivo = edicionFactura.archivo;
+
+    try {
+        const res = await fetch("/posiciones-factura", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ archivo, fila_completa: edicionFactura.fila }),
+        });
+        const data = await res.json();
+        if (!edicionFactura || edicionFactura.archivo !== archivo) return;
+        edicionFactura.cajasCampos = data.campos || {};
+    } catch (e) {
+        if (edicionFactura && edicionFactura.archivo === archivo) edicionFactura.cajasCampos = {};
+    }
+
+    if (edicionFactura && edicionFactura.camposNavegables.length) {
+        pintarCajaCampoActivo(edicionFactura.camposNavegables[edicionFactura.campoActivoIdx]);
+    }
+}
+
+function manejarTecladoEdicion(ev) {
+    if (!edicionFactura) return;
+
+    if (ev.key === "ArrowDown" || ev.key === "Enter") {
+        ev.preventDefault();
+        moverCampoActivo(1);
+    } else if (ev.key === "ArrowUp") {
+        ev.preventDefault();
+        moverCampoActivo(-1);
+    }
+}
+
+function moverCampoActivo(delta) {
+    if (!edicionFactura || !edicionFactura.camposNavegables.length) return;
+    const n = edicionFactura.camposNavegables.length;
+    activarCampoEdicion(((edicionFactura.campoActivoIdx + delta) % n + n) % n);
+}
+
+function activarCampoEdicion(idx) {
+    if (!edicionFactura || idx < 0 || idx >= edicionFactura.camposNavegables.length) return;
+
+    edicionFactura.campoActivoIdx = idx;
+    const campo = edicionFactura.camposNavegables[idx];
+
+    document.querySelectorAll("#editarFacturaCampos tr[data-campo]").forEach(tr =>
+        tr.classList.toggle("campo-activo", tr.dataset.campo === campo)
+    );
+
+    const fila = document.querySelector(`#editarFacturaCampos tr[data-campo="${CSS.escape(campo)}"]`);
+    if (fila) {
+        fila.scrollIntoView({ block: "nearest" });
+
+        // Si el valor ya se dio por bueno (span + botón ✎), abrirlo directamente
+        // al llegar a este campo: así se puede corregir sin un clic de más.
+        const btnEditar = fila.querySelector('button[title="Editar"]');
+        if (btnEditar && btnEditar.style.display !== "none") {
+            abrirEditInline(btnEditar);
+        } else {
+            const input = fila.querySelector("input");
+            if (input) { input.focus(); if (input.select) input.select(); }
+        }
+    }
+
+    pintarCajaCampoActivo(campo);
+}
+
+function pintarCajaCampoActivo(campo) {
+    const cajaDiv = document.getElementById("editarFacturaCaja");
+    document.getElementById("editarFacturaCajaManual").style.display = "none";
+
+    const caja = edicionFactura && edicionFactura.cajasCampos && edicionFactura.cajasCampos[campo];
+    const imgPagina = caja
+        ? document.querySelector(`#editarFacturaPdfPaginas img[data-pagina="${caja.pagina}"]`)
+        : null;
+
+    if (!caja || !imgPagina || !imgPagina.naturalWidth) {
+        cajaDiv.style.display = "none";
+        return;
+    }
+
+    const escala = imgPagina.clientWidth / imgPagina.naturalWidth;
+    const contenedor = document.getElementById("editarFacturaPdfScroll");
+
+    cajaDiv.style.left = (imgPagina.offsetLeft + caja.x0 * escala) + "px";
+    cajaDiv.style.top = (imgPagina.offsetTop + caja.y0 * escala) + "px";
+    cajaDiv.style.width = ((caja.x1 - caja.x0) * escala) + "px";
+    cajaDiv.style.height = ((caja.y1 - caja.y0) * escala) + "px";
+    cajaDiv.style.display = "block";
+
+    contenedor.scrollTo({
+        top: Math.max(imgPagina.offsetTop + caja.y0 * escala - contenedor.clientHeight / 3, 0),
+        behavior: "smooth",
+    });
+}
+
+function alternarSeleccionManual() {
+    if (!edicionFactura) return;
+    edicionFactura.seleccionManualActiva = !edicionFactura.seleccionManualActiva;
+    document.getElementById("btnSeleccionarEnPdf").classList.toggle("activo", edicionFactura.seleccionManualActiva);
+    document.getElementById("editarFacturaPdfScroll").style.cursor = edicionFactura.seleccionManualActiva ? "crosshair" : "";
+}
+
+let _arrastreManual = null;
+
+function _posicionEnScroll(ev) {
+    const contenedor = document.getElementById("editarFacturaPdfScroll");
+    const rect = contenedor.getBoundingClientRect();
+    return {
+        x: ev.clientX - rect.left + contenedor.scrollLeft,
+        y: ev.clientY - rect.top + contenedor.scrollTop,
+    };
+}
+
+function iniciarArrastreManual(ev) {
+    if (!edicionFactura || !edicionFactura.seleccionManualActiva) return;
+    _arrastreManual = _posicionEnScroll(ev);
+    ev.preventDefault();
+}
+
+function moverArrastreManual(ev) {
+    if (!_arrastreManual) return;
+    const actual = _posicionEnScroll(ev);
+    const cajaDiv = document.getElementById("editarFacturaCajaManual");
+    cajaDiv.style.left = Math.min(_arrastreManual.x, actual.x) + "px";
+    cajaDiv.style.top = Math.min(_arrastreManual.y, actual.y) + "px";
+    cajaDiv.style.width = Math.abs(actual.x - _arrastreManual.x) + "px";
+    cajaDiv.style.height = Math.abs(actual.y - _arrastreManual.y) + "px";
+    cajaDiv.style.display = "block";
+}
+
+async function terminarArrastreManual(ev) {
+    if (!_arrastreManual) return;
+    const inicio = _arrastreManual;
+    const fin = _posicionEnScroll(ev);
+    _arrastreManual = null;
+
+    if (Math.abs(fin.x - inicio.x) < 6 || Math.abs(fin.y - inicio.y) < 6) {
+        document.getElementById("editarFacturaCajaManual").style.display = "none";
+        return; // arrastre demasiado pequeño: probablemente un clic accidental
+    }
+
+    const yTope = Math.min(inicio.y, fin.y);
+    let pagina = null, escala = 1, imgElegida = null;
+    for (const img of document.querySelectorAll("#editarFacturaPdfPaginas img")) {
+        if (yTope >= img.offsetTop && yTope <= img.offsetTop + img.clientHeight) {
+            pagina = parseInt(img.dataset.pagina, 10);
+            escala = img.clientWidth / img.naturalWidth;
+            imgElegida = img;
+            break;
+        }
+    }
+
+    document.getElementById("editarFacturaCajaManual").style.display = "none";
+    if (pagina === null || !imgElegida || !escala) return;
+
+    const x0 = (Math.min(inicio.x, fin.x) - imgElegida.offsetLeft) / escala;
+    const y0 = (Math.min(inicio.y, fin.y) - imgElegida.offsetTop) / escala;
+    const x1 = (Math.max(inicio.x, fin.x) - imgElegida.offsetLeft) / escala;
+    const y1 = (Math.max(inicio.y, fin.y) - imgElegida.offsetTop) / escala;
+
+    const campo = edicionFactura.camposNavegables[edicionFactura.campoActivoIdx];
+    edicionFactura.cajasCampos[campo] = { pagina, x0, y0, x1, y1 };
+    pintarCajaCampoActivo(campo);
+
+    try {
+        const res = await fetch("/ocr-region", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ archivo: edicionFactura.archivo, pagina, x0, y0, x1, y1 }),
+        });
+        const data = await res.json();
+
+        if (res.status === 503) {
+            mostrarToast(data.detail || "Tesseract OCR no está disponible en el servidor.", "error");
+        } else if (data.texto) {
+            establecerValorCampoEdicion(campo, data.texto);
+            const fila = document.querySelector(`#editarFacturaCampos tr[data-campo="${CSS.escape(campo)}"]`);
+            const input = fila && fila.querySelector("input");
+            if (input) { input.focus(); input.select(); }
+        } else {
+            mostrarToast("No se ha podido leer texto ahí; escribe el valor a mano.", "error");
+        }
+    } catch (e) {
+        mostrarToast("Error de conexión al leer la selección.", "error");
+    }
+}
+
+document.getElementById("editarFacturaPdfScroll").addEventListener("mousedown", iniciarArrastreManual);
+document.getElementById("editarFacturaPdfScroll").addEventListener("mousemove", moverArrastreManual);
+document.getElementById("editarFacturaPdfScroll").addEventListener("mouseup", terminarArrastreManual);
+
 function registrarEditFactura(colIndex, valor) {
     if (!edicionFactura) return;
     edicionFactura.edits[colIndex] = valor.trim() || "-";
+}
+
+// Rellena por su NOMBRE de columna (no por índice) el campo contrario
+// (CIF <-> nombre) cuando se elige una sugerencia de autocompletado: funciona
+// igual sea cual sea la variante visual con la que pintarCamposEdicion haya
+// renderizado ese campo (alerta / vacío / valor ya resuelto), porque las
+// tres tienen siempre un <input data-col="..."> de por medio.
+function establecerValorCampoEdicion(nombreCampo, valor) {
+    if (!edicionFactura) return;
+    const idx = edicionFactura.headers.indexOf(nombreCampo);
+    if (idx === -1) return;
+
+    registrarEditFactura(idx, valor);
+
+    const input = document.querySelector(`#editarFacturaCampos input[data-col="${idx}"]`);
+    if (!input) return;
+    input.value = valor;
+
+    const span = input.closest("td")?.querySelector("span.valor-ok");
+    if (span) span.textContent = valor.trim() || "-";
+}
+
+let _timeoutSugerenciasCIF = null;
+
+function buscarSugerenciasCIF(input) {
+    clearTimeout(_timeoutSugerenciasCIF);
+    const texto = input.value.trim();
+    const lista = input.nextElementSibling;
+    if (!lista) return;
+
+    if (texto.length < 2) {
+        lista.style.display = "none";
+        lista.innerHTML = "";
+        return;
+    }
+
+    _timeoutSugerenciasCIF = setTimeout(() => cargarSugerenciasCIF(input, texto), 250);
+}
+
+async function cargarSugerenciasCIF(input, texto) {
+    const tipo = input.dataset.autocompletar; // "empresa" | "proveedor"
+    const endpoint = tipo === "empresa" ? "/empresas-buscar" : "/proveedores-buscar";
+
+    let resultados = [];
+    try {
+        const res = await fetch(`${endpoint}?q=${encodeURIComponent(texto)}`);
+        if (res.ok) {
+            resultados = (await res.json()).resultados || [];
+        }
+    } catch (e) {
+        return;
+    }
+
+    // El usuario puede haber seguido escribiendo mientras llegaba la respuesta.
+    if (input.value.trim() !== texto || document.activeElement !== input) return;
+
+    pintarSugerenciasCIF(input, resultados, tipo);
+}
+
+function pintarSugerenciasCIF(input, resultados, tipo) {
+    const lista = input.nextElementSibling;
+    if (!lista) return;
+
+    if (resultados.length === 0) {
+        lista.innerHTML = `<div class="sugerencia-cif-vacio">Sin coincidencias en ${tipo === "empresa" ? "Empresas" : "Proveedores"}</div>`;
+        lista.style.display = "block";
+        return;
+    }
+
+    lista.innerHTML = resultados.map((r, idx) => {
+        const noValida = tipo === "empresa" ? !r.activa : !!r.bloqueado;
+        const etiquetaEstado = tipo === "empresa"
+            ? (r.activa ? "" : `<span class="sugerencia-cif-estado">inactiva</span>`)
+            : (r.bloqueado ? `<span class="sugerencia-cif-estado">bloqueado</span>` : "");
+        const ubicacion = (tipo === "proveedor" && (r.poblacion || r.direccion))
+            ? ` - ${[r.poblacion, r.direccion].filter(Boolean).map(escaparAttr).join(", ")}`
+            : "";
+        return `<div class="sugerencia-cif${noValida ? " sugerencia-cif-inactiva" : ""}"
+                     data-idx="${idx}"
+                     onmousedown="seleccionarSugerenciaCIF(this, event)">
+                    <span class="sugerencia-cif-codigo">${escaparAttr(r.cif)}</span> — ${escaparAttr(r.nombre)}${ubicacion}${etiquetaEstado}
+                </div>`;
+    }).join("");
+
+    lista._resultados = resultados;
+    lista._input = input;
+    lista.style.display = "block";
+}
+
+function seleccionarSugerenciaCIF(divSugerencia, ev) {
+    if (ev) ev.preventDefault();
+
+    const lista = divSugerencia.closest(".lista-sugerencias-cif");
+    const input = lista?._input;
+    const resultado = lista?._resultados?.[parseInt(divSugerencia.dataset.idx, 10)];
+    if (!input || !resultado) return;
+
+    const colIndex = parseInt(input.dataset.col, 10);
+    const esPropioNombre = input.dataset.propio === "nombre";
+    const valorPropio = esPropioNombre ? resultado.nombre : resultado.cif;
+    const valorContraparte = esPropioNombre ? resultado.cif : resultado.nombre;
+
+    input.value = valorPropio;
+    registrarEditFactura(colIndex, valorPropio);
+
+    establecerValorCampoEdicion(input.dataset.contraparte, valorContraparte);
+
+    lista.style.display = "none";
+    lista.innerHTML = "";
+}
+
+function ocultarSugerenciasCIFConRetraso(input) {
+    // Retraso para dar tiempo a que el mousedown sobre una sugerencia (que
+    // ya hace preventDefault) se procese antes de ocultar la lista por el
+    // blur del input.
+    setTimeout(() => {
+        const lista = input.nextElementSibling;
+        if (lista) lista.style.display = "none";
+    }, 150);
 }
 
 function abrirEditInline(btn) {
@@ -2301,18 +4632,80 @@ function cerrarEditInline(input) {
 
 function cerrarModalEditarFactura() {
     document.getElementById("overlayEditarFactura").style.display = "none";
+    document.removeEventListener("keydown", manejarTecladoEdicion);
+    document.getElementById("editarFacturaPdfPaginas").innerHTML = "";
+    document.getElementById("editarFacturaCaja").style.display = "none";
+    document.getElementById("editarFacturaCajaManual").style.display = "none";
+    _arrastreManual = null;
     edicionFactura = null;
+}
+
+function construirFilaFinalEdicion() {
+    const filaFinal = [...edicionFactura.fila];
+    for (const [col, val] of Object.entries(edicionFactura.edits)) {
+        filaFinal[parseInt(col)] = val;
+    }
+    return filaFinal;
+}
+
+// Guarda los cambios en el historial de pendientes/incidencias SIN mover la
+// factura a completadas: no exige los campos obligatorios, no toca SQL ni
+// marca "definitiva", y no mueve el PDF de carpeta. Pensado para dejar un
+// progreso parcial guardado (p.ej. mientras falta un dato que aún no se
+// tiene) y seguir completándola más tarde. El modal se queda abierto.
+async function guardarBorradorFactura() {
+    if (!edicionFactura) return;
+
+    const filaFinal = construirFilaFinalEdicion();
+
+    const btn = document.getElementById("btnGuardarBorradorFactura");
+    const btnPrincipal = document.getElementById("btnGuardarEdicionFactura");
+    btn.disabled = true;
+    btnPrincipal.disabled = true;
+    const textoOriginalBtn = btn.textContent;
+    btn.textContent = "Guardando...";
+
+    try {
+        const res = await fetch("/guardar-cambios-pendiente", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                archivo: edicionFactura.archivo,
+                fila_completa: filaFinal,
+                usuario: obtenerUsuarioActual(),
+            }),
+        });
+
+        if (!res.ok) {
+            const err = await res.json();
+            mostrarToast(err.detail || "Error al guardar.", "error");
+            return;
+        }
+
+        mostrarToast(`✓ Cambios guardados en ${edicionFactura.archivo} (sigue pendiente de completar).`, "ok");
+
+        if (edicionFactura.tipo === "incidencia") {
+            await cargarIncidenciasCompleto();
+        } else {
+            await cargarPendientesCompleto();
+        }
+    } catch (e) {
+        mostrarToast("Error de conexión.", "error");
+    } finally {
+        btn.disabled = false;
+        btnPrincipal.disabled = false;
+        btn.textContent = textoOriginalBtn;
+    }
 }
 
 async function guardarEdicionFactura() {
     if (!edicionFactura) return;
 
-    const filaFinal = [...edicionFactura.fila];
-    for (const [col, val] of Object.entries(edicionFactura.edits)) {
-        filaFinal[parseInt(col)] = val;
-    }
+    const tipo = edicionFactura.tipo;
+    const archivo = edicionFactura.archivo;
+    const esPendienteOIncidencia = tipo === "pendiente" || tipo === "incidencia";
 
-    const esPendienteOIncidencia = edicionFactura.tipo === "pendiente" || edicionFactura.tipo === "incidencia";
+    const filaFinal = construirFilaFinalEdicion();
 
     const estadoMsg = document.getElementById("estadoEdicionFactura");
     estadoMsg.textContent = "";
@@ -2335,124 +4728,66 @@ async function guardarEdicionFactura() {
     }
 
     const btn = document.getElementById("btnGuardarEdicionFactura");
+    const btnBorrador = document.getElementById("btnGuardarBorradorFactura");
     btn.disabled = true;
+    btnBorrador.disabled = true;
     const textoOriginalBtn = btn.textContent;
     btn.textContent = "Guardando...";
 
     try {
-        let res;
-        if (esPendienteOIncidencia) {
-            res = await fetch("/confirmar-factura", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    archivo: edicionFactura.archivo,
-                    fila_completa: filaFinal,
-                    usuario: "marqueros",
-                }),
-            });
-        } else {
-            res = await fetch("/actualizar-factura-completada", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    archivo: edicionFactura.archivo,
-                    fila_completa: filaFinal,
-                    origen: edicionFactura.origen || "manual",
-                    usuario: "marqueros",
-                }),
-            });
-        }
-
-        if (!res.ok) {
-            const err = await res.json();
-
-            if (res.status === 404 && esPendienteOIncidencia) {
-                mostrarToast(`${edicionFactura.archivo} ya no está pendiente (se guardó antes). Se ha quitado de la lista.`, "error");
-                cerrarModalEditarFactura();
-                if (edicionFactura.tipo === "incidencia") {
-                    quitarDeIncidenciasCache(edicionFactura.archivo);
-                } else {
-                    quitarDePendientesCache(edicionFactura.archivo);
-                }
-                return;
+        await ejecutarYAvanzar(tipo, archivo, async () => {
+            let res;
+            if (esPendienteOIncidencia) {
+                res = await fetch("/confirmar-factura", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ archivo, fila_completa: filaFinal, usuario: obtenerUsuarioActual() }),
+                });
+            } else {
+                res = await fetch("/actualizar-factura-completada", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        archivo,
+                        fila_completa: filaFinal,
+                        origen: edicionFactura.origen || "manual",
+                        usuario: obtenerUsuarioActual(),
+                    }),
+                });
             }
 
-            mostrarToast(err.detail || "Error al guardar.", "error");
-            return;
-        }
+            if (!res.ok) {
+                const err = await res.json();
 
-        const tipo = edicionFactura.tipo;
-        mostrarToast(
-            esPendienteOIncidencia
-                ? `✓ ${edicionFactura.archivo} movida a completadas.`
-                : `✓ ${edicionFactura.archivo} actualizada.`,
-            "ok"
-        );
-        cerrarModalEditarFactura();
+                if (res.status === 404 && esPendienteOIncidencia) {
+                    mostrarToast(`${archivo} ya no está pendiente (se guardó antes). Se ha quitado de la lista.`, "error");
+                    if (tipo === "incidencia") quitarDeIncidenciasCache(archivo);
+                    else quitarDePendientesCache(archivo);
+                    return true; // ya no está en la lista: seguimos igualmente a la siguiente de tu lote
+                }
 
-        if (tipo === "pendiente") {
-            quitarDePendientesCache(edicionFactura.archivo);
-            await cargarFacturasCompletadas();
-        } else if (tipo === "incidencia") {
-            quitarDeIncidenciasCache(edicionFactura.archivo);
-            await cargarFacturasCompletadas();
-        } else {
-            await cargarFacturasCompletadas();
-        }
-        cargarEstadisticas();
+                mostrarToast(err.detail || "Error al guardar.", "error");
+                return false;
+            }
+
+            mostrarToast(
+                esPendienteOIncidencia ? `✓ ${archivo} movida a completadas.` : `✓ ${archivo} actualizada.`,
+                "ok"
+            );
+
+            if (tipo === "pendiente") quitarDePendientesCache(archivo);
+            else if (tipo === "incidencia") quitarDeIncidenciasCache(archivo);
+
+            liberarReservas([archivo]);
+            return true;
+        });
 
     } catch (e) {
         mostrarToast("Error de conexión.", "error");
     } finally {
         btn.disabled = false;
+        btnBorrador.disabled = false;
         btn.textContent = textoOriginalBtn;
-    }
-}
-
-// =========================================================
-// PESTAÑA 4: SUBIR FACTURAS
-// =========================================================
-
-async function subirFactura() {
-    const input = document.getElementById("inputFactura");
-    const urgente = document.getElementById("chkUrgente").checked;
-    const estado = document.getElementById("estadoSubida");
-    const btnSubir = document.getElementById("btnSubir");
-
-    if (!input.files || input.files.length === 0) {
-        mostrarToast("Selecciona un PDF antes de subir.", "error");
-        return;
-    }
-
-    const formData = new FormData();
-    formData.append("factura", input.files[0]);
-    formData.append("urgente", urgente);
-
-    btnSubir.disabled = true;
-    estado.textContent = "Subiendo...";
-
-    try {
-        const res = await fetch("/subir-factura", { method: "POST", body: formData });
-        const data = await res.json();
-
-        if (!res.ok) {
-            mostrarToast(data.detail || "Error al subir la factura.", "error");
-            return;
-        }
-
-        mostrarToast(`✓ Factura subida${urgente ? " como URGENTE" : ""}.`, "ok");
-        input.value = "";
-        document.getElementById("chkUrgente").checked = false;
-
-        cambiarTab("manual");
-        cargarPendientesCompleto();
-
-    } catch (e) {
-        mostrarToast("Error de conexión al subir la factura.", "error");
-    } finally {
-        btnSubir.disabled = false;
-        estado.textContent = "";
     }
 }
 
@@ -2460,11 +4795,23 @@ async function subirFactura() {
 // INIT
 // =========================================================
 
-cargarEstadisticas();
-cargarPendientesCompleto();
-cargarIncidenciasCompleto();
-cargarErroresCompleto();
-cargarFacturasCompletadas();
+async function inicializarApp() {
+    obtenerUsuarioActual();
+    actualizarWidgetUsuario();
+    await cargarMisReservas();
+
+    cargarEstadisticas();
+    cargarPendientesCompleto();
+    cargarIncidenciasCompleto();
+    cargarEsperandoAltaCompleto();
+    cargarErroresCompleto();
+    cargarFacturasCompletadas();
+    cargarDuplicadosCompleto();
+    cargarNoFacturaCompleto();
+    cargarVistaGlobal();
+}
+
+inicializarApp();
 
 </script>
 </body>

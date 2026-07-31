@@ -9,3 +9,12 @@ __pycache__/
 
 # Historial
 historial/
+
+# Facturas reales de proveedor (datos sensibles; carpeta heredada de antes de
+# unificar app_auto/app_manual, ya no la usa la app: FACTURAS_DIR vive fuera
+# del repositorio)
+app_auto/
+
+# Estado local, no forma parte del proyecto
+.claude/
+.lock_procesamiento_automatico

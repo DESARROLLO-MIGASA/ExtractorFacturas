@@ -84,6 +84,38 @@ def _conectar():
     return pyodbc.connect(conn_str, timeout=5)
 
 
+_ESQUEMAS_ASEGURADOS = set()
+
+
+def _una_vez_por_proceso(clave, func):
+    """Envuelve una función "asegurar esquema" (CREATE TABLE IF NOT EXISTS +
+    ALTER TABLE de migración con su propia comprobación previa) para que solo
+    se ejecute la primera vez que se llama con esta `clave` en el proceso en
+    marcha: el esquema no cambia mientras el proceso sigue vivo, así que
+    repetir esas comprobaciones en cada guardado/lectura -como se hacía antes,
+    en cada una de las decenas de llamadas de este módulo- solo añadía una
+    ida y vuelta más al servidor sin ganar nada. Si el proceso se reinicia
+    (p.ej. al desplegar un cambio), se vuelve a comprobar una vez, igual que
+    la primera vez que arranca."""
+    def envoltorio(cursor):
+        if clave in _ESQUEMAS_ASEGURADOS:
+            return
+        func(cursor)
+        _ESQUEMAS_ASEGURADOS.add(clave)
+    return envoltorio
+
+
+def _alter_columna_si_procede(cursor, descripcion, sentencia_sql):
+    """Ejecuta un ALTER TABLE de migración "best effort": si el login de SQL
+    no tiene permiso de DDL (o cualquier otro fallo puntual), se registra un
+    aviso y se continúa sin la columna nueva, en vez de tirar abajo el
+    guardado/lectura de facturas que depende de esta misma tabla."""
+    try:
+        cursor.execute(sentencia_sql)
+    except Exception as e:
+        print(f"AVISO: no se pudo migrar el esquema de {TABLA} ({descripcion}, {MOTOR}): {e}")
+
+
 def _crear_tabla_si_no_existe(cursor):
     if MOTOR == "sqlite":
         columnas_sql = ",\n".join(f"[{c}] TEXT" for c in COLUMNAS)
@@ -98,11 +130,13 @@ def _crear_tabla_si_no_existe(cursor):
         """)
         columnas_existentes = {row[1] for row in cursor.execute(f"PRAGMA table_info({TABLA})").fetchall()}
         if "Definitiva" not in columnas_existentes:
-            cursor.execute(f"ALTER TABLE {TABLA} ADD COLUMN Definitiva INTEGER DEFAULT 0")
+            _alter_columna_si_procede(cursor, "Definitiva", f"ALTER TABLE {TABLA} ADD COLUMN Definitiva INTEGER DEFAULT 0")
         if "UsuarioDefinitiva" not in columnas_existentes:
-            cursor.execute(f"ALTER TABLE {TABLA} ADD COLUMN UsuarioDefinitiva TEXT")
+            _alter_columna_si_procede(cursor, "UsuarioDefinitiva", f"ALTER TABLE {TABLA} ADD COLUMN UsuarioDefinitiva TEXT")
         if "FechaDefinitiva" not in columnas_existentes:
-            cursor.execute(f"ALTER TABLE {TABLA} ADD COLUMN FechaDefinitiva TEXT")
+            _alter_columna_si_procede(cursor, "FechaDefinitiva", f"ALTER TABLE {TABLA} ADD COLUMN FechaDefinitiva TEXT")
+        if "Duplicado" not in columnas_existentes:
+            _alter_columna_si_procede(cursor, "Duplicado", f"ALTER TABLE {TABLA} ADD COLUMN Duplicado INTEGER DEFAULT 0")
         return
 
     # PedidoCliente puede traer varios números de pedido concatenados con ";"
@@ -121,22 +155,29 @@ def _crear_tabla_si_no_existe(cursor):
             CONSTRAINT UQ_{TABLA}_Archivo UNIQUE (Archivo)
         )
     """)
-    cursor.execute(f"""
+    _alter_columna_si_procede(cursor, "PedidoCliente", f"""
         IF COL_LENGTH('{TABLA}', 'PedidoCliente') IS NOT NULL AND COL_LENGTH('{TABLA}', 'PedidoCliente') < 1000
         ALTER TABLE {TABLA} ALTER COLUMN [PedidoCliente] NVARCHAR(1000) NULL
     """)
-    cursor.execute(f"""
+    _alter_columna_si_procede(cursor, "Definitiva", f"""
         IF COL_LENGTH('{TABLA}', 'Definitiva') IS NULL
         ALTER TABLE {TABLA} ADD Definitiva BIT NOT NULL DEFAULT 0
     """)
-    cursor.execute(f"""
+    _alter_columna_si_procede(cursor, "UsuarioDefinitiva", f"""
         IF COL_LENGTH('{TABLA}', 'UsuarioDefinitiva') IS NULL
         ALTER TABLE {TABLA} ADD UsuarioDefinitiva NVARCHAR(100) NULL
     """)
-    cursor.execute(f"""
+    _alter_columna_si_procede(cursor, "FechaDefinitiva", f"""
         IF COL_LENGTH('{TABLA}', 'FechaDefinitiva') IS NULL
         ALTER TABLE {TABLA} ADD FechaDefinitiva DATETIME NULL
     """)
+    _alter_columna_si_procede(cursor, "Duplicado", f"""
+        IF COL_LENGTH('{TABLA}', 'Duplicado') IS NULL
+        ALTER TABLE {TABLA} ADD Duplicado BIT NOT NULL DEFAULT 0
+    """)
+
+
+_crear_tabla_si_no_existe = _una_vez_por_proceso(TABLA, _crear_tabla_si_no_existe)
 
 
 def guardar_factura_examinada_sql(fila, origen):
@@ -192,25 +233,76 @@ def listar_facturas_examinadas_sql():
     """
     Devuelve todas las filas de FacturasExaminadas como lista de dicts
     (una factura "completada", ya sea auto o confirmada manualmente).
-    Incluye Origen, Definitiva, UsuarioDefinitiva y FechaDefinitiva.
+    Incluye Origen, Definitiva, UsuarioDefinitiva, FechaDefinitiva y Duplicado.
     Devuelve [] si la consulta falla (no propaga excepciones).
+
+    Si la columna Duplicado todavía no existe físicamente en la tabla (p.ej.
+    porque el login de SQL no tiene permiso de ALTER TABLE y la migración
+    automática no pudo crearla), se repite la consulta sin ella para no
+    romper el resto de pestañas; Duplicado queda a "0" en ese caso.
     """
-    columnas_todas = COLUMNAS + ["Origen", "Definitiva", "UsuarioDefinitiva", "FechaDefinitiva"]
+    columnas_base = COLUMNAS + ["Origen", "Definitiva", "UsuarioDefinitiva", "FechaDefinitiva"]
+    columnas_todas = columnas_base + ["Duplicado"]
     try:
         with _conectar() as conn:
             cursor = conn.cursor()
             _crear_tabla_si_no_existe(cursor)
             conn.commit()
 
-            columnas_sql = ", ".join(f"[{c}]" for c in columnas_todas)
-            cursor.execute(f"SELECT {columnas_sql} FROM {TABLA}")
-            filas = cursor.fetchall()
-
-        return [dict(zip(columnas_todas, fila)) for fila in filas]
+            try:
+                columnas_sql = ", ".join(f"[{c}]" for c in columnas_todas)
+                cursor.execute(f"SELECT {columnas_sql} FROM {TABLA}")
+                filas = cursor.fetchall()
+                return [dict(zip(columnas_todas, fila)) for fila in filas]
+            except Exception as e:
+                print(f"AVISO: la columna Duplicado no está disponible en {TABLA} ({MOTOR}): {e}")
+                columnas_sql = ", ".join(f"[{c}]" for c in columnas_base)
+                cursor.execute(f"SELECT {columnas_sql} FROM {TABLA}")
+                filas = cursor.fetchall()
+                return [dict(zip(columnas_base, fila), Duplicado="0") for fila in filas]
 
     except Exception as e:
         print(f"AVISO: no se pudieron listar las facturas examinadas ({MOTOR}): {e}")
         return []
+
+
+def obtener_factura_examinada_sql(archivo):
+    """
+    Como listar_facturas_examinadas_sql, pero para una sola factura (por
+    Archivo, columna UNIQUE): devuelve su dict, o None si no existe.
+
+    Pensada para los sitios que necesitan una fila conocida por su nombre
+    -no recorrer la tabla entera para luego quedarse con una sola- como
+    marcar_factura_definitiva o actualizar_factura_completada en logic.py:
+    esas llamadas a listar_facturas_examinadas_sql() traían de golpe las
+    ~1000 filas de la tabla (más de 1s contra el SQL Server remoto) solo
+    para buscar la fila de UN archivo, en un punto del flujo -marcar
+    definitiva, guardar una corrección- que se repite muchas veces seguidas
+    mientras se revisan facturas.
+    """
+    columnas_base = COLUMNAS + ["Origen", "Definitiva", "UsuarioDefinitiva", "FechaDefinitiva"]
+    columnas_todas = columnas_base + ["Duplicado"]
+    try:
+        with _conectar() as conn:
+            cursor = conn.cursor()
+            _crear_tabla_si_no_existe(cursor)
+            conn.commit()
+
+            try:
+                columnas_sql = ", ".join(f"[{c}]" for c in columnas_todas)
+                cursor.execute(f"SELECT {columnas_sql} FROM {TABLA} WHERE Archivo = ?", (archivo,))
+                fila = cursor.fetchone()
+                return dict(zip(columnas_todas, fila)) if fila else None
+            except Exception as e:
+                print(f"AVISO: la columna Duplicado no está disponible en {TABLA} ({MOTOR}): {e}")
+                columnas_sql = ", ".join(f"[{c}]" for c in columnas_base)
+                cursor.execute(f"SELECT {columnas_sql} FROM {TABLA} WHERE Archivo = ?", (archivo,))
+                fila = cursor.fetchone()
+                return dict(zip(columnas_base, fila), Duplicado="0") if fila else None
+
+    except Exception as e:
+        print(f"AVISO: no se pudo consultar la factura {archivo} ({MOTOR}): {e}")
+        return None
 
 
 def marcar_factura_definitiva_sql(archivo, definitiva, usuario):
@@ -232,6 +324,28 @@ def marcar_factura_definitiva_sql(archivo, definitiva, usuario):
 
     except Exception as e:
         print(f"AVISO: no se pudo marcar la factura como definitiva ({MOTOR}): {e}")
+        return False
+
+
+def marcar_duplicado_sql(archivo, valor):
+    """Marca (o desmarca) una factura de FacturasExaminadas como duplicado
+    de otra ya existente (mismo NumeroFactura+Proveedor+Buyer)."""
+    try:
+        with _conectar() as conn:
+            cursor = conn.cursor()
+            _crear_tabla_si_no_existe(cursor)
+            conn.commit()
+
+            cursor.execute(
+                f"UPDATE {TABLA} SET Duplicado = ? WHERE Archivo = ?",
+                (1 if valor else 0, archivo),
+            )
+            conn.commit()
+
+        return True
+
+    except Exception as e:
+        print(f"AVISO: no se pudo marcar la factura como duplicado ({MOTOR}): {e}")
         return False
 
 
@@ -262,6 +376,9 @@ def _crear_tabla_revisadas_si_no_existe(cursor):
             CONSTRAINT UQ_{TABLA_REVISADAS}_Archivo UNIQUE (Archivo)
         )
     """)
+
+
+_crear_tabla_revisadas_si_no_existe = _una_vez_por_proceso(TABLA_REVISADAS, _crear_tabla_revisadas_si_no_existe)
 
 
 def marcar_revisada_sql(archivo, revisada, usuario):
@@ -320,6 +437,277 @@ def archivos_revisados_sql():
         return set()
 
 
+# =========================================================
+# RESERVAS (varias personas revisando a la vez, sin pisarse)
+# =========================================================
+#
+# Varias personas (2-6) revisan facturas a la vez desde distintos
+# navegadores; para que no dos elijan la misma, cada una puede "reservar"
+# un lote de archivos a su nombre. Es un estado puramente transitorio (no
+# hay login real: el "usuario" es el que cada persona escribe una vez y el
+# navegador recuerda, ver obtenerUsuarioActual() en el frontend), así que
+# vive en su propia tabla, igual que FacturasRevisadas.
+#
+# La caducidad "de verdad" (cerrar la pestaña, o 30 minutos sin
+# interactuar) la dispara el propio navegador llamando a
+# liberar_reservas_sql explícitamente (ver el latido en el frontend);
+# minutos_expiracion aquí es solo la red de seguridad del servidor para
+# desconexiones bruscas en las que ese aviso explícito no llegó a mandarse
+# (se cierra el portátil, se corta la red...).
+
+TABLA_RESERVAS = "ReservasFacturas"
+
+
+def _crear_tabla_reservas_si_no_existe(cursor):
+    if MOTOR == "sqlite":
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS {TABLA_RESERVAS} (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                Archivo TEXT NOT NULL UNIQUE,
+                Usuario TEXT NOT NULL,
+                FechaReserva TEXT NOT NULL,
+                UltimaActividad TEXT NOT NULL
+            )
+        """)
+        return
+
+    cursor.execute(f"""
+        IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = '{TABLA_RESERVAS}')
+        CREATE TABLE {TABLA_RESERVAS} (
+            Id INT IDENTITY(1,1) PRIMARY KEY,
+            Archivo NVARCHAR(255) NOT NULL,
+            Usuario NVARCHAR(100) NOT NULL,
+            FechaReserva DATETIME NOT NULL,
+            UltimaActividad DATETIME NOT NULL,
+            CONSTRAINT UQ_{TABLA_RESERVAS}_Archivo UNIQUE (Archivo)
+        )
+    """)
+
+
+_crear_tabla_reservas_si_no_existe = _una_vez_por_proceso(TABLA_RESERVAS, _crear_tabla_reservas_si_no_existe)
+
+
+def _cutoff_sql(minutos):
+    """Expresión SQL (sin parámetro, `minutos` es siempre un valor interno
+    de confianza, no algo que escriba un usuario) para "hace N minutos",
+    coherente con FECHA_ACTUAL_SQL de cada motor."""
+    minutos = int(minutos)
+    if MOTOR == "sqlite":
+        return f"datetime('now', '-{minutos} minutes')"
+    return f"DATEADD(MINUTE, -{minutos}, GETDATE())"
+
+
+def reservar_facturas_sql(archivos, usuario, minutos_expiracion=3):
+    """
+    Intenta reservar cada archivo de `archivos` para `usuario`. Se queda con
+    uno ya reservado si es del propio usuario (refresca su actividad), o si
+    su UltimaActividad lleva más de `minutos_expiracion` sin refrescarse
+    (reserva abandonada); si es de otro usuario y sigue vigente, no se toca.
+
+    Devuelve {archivo: usuario_que_la_tiene_ahora} para TODOS los archivos
+    pedidos (no solo los conseguidos), para que quien llama compare contra lo
+    que pidió y sepa distinguir "conseguida" de "ya la tiene fulano".
+    """
+    archivos = list(dict.fromkeys(a for a in (archivos or []) if a))
+    if not archivos or not usuario:
+        return {}
+
+    try:
+        with _conectar() as conn:
+            cursor = conn.cursor()
+            _crear_tabla_reservas_si_no_existe(cursor)
+            conn.commit()
+
+            corte = _cutoff_sql(minutos_expiracion)
+            resultado = {}
+
+            for archivo in archivos:
+                cursor.execute(f"SELECT Usuario FROM {TABLA_RESERVAS} WHERE Archivo = ?", (archivo,))
+                fila = cursor.fetchone()
+
+                if fila is None:
+                    cursor.execute(
+                        f"INSERT INTO {TABLA_RESERVAS} (Archivo, Usuario, FechaReserva, UltimaActividad) "
+                        f"VALUES (?, ?, {FECHA_ACTUAL_SQL}, {FECHA_ACTUAL_SQL})",
+                        (archivo, usuario),
+                    )
+                    resultado[archivo] = usuario
+                    continue
+
+                # Comparación sin distinguir mayúsculas/espacios: aunque
+                # quien llama ya normalice `usuario`, esto evita que una fila
+                # ya guardada con otras mayúsculas/espacios de sobra (de
+                # antes de esta normalización, o de un cliente que no la
+                # aplicara) se lea como "de otra persona" siendo la misma.
+                usuario_actual = (fila[0] or "").strip().lower()
+
+                if usuario_actual == usuario:
+                    cursor.execute(
+                        f"UPDATE {TABLA_RESERVAS} SET UltimaActividad = {FECHA_ACTUAL_SQL} WHERE Archivo = ?",
+                        (archivo,),
+                    )
+                    resultado[archivo] = usuario
+                    continue
+
+                cursor.execute(
+                    f"SELECT 1 FROM {TABLA_RESERVAS} WHERE Archivo = ? AND UltimaActividad < {corte}",
+                    (archivo,),
+                )
+                caducada = cursor.fetchone() is not None
+
+                if caducada:
+                    cursor.execute(
+                        f"UPDATE {TABLA_RESERVAS} SET Usuario = ?, FechaReserva = {FECHA_ACTUAL_SQL}, "
+                        f"UltimaActividad = {FECHA_ACTUAL_SQL} WHERE Archivo = ?",
+                        (usuario, archivo),
+                    )
+                    resultado[archivo] = usuario
+                else:
+                    resultado[archivo] = usuario_actual
+
+            conn.commit()
+
+        return resultado
+
+    except Exception as e:
+        print(f"AVISO: no se pudieron reservar facturas ({MOTOR}): {e}")
+        # None (no {}) a propósito: {} también es la respuesta legítima para
+        # una lista de archivos vacía, y quien llama necesita distinguir "no
+        # había nada que reservar" de "ha fallado la base de datos" -si no,
+        # un fallo de conexión se malinterpreta como "ya las tiene otra
+        # persona", que es justo el mensaje confuso que esto reemplaza-.
+        return None
+
+
+def liberar_reservas_sql(archivos, usuario):
+    """Libera (borra) las reservas de `archivos` que sean de `usuario`.
+    Nunca toca una reserva de otra persona, aunque se pida por su archivo."""
+    archivos = [a for a in (archivos or []) if a]
+    if not archivos or not usuario:
+        return True
+
+    try:
+        with _conectar() as conn:
+            cursor = conn.cursor()
+            _crear_tabla_reservas_si_no_existe(cursor)
+            conn.commit()
+
+            marcadores = ",".join("?" for _ in archivos)
+            cursor.execute(
+                f"DELETE FROM {TABLA_RESERVAS} WHERE LOWER(Usuario) = ? AND Archivo IN ({marcadores})",
+                (usuario, *archivos),
+            )
+            conn.commit()
+
+        return True
+
+    except Exception as e:
+        print(f"AVISO: no se pudieron liberar reservas ({MOTOR}): {e}")
+        return False
+
+
+def latido_reservas_sql(archivos, usuario):
+    """Refresca UltimaActividad de las reservas de `archivos` que sean de
+    `usuario`, para que no caduquen mientras se sigue trabajando en ellas."""
+    archivos = [a for a in (archivos or []) if a]
+    if not archivos or not usuario:
+        return True
+
+    try:
+        with _conectar() as conn:
+            cursor = conn.cursor()
+            _crear_tabla_reservas_si_no_existe(cursor)
+            conn.commit()
+
+            marcadores = ",".join("?" for _ in archivos)
+            cursor.execute(
+                f"UPDATE {TABLA_RESERVAS} SET UltimaActividad = {FECHA_ACTUAL_SQL} "
+                f"WHERE LOWER(Usuario) = ? AND Archivo IN ({marcadores})",
+                (usuario, *archivos),
+            )
+            conn.commit()
+
+        return True
+
+    except Exception as e:
+        print(f"AVISO: no se pudo refrescar el latido de reservas ({MOTOR}): {e}")
+        return False
+
+
+def estado_reservas_sql(archivos, minutos_expiracion=3):
+    """{archivo: usuario} de las reservas vigentes entre `archivos` (de paso
+    borra las ya caducadas: limpieza perezosa, sin tarea programada aparte)."""
+    archivos = [a for a in (archivos or []) if a]
+    if not archivos:
+        return {}
+
+    try:
+        with _conectar() as conn:
+            cursor = conn.cursor()
+            _crear_tabla_reservas_si_no_existe(cursor)
+            conn.commit()
+
+            cursor.execute(f"DELETE FROM {TABLA_RESERVAS} WHERE UltimaActividad < {_cutoff_sql(minutos_expiracion)}")
+            conn.commit()
+
+            marcadores = ",".join("?" for _ in archivos)
+            cursor.execute(
+                f"SELECT Archivo, Usuario FROM {TABLA_RESERVAS} WHERE Archivo IN ({marcadores})",
+                archivos,
+            )
+            filas = cursor.fetchall()
+
+        return {archivo: usuario for archivo, usuario in filas}
+
+    except Exception as e:
+        print(f"AVISO: no se pudo consultar el estado de reservas ({MOTOR}): {e}")
+        return {}
+
+
+def liberar_todas_las_reservas_sql():
+    """Vía de escape: vacía TODA la tabla de reservas, sin importar de quién
+    sean. Pensada para desbloquear a mano si alguna reserva se queda
+    "colgada" (p.ej. por una discrepancia de mayúsculas/espacios entre el
+    usuario que la reservó y el que la vuelve a comprobar, o cualquier otro
+    caso raro no cubierto por la caducidad automática)."""
+    try:
+        with _conectar() as conn:
+            cursor = conn.cursor()
+            _crear_tabla_reservas_si_no_existe(cursor)
+            conn.commit()
+            cursor.execute(f"DELETE FROM {TABLA_RESERVAS}")
+            conn.commit()
+        return True
+    except Exception as e:
+        print(f"AVISO: no se pudieron liberar todas las reservas ({MOTOR}): {e}")
+        return False
+
+
+def mis_reservas_sql(usuario, minutos_expiracion=3):
+    """Archivos reservados ahora mismo por `usuario` (para recomponer su
+    lote de trabajo si recarga la página)."""
+    if not usuario:
+        return []
+
+    try:
+        with _conectar() as conn:
+            cursor = conn.cursor()
+            _crear_tabla_reservas_si_no_existe(cursor)
+            conn.commit()
+
+            cursor.execute(f"DELETE FROM {TABLA_RESERVAS} WHERE UltimaActividad < {_cutoff_sql(minutos_expiracion)}")
+            conn.commit()
+
+            cursor.execute(f"SELECT Archivo FROM {TABLA_RESERVAS} WHERE LOWER(Usuario) = ?", (usuario,))
+            filas = cursor.fetchall()
+
+        return [fila[0] for fila in filas]
+
+    except Exception as e:
+        print(f"AVISO: no se pudieron listar tus reservas ({MOTOR}): {e}")
+        return []
+
+
 def _candidatos_cif(cif):
     """
     Variantes de `cif` a probar, de más a menos específica. Las facturas
@@ -334,55 +722,260 @@ def _candidatos_cif(cif):
     return candidatos
 
 
-def buscar_empresa_por_cif(cif):
+def _cif_o_con_prefijo_pais(candidato):
     """
-    Busca `cif` en EmpresasClasificadas y devuelve su NombreEmpresa si existe
-    y está activa (Activa = 1). Devuelve None si no se encuentra, si está
-    inactiva, o si la consulta falla: en los tres casos el llamador debe
-    tratarlo igual (la factura acaba en incidencias), así que aquí no se
-    propaga la excepción, solo se avisa por consola.
+    Patrón LIKE (ANSI estándar, funciona igual en SQL Server y SQLite) que
+    además de coincidir con `candidato` tal cual, coincide con el mismo
+    valor precedido de un prefijo de país ISO de 2 letras ("__" = exactamente
+    2 caracteres cualesquiera). Algunas facturas extranjeras (sobre todo
+    portuguesas) imprimen el CIF/Contribuinte SIN el prefijo de país, aunque
+    en Business Central esa empresa esté dada de alta CON él (p.ej. factura:
+    "Contribuinte: 510449123", tabla maestra: "PT510449123"). _candidatos_cif
+    ya cubre el caso contrario (quitar un prefijo que SÍ trae el valor
+    extraído); esto cubre el que falta: prefijo que solo tiene la fila de la
+    tabla maestra.
+    """
+    return "__" + candidato
+
+
+def _mejor_estado(filas, campo_malo_es_true):
+    """
+    Reduce varias filas (nombre, flag) para un mismo CIF -puede haber más de
+    una si la tabla tiene distintas Clasificacion para el mismo CIF, ver
+    UNIQUE(CIF, Clasificacion)- a la "mejor": la que no está bloqueada/
+    inactiva, si la hay entre ellas, en vez de quedarse con la primera que
+    devuelva la consulta sin más (que podía ser una entrada antigua
+    bloqueada aunque exista otra fila activa para el mismo CIF).
+    `campo_malo_es_true` indica si el flag es "malo" cuando vale 1
+    (Bloqueado) o cuando vale 0 (Activa). Mismo criterio que _mejor_por_cif,
+    ya usado en el autocompletado de CIF.
+    """
+    mejor = None
+    for nombre, flag in filas:
+        malo = bool(flag) if campo_malo_es_true else not bool(flag)
+        if mejor is None:
+            mejor = (nombre, malo)
+        if not malo:
+            return nombre, malo
+    return mejor
+
+
+def estado_empresa_por_cif(cif):
+    """
+    Busca `cif` en EmpresasClasificadas y devuelve (nombre, estado), donde
+    estado es uno de:
+    - "activa": existe y Activa = 1 -> se puede usar como comprador.
+    - "inactiva": existe pero Activa = 0 -> dada de baja, no se debe usar.
+    - "no_encontrada": no hay ninguna fila con ese CIF, ni si quiera cuenta
+      de fallo de consulta.
+
+    A diferencia de la antigua buscar_empresa_por_cif (que colapsaba
+    "inactiva" y "no_encontrada" en el mismo None), esto permite mostrarle al
+    usuario un mensaje distinto en cada caso.
     """
     cif = (cif or "").strip().upper()
     if not cif:
-        return None
+        return None, "no_encontrada"
     try:
         with _conectar() as conn:
             cursor = conn.cursor()
             for candidato in _candidatos_cif(cif):
                 cursor.execute(
-                    "SELECT NombreEmpresa FROM EmpresasClasificadas WHERE UPPER(CIF) = ? AND Activa = 1",
-                    (candidato,),
+                    "SELECT NombreEmpresa, Activa FROM EmpresasClasificadas "
+                    "WHERE UPPER(CIF) = ? OR UPPER(CIF) LIKE ?",
+                    (candidato, _cif_o_con_prefijo_pais(candidato)),
                 )
-                fila = cursor.fetchone()
-                if fila:
-                    return fila[0]
-        return None
+                filas = cursor.fetchall()
+                if filas:
+                    nombre, inactiva = _mejor_estado(filas, campo_malo_es_true=False)
+                    return nombre, ("inactiva" if inactiva else "activa")
+        return None, "no_encontrada"
     except Exception as e:
         print(f"AVISO: no se pudo consultar EmpresasClasificadas ({MOTOR}): {e}")
-        return None
+        return None, "no_encontrada"
+
+
+def estado_proveedor_por_cif(cif):
+    """Análogo a estado_empresa_por_cif, pero contra ProveedoresClasificados;
+    el estado "bloqueada" corresponde a Bloqueado = 1 en vez de Activa = 0."""
+    cif = (cif or "").strip().upper()
+    if not cif:
+        return None, "no_encontrada"
+    try:
+        with _conectar() as conn:
+            cursor = conn.cursor()
+            for candidato in _candidatos_cif(cif):
+                cursor.execute(
+                    "SELECT NombreEmpresa, Bloqueado FROM ProveedoresClasificados "
+                    "WHERE UPPER(CIF) = ? OR UPPER(CIF) LIKE ?",
+                    (candidato, _cif_o_con_prefijo_pais(candidato)),
+                )
+                filas = cursor.fetchall()
+                if filas:
+                    nombre, bloqueado = _mejor_estado(filas, campo_malo_es_true=True)
+                    return nombre, ("bloqueada" if bloqueado else "activa")
+        return None, "no_encontrada"
+    except Exception as e:
+        print(f"AVISO: no se pudo consultar ProveedoresClasificados ({MOTOR}): {e}")
+        return None, "no_encontrada"
+
+
+def buscar_empresa_por_cif(cif):
+    """Compatibilidad: solo el nombre, si existe y está activa; None en
+    cualquier otro caso (no distingue "no encontrada" de "inactiva"). Para
+    esa distinción usar estado_empresa_por_cif."""
+    nombre, estado = estado_empresa_por_cif(cif)
+    return nombre if estado == "activa" else None
 
 
 def buscar_proveedor_por_cif(cif):
-    """Análogo a buscar_empresa_por_cif, pero contra ProveedoresClasificados
-    y exigiendo que no esté bloqueado (Bloqueado = 0)."""
-    cif = (cif or "").strip().upper()
-    if not cif:
-        return None
+    """Compatibilidad: solo el nombre, si existe y no está bloqueado; None en
+    cualquier otro caso. Para esa distinción usar estado_proveedor_por_cif."""
+    nombre, estado = estado_proveedor_por_cif(cif)
+    return nombre if estado == "activa" else None
+
+
+def _mejor_por_cif(filas, campo_malo_es_true):
+    """
+    Reduce `filas` (tuplas (cif, nombre, flag)) a una por CIF, quedándose
+    con la variante "buena" si existe alguna entre las distintas
+    Clasificacion que puede tener un mismo CIF (ver la UNIQUE(CIF,
+    Clasificacion) de estas tablas). `campo_malo_es_true` indica si el flag
+    es "malo" cuando vale 1 (Bloqueado) o cuando vale 0 (Activa).
+    """
+    mejores = {}
+    for cif, nombre, flag in filas:
+        flag = bool(flag)
+        malo = flag if campo_malo_es_true else not flag
+        if cif not in mejores or (not malo and mejores[cif][1]):
+            mejores[cif] = (nombre, malo)
+    return [(cif, nombre, malo) for cif, (nombre, malo) in mejores.items()]
+
+
+def _patrones_prefijo_cif(texto):
+    """
+    Patrones LIKE para buscar `texto` como prefijo de CIF en el
+    autocompletado de Empresas/Proveedores, cubriendo el mismo desajuste de
+    prefijo de país ISO que _candidatos_cif/_cif_o_con_prefijo_pais ya
+    resuelven al clasificar automáticamente (ver esas dos funciones): si se
+    escribe el CIF con el prefijo ("ESA19001304") pero en la tabla maestra
+    está sin él ("A19001304"), o al revés, una búsqueda literal
+    `CIF LIKE texto+'%'` no encontraba nada aunque fuera el mismo proveedor
+    -y el autocompletado decía "sin coincidencias" de uno que sí está dado
+    de alta y ya se usa correctamente en facturas procesadas automáticamente-.
+    """
+    sin_prefijo = texto[2:] if len(texto) > 2 and texto[:2].isalpha() else texto
+    return [texto + "%", sin_prefijo + "%", "__" + texto + "%"]
+
+
+def buscar_empresas_por_prefijo(texto, limite=20):
+    """
+    Autocompletado: hasta `limite` empresas de EmpresasClasificadas cuyo CIF
+    empieza por `texto` o cuyo nombre lo contiene (para poder buscar tanto
+    escribiendo el CIF como escribiendo parte del nombre, p.ej. "ybarra"
+    encuentra todas las empresas de Ybarra dadas de alta). Se exige un texto
+    de al menos 2 caracteres para no barrer la tabla entera con una consulta
+    casi vacía. No se envuelve CIF en UPPER() para poder aprovechar el
+    índice único de (CIF, Clasificacion); la collation habitual de SQL
+    Server ya compara sin distinguir mayúsculas/minúsculas.
+
+    Devuelve una lista de dicts {"cif", "nombre", "activa"}, sin duplicados
+    por CIF (una empresa puede tener varias filas de Clasificacion).
+    """
+    texto = (texto or "").strip().upper()
+    if len(texto) < 2:
+        return []
+    limite = int(limite)
+    p1, p2, p3 = _patrones_prefijo_cif(texto)
     try:
         with _conectar() as conn:
             cursor = conn.cursor()
-            for candidato in _candidatos_cif(cif):
+            if MOTOR == "sqlite":
                 cursor.execute(
-                    "SELECT NombreEmpresa FROM ProveedoresClasificados WHERE UPPER(CIF) = ? AND Bloqueado = 0",
-                    (candidato,),
+                    "SELECT CIF, NombreEmpresa, Activa FROM EmpresasClasificadas "
+                    "WHERE CIF LIKE ? OR CIF LIKE ? OR CIF LIKE ? OR NombreEmpresa LIKE ? ORDER BY CIF LIMIT ?",
+                    (p1, p2, p3, "%" + texto + "%", limite * 3),
                 )
-                fila = cursor.fetchone()
-                if fila:
-                    return fila[0]
-        return None
+            else:
+                cursor.execute(
+                    f"SELECT TOP ({limite * 3}) CIF, NombreEmpresa, Activa FROM EmpresasClasificadas "
+                    "WHERE CIF LIKE ? OR CIF LIKE ? OR CIF LIKE ? OR NombreEmpresa LIKE ? ORDER BY CIF",
+                    (p1, p2, p3, "%" + texto + "%"),
+                )
+            filas = cursor.fetchall()
+        resultado = _mejor_por_cif(filas, campo_malo_es_true=False)
+        return [{"cif": c, "nombre": n, "activa": not malo} for c, n, malo in resultado[:limite]]
     except Exception as e:
-        print(f"AVISO: no se pudo consultar ProveedoresClasificados ({MOTOR}): {e}")
-        return None
+        print(f"AVISO: no se pudo buscar EmpresasClasificadas por prefijo ({MOTOR}): {e}")
+        return []
+
+
+def buscar_proveedores_por_prefijo(texto, limite=20):
+    """Análogo a buscar_empresas_por_prefijo (busca por CIF o por nombre),
+    pero contra ProveedoresClasificados. Devuelve dicts {"cif", "nombre",
+    "direccion", "poblacion", "bloqueado"} (direccion/poblacion pueden venir
+    vacías: solo se cargan desde el export de Envasado, ver
+    cargar_proveedores.py).
+
+    Si las columnas Direccion/Poblacion todavía no existen físicamente en la
+    tabla (p.ej. porque no se ha vuelto a ejecutar cargar_proveedores.py tras
+    añadirlas, o el login de SQL no tiene permiso de ALTER TABLE), se repite
+    la consulta sin ellas para no dejar la búsqueda entera sin resultados;
+    direccion/poblacion quedan vacías en ese caso."""
+    texto = (texto or "").strip().upper()
+    if len(texto) < 2:
+        return []
+    limite = int(limite)
+    p1, p2, p3 = _patrones_prefijo_cif(texto)
+    try:
+        with _conectar() as conn:
+            cursor = conn.cursor()
+            try:
+                if MOTOR == "sqlite":
+                    cursor.execute(
+                        "SELECT CIF, NombreEmpresa, Direccion, Poblacion, Bloqueado FROM ProveedoresClasificados "
+                        "WHERE CIF LIKE ? OR CIF LIKE ? OR CIF LIKE ? OR NombreEmpresa LIKE ? ORDER BY CIF LIMIT ?",
+                        (p1, p2, p3, "%" + texto + "%", limite * 3),
+                    )
+                else:
+                    cursor.execute(
+                        f"SELECT TOP ({limite * 3}) CIF, NombreEmpresa, Direccion, Poblacion, Bloqueado "
+                        "FROM ProveedoresClasificados "
+                        "WHERE CIF LIKE ? OR CIF LIKE ? OR CIF LIKE ? OR NombreEmpresa LIKE ? ORDER BY CIF",
+                        (p1, p2, p3, "%" + texto + "%"),
+                    )
+                filas = cursor.fetchall()
+            except Exception as e:
+                print(f"AVISO: Direccion/Poblacion no disponibles en ProveedoresClasificados ({MOTOR}): {e}")
+                if MOTOR == "sqlite":
+                    cursor.execute(
+                        "SELECT CIF, NombreEmpresa, Bloqueado FROM ProveedoresClasificados "
+                        "WHERE CIF LIKE ? OR CIF LIKE ? OR CIF LIKE ? OR NombreEmpresa LIKE ? ORDER BY CIF LIMIT ?",
+                        (p1, p2, p3, "%" + texto + "%", limite * 3),
+                    )
+                else:
+                    cursor.execute(
+                        f"SELECT TOP ({limite * 3}) CIF, NombreEmpresa, Bloqueado FROM ProveedoresClasificados "
+                        "WHERE CIF LIKE ? OR CIF LIKE ? OR CIF LIKE ? OR NombreEmpresa LIKE ? ORDER BY CIF",
+                        (p1, p2, p3, "%" + texto + "%"),
+                    )
+                filas = [(cif, nombre, "", "", bloqueado) for cif, nombre, bloqueado in cursor.fetchall()]
+        # Un mismo CIF puede traer varias filas (Granel/Envasado, ver la
+        # UNIQUE(CIF, Clasificacion) de esta tabla); nos quedamos con la
+        # variante no bloqueada si existe alguna.
+        mejores = {}
+        for cif, nombre, direccion, poblacion, bloqueado in filas:
+            bloqueado = bool(bloqueado)
+            actual = mejores.get(cif)
+            if actual is None or (not bloqueado and actual[3]):
+                mejores[cif] = (nombre, direccion or "", poblacion or "", bloqueado)
+        return [
+            {"cif": c, "nombre": n, "direccion": d, "poblacion": p, "bloqueado": b}
+            for c, (n, d, p, b) in list(mejores.items())[:limite]
+        ]
+    except Exception as e:
+        print(f"AVISO: no se pudo buscar ProveedoresClasificados por prefijo ({MOTOR}): {e}")
+        return []
 
 
 def eliminar_factura_examinada_sql(archivo):
@@ -401,3 +994,201 @@ def eliminar_factura_examinada_sql(archivo):
     except Exception as e:
         print(f"AVISO: no se pudo eliminar la factura de {MOTOR}: {e}")
         return False
+
+
+# =========================================================
+# COLA DE REVISIÓN (Corregir manualmente / Incidencias)
+# =========================================================
+#
+# Cachea los datos ya extraídos de cada PDF que está en corregir_manualmente/
+# o en incidencias/, para que listar_pendientes_completo/
+# listar_incidencias_completo (logic.py) no tengan que releer cada PDF ni
+# recalcular Buyer/Proveedor en cada carga de página -eso era lo que hacía
+# lenta cada recarga con una cola larga, sobre todo con las carpetas dentro
+# de OneDrive-. Se escribe en el momento en que el PDF entra, sale o se
+# corrige en una de estas dos carpetas (ver _mover_pdf_a_carpeta, mover_pdf y
+# guardar_cambios_pendiente en logic.py); leer ya no recalcula nada.
+
+TABLA_COLA = "ColaRevision"
+
+
+def _crear_tabla_cola_si_no_existe(cursor):
+    if MOTOR == "sqlite":
+        columnas_sql = ",\n".join(f"[{c}] TEXT" for c in COLUMNAS)
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS {TABLA_COLA} (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                {columnas_sql},
+                Cola TEXT NOT NULL,
+                FechaActualizacion TEXT NOT NULL DEFAULT ({FECHA_ACTUAL_SQL}),
+                UNIQUE([Archivo])
+            )
+        """)
+        return
+
+    ANCHOS = {"PedidoCliente": 1000}
+    columnas_sql = ",\n".join(f"[{c}] NVARCHAR({ANCHOS.get(c, 255)}) NULL" for c in COLUMNAS)
+    cursor.execute(f"""
+        IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = '{TABLA_COLA}')
+        CREATE TABLE {TABLA_COLA} (
+            Id INT IDENTITY(1,1) PRIMARY KEY,
+            {columnas_sql},
+            Cola NVARCHAR(20) NOT NULL,
+            FechaActualizacion DATETIME NOT NULL DEFAULT GETDATE(),
+            CONSTRAINT UQ_{TABLA_COLA}_Archivo UNIQUE (Archivo)
+        )
+    """)
+
+
+_crear_tabla_cola_si_no_existe = _una_vez_por_proceso(TABLA_COLA, _crear_tabla_cola_si_no_existe)
+
+
+def guardar_en_cola_revision_sql(fila, cola):
+    """
+    Inserta o actualiza (según 'Archivo') la fila cacheada de un PDF en
+    corregir_manualmente/ (cola="pendiente") o incidencias/
+    (cola="incidencia"). `fila` en el mismo orden que COLUMNAS/EXPECTED_HEADERS.
+
+    No propaga excepciones: un fallo aquí solo hace que la próxima carga
+    vuelva a depender de las carpetas para ese archivo, no rompe el
+    procesamiento de facturas.
+    """
+    try:
+        datos = dict(zip(COLUMNAS, (list(fila) + ["-"] * len(COLUMNAS))[:len(COLUMNAS)]))
+
+        with _conectar() as conn:
+            cursor = conn.cursor()
+            _crear_tabla_cola_si_no_existe(cursor)
+            conn.commit()
+
+            columnas_sin_archivo = [c for c in COLUMNAS if c != "Archivo"]
+            set_clause = ", ".join(f"[{c}] = ?" for c in columnas_sin_archivo)
+            valores_update = [datos[c] for c in columnas_sin_archivo]
+
+            cursor.execute(
+                f"UPDATE {TABLA_COLA} SET {set_clause}, Cola = ?, FechaActualizacion = {FECHA_ACTUAL_SQL} "
+                f"WHERE Archivo = ?",
+                (*valores_update, cola, datos["Archivo"]),
+            )
+
+            if cursor.rowcount == 0:
+                columnas_insert = ", ".join(f"[{c}]" for c in COLUMNAS)
+                placeholders = ", ".join("?" for _ in COLUMNAS)
+                cursor.execute(
+                    f"INSERT INTO {TABLA_COLA} ({columnas_insert}, Cola) "
+                    f"VALUES ({placeholders}, ?)",
+                    (*[datos[c] for c in COLUMNAS], cola),
+                )
+
+            conn.commit()
+
+        return True
+
+    except Exception as e:
+        print(f"AVISO: no se pudo guardar la fila en {TABLA_COLA} ({cola}, {MOTOR}): {e}")
+        return False
+
+
+def actualizar_campos_cola_revision_sql(fila):
+    """Actualiza los campos extraídos de una fila ya cacheada en ColaRevision
+    (por 'Archivo'), sin tocar su 'Cola' actual. La usa guardar_cambios_pendiente
+    (logic.py) al corregir a mano una pendiente/incidencia sin moverla de
+    carpeta -no sabe (ni le hace falta saber) si esa fila es "pendiente" o
+    "incidencia"-. Si el archivo todavía no está en la caché, no hace nada:
+    entrará en ella la próxima vez que se clasifique o se recorra el backfill."""
+    try:
+        datos = dict(zip(COLUMNAS, (list(fila) + ["-"] * len(COLUMNAS))[:len(COLUMNAS)]))
+
+        with _conectar() as conn:
+            cursor = conn.cursor()
+            _crear_tabla_cola_si_no_existe(cursor)
+            conn.commit()
+
+            columnas_sin_archivo = [c for c in COLUMNAS if c != "Archivo"]
+            set_clause = ", ".join(f"[{c}] = ?" for c in columnas_sin_archivo)
+            valores_update = [datos[c] for c in columnas_sin_archivo]
+
+            cursor.execute(
+                f"UPDATE {TABLA_COLA} SET {set_clause}, FechaActualizacion = {FECHA_ACTUAL_SQL} "
+                f"WHERE Archivo = ?",
+                (*valores_update, datos["Archivo"]),
+            )
+            conn.commit()
+
+        return True
+
+    except Exception as e:
+        print(f"AVISO: no se pudo actualizar la fila en {TABLA_COLA} ({MOTOR}): {e}")
+        return False
+
+
+def eliminar_de_cola_revision_sql(archivo):
+    """Quita `archivo` de la caché de pendientes/incidencias: el PDF se movió
+    fuera de ambas colas (completada, esperando alta, no es factura,
+    revisada, etc.)."""
+    try:
+        with _conectar() as conn:
+            cursor = conn.cursor()
+            _crear_tabla_cola_si_no_existe(cursor)
+            conn.commit()
+
+            cursor.execute(f"DELETE FROM {TABLA_COLA} WHERE Archivo = ?", (archivo,))
+            conn.commit()
+
+        return True
+
+    except Exception as e:
+        print(f"AVISO: no se pudo eliminar {archivo} de {TABLA_COLA} ({MOTOR}): {e}")
+        return False
+
+
+def listar_cola_revision_sql(cola):
+    """Todas las filas cacheadas de una cola ("pendiente" o "incidencia"),
+    como listas de valores en el mismo orden que COLUMNAS. Devuelve [] si la
+    consulta falla, para que el llamador se quede con una lista vacía en vez
+    de romper la pestaña."""
+    try:
+        with _conectar() as conn:
+            cursor = conn.cursor()
+            _crear_tabla_cola_si_no_existe(cursor)
+            conn.commit()
+
+            columnas_sql = ", ".join(f"[{c}]" for c in COLUMNAS)
+            cursor.execute(
+                f"SELECT {columnas_sql} FROM {TABLA_COLA} WHERE Cola = ? ORDER BY Archivo",
+                (cola,),
+            )
+            filas = cursor.fetchall()
+
+        return [list(fila) for fila in filas]
+
+    except Exception as e:
+        print(f"AVISO: no se pudo listar {TABLA_COLA} ({cola}, {MOTOR}): {e}")
+        return []
+
+
+def buscar_incidencias_por_cif_sql(cif):
+    """Filas de ColaRevision con Cola='incidencia' cuyo Buyer o Proveedor sea
+    `cif`. La usa reclasificar_cola_por_cif (logic.py) para revisar solo las
+    incidencias afectadas cuando se da de alta ese CIF concreto -en
+    cargar_empresas.py/cargar_proveedores.py-, en vez de recorrer toda la
+    cola en cada carga de página como se hacía antes."""
+    try:
+        with _conectar() as conn:
+            cursor = conn.cursor()
+            _crear_tabla_cola_si_no_existe(cursor)
+            conn.commit()
+
+            columnas_sql = ", ".join(f"[{c}]" for c in COLUMNAS)
+            cursor.execute(
+                f"SELECT {columnas_sql} FROM {TABLA_COLA} "
+                f"WHERE Cola = 'incidencia' AND (Buyer = ? OR Proveedor = ?)",
+                (cif, cif),
+            )
+            filas = cursor.fetchall()
+
+        return [list(fila) for fila in filas]
+
+    except Exception as e:
+        print(f"AVISO: no se pudo buscar incidencias por CIF en {TABLA_COLA} ({MOTOR}): {e}")
+        return []

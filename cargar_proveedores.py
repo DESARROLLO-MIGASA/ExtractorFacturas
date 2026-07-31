@@ -33,6 +33,16 @@ FICHEROS = [
 TABLA = "ProveedoresClasificados"
 
 
+def _alter_columna_si_procede(cursor, descripcion, sentencia_sql):
+    """Migración de esquema "best effort": si el login de SQL no tiene
+    permiso de DDL (o cualquier otro fallo puntual), se avisa y se sigue
+    sin la columna nueva en vez de romper la carga completa."""
+    try:
+        cursor.execute(sentencia_sql)
+    except Exception as e:
+        print(f"AVISO: no se pudo migrar el esquema de {TABLA} ({descripcion}, {MOTOR}): {e}")
+
+
 def leer_proveedores(path, clasificacion):
     """
     Lee un fichero exportado de Business Central (vista de la tabla
@@ -42,6 +52,10 @@ def leer_proveedores(path, clasificacion):
     así que se busca por nombre de columna. La columna "Bloqueado" no es
     booleana: viene en blanco si el proveedor no está bloqueado, o con un
     motivo de bloqueo (p.ej. "Todos", "Pago") en caso contrario.
+
+    "Dirección"/"Dirección 2" y "Población" solo existen en el export de
+    Envasado; en Granel quedan vacías porque Business Central no las trae
+    en esa vista.
     """
     wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
     ws = wb[wb.sheetnames[0]]
@@ -52,6 +66,10 @@ def leer_proveedores(path, clasificacion):
     headers = next(filas)
     idx = {h: i for i, h in enumerate(headers)}
 
+    def _col(fila, nombre):
+        i = idx.get(nombre)
+        return str(fila[i] or "").strip() if i is not None else ""
+
     proveedores = []
     for fila in filas:
         cif = str(fila[idx["CIF/NIF"]] or "").strip()
@@ -59,7 +77,9 @@ def leer_proveedores(path, clasificacion):
             continue
         nombre = str(fila[idx["Nombre"]] or "").strip()
         bloqueado = bool(str(fila[idx["Bloqueado"]] or "").strip())
-        proveedores.append((clasificacion, cif, nombre, bloqueado))
+        direccion = ", ".join(p for p in (_col(fila, "Dirección"), _col(fila, "Dirección 2")) if p)
+        poblacion = _col(fila, "Población")
+        proveedores.append((clasificacion, cif, nombre, direccion, poblacion, bloqueado))
 
     return proveedores
 
@@ -77,6 +97,11 @@ def _crear_tabla_si_no_existe(cursor):
                 UNIQUE(CIF, Clasificacion)
             )
         """)
+        columnas_existentes = {row[1] for row in cursor.execute(f"PRAGMA table_info({TABLA})").fetchall()}
+        if "Direccion" not in columnas_existentes:
+            cursor.execute(f"ALTER TABLE {TABLA} ADD COLUMN Direccion TEXT")
+        if "Poblacion" not in columnas_existentes:
+            cursor.execute(f"ALTER TABLE {TABLA} ADD COLUMN Poblacion TEXT")
         return
 
     cursor.execute(f"""
@@ -86,26 +111,36 @@ def _crear_tabla_si_no_existe(cursor):
             Clasificacion NVARCHAR(20) NOT NULL,
             CIF NVARCHAR(30) NOT NULL,
             NombreEmpresa NVARCHAR(200) NOT NULL,
+            Direccion NVARCHAR(200) NULL,
+            Poblacion NVARCHAR(100) NULL,
             Bloqueado BIT NOT NULL DEFAULT 0,
             FechaCarga DATETIME NOT NULL DEFAULT GETDATE(),
             CONSTRAINT UQ_{TABLA}_CIF_Clasificacion UNIQUE (CIF, Clasificacion)
         )
     """)
+    _alter_columna_si_procede(cursor, "Direccion", f"""
+        IF COL_LENGTH('{TABLA}', 'Direccion') IS NULL
+        ALTER TABLE {TABLA} ADD Direccion NVARCHAR(200) NULL
+    """)
+    _alter_columna_si_procede(cursor, "Poblacion", f"""
+        IF COL_LENGTH('{TABLA}', 'Poblacion') IS NULL
+        ALTER TABLE {TABLA} ADD Poblacion NVARCHAR(100) NULL
+    """)
 
 
-def guardar_proveedor(cursor, clasificacion, cif, nombre, bloqueado):
+def guardar_proveedor(cursor, clasificacion, cif, nombre, direccion, poblacion, bloqueado):
     bloqueado_val = 1 if bloqueado else 0
 
     cursor.execute(
-        f"UPDATE {TABLA} SET NombreEmpresa = ?, Bloqueado = ?, FechaCarga = {FECHA_ACTUAL_SQL} "
-        f"WHERE CIF = ? AND Clasificacion = ?",
-        (nombre, bloqueado_val, cif, clasificacion),
+        f"UPDATE {TABLA} SET NombreEmpresa = ?, Direccion = ?, Poblacion = ?, Bloqueado = ?, "
+        f"FechaCarga = {FECHA_ACTUAL_SQL} WHERE CIF = ? AND Clasificacion = ?",
+        (nombre, direccion, poblacion, bloqueado_val, cif, clasificacion),
     )
     if cursor.rowcount == 0:
         cursor.execute(
-            f"INSERT INTO {TABLA} (Clasificacion, CIF, NombreEmpresa, Bloqueado) "
-            f"VALUES (?, ?, ?, ?)",
-            (clasificacion, cif, nombre, bloqueado_val),
+            f"INSERT INTO {TABLA} (Clasificacion, CIF, NombreEmpresa, Direccion, Poblacion, Bloqueado) "
+            f"VALUES (?, ?, ?, ?, ?, ?)",
+            (clasificacion, cif, nombre, direccion, poblacion, bloqueado_val),
         )
 
 
@@ -127,13 +162,14 @@ def main():
         print(f"  {len(proveedores)} proveedores")
         todos.extend(proveedores)
 
-    bloqueados = sum(1 for _, _, _, b in todos if b)
+    bloqueados = sum(1 for _, _, _, _, _, b in todos if b)
     print(f"\nTotal filas a guardar: {len(todos)} ({bloqueados} bloqueados)")
 
     if args.dry_run:
-        for clasificacion, cif, nombre, bloqueado in todos[:15]:
+        for clasificacion, cif, nombre, direccion, poblacion, bloqueado in todos[:15]:
             marca = " [BLOQUEADO]" if bloqueado else ""
-            print(f"  [{clasificacion}] {cif} - {nombre}{marca}")
+            lugar = f" - {direccion}, {poblacion}" if (direccion or poblacion) else ""
+            print(f"  [{clasificacion}] {cif} - {nombre}{lugar}{marca}")
         if len(todos) > 15:
             print(f"  ... y {len(todos) - 15} más")
         print(f"\nDry-run: no se ha escrito nada en {MOTOR}.")
@@ -144,14 +180,28 @@ def main():
         _crear_tabla_si_no_existe(cursor)
         conn.commit()
 
-        for i, (clasificacion, cif, nombre, bloqueado) in enumerate(todos, start=1):
-            guardar_proveedor(cursor, clasificacion, cif, nombre, bloqueado)
+        for i, (clasificacion, cif, nombre, direccion, poblacion, bloqueado) in enumerate(todos, start=1):
+            guardar_proveedor(cursor, clasificacion, cif, nombre, direccion, poblacion, bloqueado)
             if i % 100 == 0:
                 print(f"  {i}/{len(todos)} procesados...")
 
         conn.commit()
 
     print(f"\nCarga terminada: {len(todos)} proveedores guardados en {TABLA} ({MOTOR}).")
+
+    # Con el CIF ya confirmado en la base de datos (commit hecho arriba), se
+    # revisan las incidencias que estuvieran atascadas esperando justo a
+    # alguno de estos CIF: así se autorresuelven en cuanto se dan de alta o
+    # se desbloquean, sin esperar a que alguien recargue "Incidencias" (ver
+    # logic.reclasificar_cola_por_cif). Solo tiene sentido para los CIF que
+    # quedan sin bloquear; uno bloqueado no resuelve ninguna incidencia.
+    cifs_utilizables = sorted({cif for _, cif, _, _, _, bloqueado in todos if not bloqueado})
+    if cifs_utilizables:
+        import logic
+
+        print(f"\nRevisando incidencias afectadas por {len(cifs_utilizables)} CIF(s) desbloqueados...")
+        total_movidas = sum(logic.reclasificar_cola_por_cif(cif) for cif in cifs_utilizables)
+        print(f"Incidencias reclasificadas: {total_movidas}")
 
 
 if __name__ == "__main__":
