@@ -1,0 +1,53 @@
+import os
+import sys
+
+# En Windows la consola suele quedar en cp1252, que no puede codificar
+# muchos caracteres Unicode (emojis, flechas, tildes exóticas de nombres de
+# archivo que llegan por correo...). Sin esto, un simple print() con uno de
+# esos caracteres tumba la petición entera con un UnicodeEncodeError.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
+from fastapi import FastAPI
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
+
+from routers import auto as auto_router
+from routers import manual as manual_router
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
+STATIC_DIR = os.path.join(BASE_DIR, "static")
+
+# El vigilante automático de "entrada"/"imagenes" ya NO corre aquí dentro:
+# vive en su propio proceso (ver vigilante.py, se lanza aparte con
+# `python vigilante.py`). Compartía intérprete con este servidor web, así
+# que una tanda larga de facturas dejaba la página sin responder hasta que
+# terminaba de procesar. LOCK_PROCESAMIENTO_AUTOMATICO (en logic.py) sigue
+# coordinando ese proceso con los reprocesos manuales de esta web.
+
+# =========================================================
+# APP
+# =========================================================
+
+app = FastAPI(title="MIGASA — Extractor de facturas")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+app.include_router(auto_router.router)
+app.include_router(manual_router.router)
+
+
+@app.get("/")
+def home():
+    return FileResponse(os.path.join(TEMPLATES_DIR, "index.html"))
