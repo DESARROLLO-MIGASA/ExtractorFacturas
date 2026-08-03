@@ -1192,3 +1192,260 @@ def buscar_incidencias_por_cif_sql(cif):
     except Exception as e:
         print(f"AVISO: no se pudo buscar incidencias por CIF en {TABLA_COLA} ({MOTOR}): {e}")
         return []
+
+
+# =========================================================
+# AUDITORÍA (quién hizo qué acción, cuándo, sobre qué factura)
+# =========================================================
+
+TABLA_AUDITORIA = "AuditLog"
+
+
+def _crear_tabla_auditoria_si_no_existe(cursor):
+    if MOTOR == "sqlite":
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS {TABLA_AUDITORIA} (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                Fecha TEXT NOT NULL DEFAULT ({FECHA_ACTUAL_SQL}),
+                Usuario TEXT NOT NULL,
+                Accion TEXT NOT NULL,
+                Archivo TEXT,
+                Detalle TEXT
+            )
+        """)
+        return
+
+    cursor.execute(f"""
+        IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = '{TABLA_AUDITORIA}')
+        CREATE TABLE {TABLA_AUDITORIA} (
+            Id INT IDENTITY(1,1) PRIMARY KEY,
+            Fecha DATETIME NOT NULL DEFAULT GETDATE(),
+            Usuario NVARCHAR(100) NOT NULL,
+            Accion NVARCHAR(50) NOT NULL,
+            Archivo NVARCHAR(255) NULL,
+            Detalle NVARCHAR(500) NULL
+        )
+    """)
+
+
+_crear_tabla_auditoria_si_no_existe = _una_vez_por_proceso(TABLA_AUDITORIA, _crear_tabla_auditoria_si_no_existe)
+
+
+def registrar_auditoria_sql(usuario, accion, archivo=None, detalle=None):
+    """Deja constancia de una acción de negocio (quién, qué, cuándo, sobre
+    qué factura). Es "best effort" como el resto del módulo: si falla, se
+    avisa por consola y se sigue -nunca debe impedir que la acción real
+    (guardar, mover el PDF, etc.) se complete-."""
+    try:
+        with _conectar() as conn:
+            cursor = conn.cursor()
+            _crear_tabla_auditoria_si_no_existe(cursor)
+            conn.commit()
+
+            cursor.execute(
+                f"INSERT INTO {TABLA_AUDITORIA} (Fecha, Usuario, Accion, Archivo, Detalle) "
+                f"VALUES ({FECHA_ACTUAL_SQL}, ?, ?, ?, ?)",
+                (usuario, accion, archivo, detalle),
+            )
+            conn.commit()
+
+        return True
+
+    except Exception as e:
+        print(f"AVISO: no se pudo registrar la auditoría ({accion}, {archivo}, {MOTOR}): {e}")
+        return False
+
+
+def listar_auditoria_sql(archivo=None, usuario=None, desde=None, hasta=None, limite=500):
+    """Historial de acciones para la pestaña "Auditoría", más recientes
+    primero. `archivo`/`usuario` filtran por coincidencia parcial; `desde`/
+    `hasta` son fechas "YYYY-MM-DD" (se compara `hasta` hasta el final de
+    ese día). Cualquier filtro no informado se ignora. Devuelve [] si la
+    consulta falla."""
+    condiciones = []
+    parametros = []
+
+    if archivo:
+        condiciones.append("Archivo LIKE ?")
+        parametros.append(f"%{archivo}%")
+    if usuario:
+        condiciones.append("Usuario LIKE ?")
+        parametros.append(f"%{usuario}%")
+    if desde:
+        condiciones.append("Fecha >= ?")
+        parametros.append(str(desde))
+    if hasta:
+        condiciones.append("Fecha <= ?")
+        parametros.append(f"{hasta} 23:59:59")
+
+    where_sql = f"WHERE {' AND '.join(condiciones)}" if condiciones else ""
+
+    try:
+        with _conectar() as conn:
+            cursor = conn.cursor()
+            _crear_tabla_auditoria_si_no_existe(cursor)
+            conn.commit()
+
+            if MOTOR == "sqlite":
+                cursor.execute(
+                    f"SELECT Fecha, Usuario, Accion, Archivo, Detalle FROM {TABLA_AUDITORIA} "
+                    f"{where_sql} ORDER BY Id DESC LIMIT ?",
+                    (*parametros, int(limite)),
+                )
+            else:
+                cursor.execute(
+                    f"SELECT TOP (?) Fecha, Usuario, Accion, Archivo, Detalle FROM {TABLA_AUDITORIA} "
+                    f"{where_sql} ORDER BY Id DESC",
+                    (int(limite), *parametros),
+                )
+            filas = cursor.fetchall()
+
+        return [list(fila) for fila in filas]
+
+    except Exception as e:
+        print(f"AVISO: no se pudo listar {TABLA_AUDITORIA} ({MOTOR}): {e}")
+        return []
+
+
+# Grupos de acciones que resume cada columna "¿quién...?" en Vista global y
+# en la vista "por factura" de Auditoría. El segundo elemento de la tupla es
+# la acción que debe ser la MÁS RECIENTE del grupo para que se muestre el
+# usuario -si la más reciente es la contraria (p.ej. se desmarcó después de
+# marcarse), la columna queda vacía, en vez de mostrar a quien la desmarcó
+# como si la hubiera marcado-. `None` significa "siempre se muestra la más
+# reciente" (no hay acción contraria en el grupo).
+_GRUPOS_RESUMEN_AUDITORIA = {
+    "EditadoPor":       (["editar_pendiente", "editar_completada"], None),
+    "ConfirmadaPor":    (["confirmar_factura"], None),
+    "RevisadaPor":      (["marcar_revisada", "desmarcar_revisada"], "marcar_revisada"),
+    "DefinitivaPor":    (["marcar_definitiva", "desmarcar_definitiva"], "marcar_definitiva"),
+    "EsperandoAltaPor": (["marcar_esperando_alta"], None),
+    "NoEsFacturaPor":   (["descartar_pendiente", "descartar_completada"], None),
+}
+
+
+# Margen de seguridad bajo el límite de parámetros por consulta de SQL
+# Server (~2100) y de SQLite en versiones antiguas (999): Vista global puede
+# tener miles de facturas activas a la vez (con una sola consulta sin
+# trocear, ya se ha visto fallar en producción con "Campo COUNT erróneo o
+# error de sintaxis" al superar el límite), así que los archivos se
+# consultan en lotes.
+_MAX_PARAMETROS_POR_LOTE = 900
+
+
+def resumen_auditoria_por_archivo_sql(archivos):
+    """Para cada archivo de `archivos`, el usuario responsable de la última
+    vez que ocurrió cada grupo de _GRUPOS_RESUMEN_AUDITORIA. Consulta
+    AuditLog en lotes (no una consulta por archivo, ni una única consulta
+    con todos a la vez -ver _MAX_PARAMETROS_POR_LOTE-), pensada para listas
+    como la de Vista global. Devuelve {} si `archivos` está vacío o todas
+    las consultas fallan."""
+    archivos = [a for a in dict.fromkeys(archivos) if a]
+    if not archivos:
+        return {}
+
+    acciones = sorted({a for accs, _ in _GRUPOS_RESUMEN_AUDITORIA.values() for a in accs})
+    tamano_lote = max(1, _MAX_PARAMETROS_POR_LOTE - len(acciones))
+
+    ultima_del_grupo = {}
+    try:
+        with _conectar() as conn:
+            cursor = conn.cursor()
+            _crear_tabla_auditoria_si_no_existe(cursor)
+            conn.commit()
+
+            placeholders_accion = ", ".join("?" for _ in acciones)
+            for inicio in range(0, len(archivos), tamano_lote):
+                lote = archivos[inicio:inicio + tamano_lote]
+                placeholders_archivo = ", ".join("?" for _ in lote)
+                cursor.execute(
+                    f"SELECT Archivo, Accion, Usuario FROM {TABLA_AUDITORIA} "
+                    f"WHERE Archivo IN ({placeholders_archivo}) AND Accion IN ({placeholders_accion}) "
+                    # Id (no Fecha) como criterio de "más reciente": Fecha es
+                    # un DATETIME sin milisegundos útiles aquí y varias
+                    # acciones pueden caer en el mismo segundo, lo que con
+                    # solo Fecha DESC deja el orden entre ellas sin definir.
+                    # Id es autoincremental y sí refleja el orden real de
+                    # inserción.
+                    f"ORDER BY Id DESC",
+                    (*lote, *acciones),
+                )
+                # Cada lote solo trae archivos de ese lote (no se solapan
+                # entre lotes), así que concatenar los resultados de todos
+                # los lotes -cada uno ya ordenado por Id DESC- no cambia cuál
+                # es la fila más reciente por (archivo, columna).
+                for archivo, accion, usuario in cursor.fetchall():
+                    for columna, (accs, _requerida) in _GRUPOS_RESUMEN_AUDITORIA.items():
+                        clave = (archivo, columna)
+                        if accion in accs and clave not in ultima_del_grupo:
+                            ultima_del_grupo[clave] = (accion, usuario)
+
+    except Exception as e:
+        print(f"AVISO: no se pudo calcular el resumen de auditoría por archivo ({MOTOR}): {e}")
+        if not ultima_del_grupo:
+            return {}
+
+    resumen = {}
+    for archivo in archivos:
+        fila_resumen = {}
+        for columna, (_accs, requerida) in _GRUPOS_RESUMEN_AUDITORIA.items():
+            dato = ultima_del_grupo.get((archivo, columna))
+            if dato is None:
+                fila_resumen[columna] = None
+            else:
+                accion, usuario = dato
+                fila_resumen[columna] = usuario if (requerida is None or accion == requerida) else None
+        resumen[archivo] = fila_resumen
+
+    return resumen
+
+
+def listar_archivos_auditoria_sql(archivo=None, usuario=None, desde=None, hasta=None, limite=200):
+    """Archivos distintos con al menos una acción registrada en AuditLog,
+    con los mismos filtros que listar_auditoria_sql, ordenados por su
+    acción más reciente. Alimenta resumen_auditoria_por_archivo_sql para
+    construir la vista "por factura" de la pestaña Auditoría. Devuelve []
+    si la consulta falla."""
+    condiciones = ["Archivo IS NOT NULL"]
+    parametros = []
+
+    if archivo:
+        condiciones.append("Archivo LIKE ?")
+        parametros.append(f"%{archivo}%")
+    if usuario:
+        condiciones.append("Usuario LIKE ?")
+        parametros.append(f"%{usuario}%")
+    if desde:
+        condiciones.append("Fecha >= ?")
+        parametros.append(str(desde))
+    if hasta:
+        condiciones.append("Fecha <= ?")
+        parametros.append(f"{hasta} 23:59:59")
+
+    where_sql = f"WHERE {' AND '.join(condiciones)}"
+
+    try:
+        with _conectar() as conn:
+            cursor = conn.cursor()
+            _crear_tabla_auditoria_si_no_existe(cursor)
+            conn.commit()
+
+            if MOTOR == "sqlite":
+                cursor.execute(
+                    f"SELECT Archivo FROM {TABLA_AUDITORIA} {where_sql} "
+                    f"GROUP BY Archivo ORDER BY MAX(Id) DESC LIMIT ?",
+                    (*parametros, int(limite)),
+                )
+            else:
+                cursor.execute(
+                    f"SELECT TOP (?) Archivo FROM {TABLA_AUDITORIA} {where_sql} "
+                    f"GROUP BY Archivo ORDER BY MAX(Id) DESC",
+                    (int(limite), *parametros),
+                )
+            filas = cursor.fetchall()
+
+        return [fila[0] for fila in filas]
+
+    except Exception as e:
+        print(f"AVISO: no se pudo listar archivos de {TABLA_AUDITORIA} ({MOTOR}): {e}")
+        return []

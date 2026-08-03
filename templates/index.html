@@ -554,10 +554,16 @@ table.tabla-historial th.th-acciones {
     padding: 10px;
 }
 
-#editarFacturaPdfPaginas img {
-    display: block;
+#editarFacturaPdfPaginas .pagina-pdf-wrap {
+    position: relative;
     width: 100%;
     margin-bottom: 10px;
+}
+
+#editarFacturaPdfPaginas .pagina-pdf-wrap img {
+    position: absolute;
+    top: 50%;
+    left: 50%;
     box-shadow: 0 1px 4px rgba(0,0,0,0.18);
     user-select: none;
 }
@@ -790,8 +796,26 @@ table.tabla-historial tr.fila-seleccionada td {
     text-align: center;
 }
 
+.kpi.kpi-clickable {
+    cursor: pointer;
+    transition: filter 0.15s, transform 0.15s;
+}
+
+.kpi.kpi-clickable:hover {
+    filter: brightness(0.95);
+    transform: translateY(-2px);
+}
+
 .kpi.error {
     background: #FDECEA;
+}
+
+.kpi.manual {
+    background: #FDF0DC;
+}
+
+.kpi.manual .kpi-num {
+    color: #B8763D;
 }
 
 .kpi.error .kpi-num {
@@ -981,6 +1005,7 @@ table.tabla-historial tr.fila-reservada-mia td {
         <button class="tab-btn" data-tab="duplicados" onclick="cambiarTab('duplicados')">Duplicados <span id="badgeDuplicadosTab" class="badge vacio">0</span></button>
         <button class="tab-btn" data-tab="no_factura" onclick="cambiarTab('no_factura')">No es factura <span id="badgeNoFacturaTab" class="badge vacio">0</span></button>
         <button class="tab-btn" data-tab="vista_global" onclick="cambiarTab('vista_global')">Vista global</button>
+        <button class="tab-btn" data-tab="auditoria" onclick="cambiarTab('auditoria')">Historial de registro</button>
     </div>
     <span id="usuarioActualWidget" class="usuario-actual" onclick="cambiarUsuarioActual()" title="Cambiar usuario"></span>
     <span class="usuario-actual" onclick="liberarTodasLasReservas()" title="Si alguna factura aparece bloqueada por error, esto la libera">🔓 Liberar todas las reservas</span>
@@ -1011,42 +1036,42 @@ table.tabla-historial tr.fila-reservada-mia td {
                 <div class="kpi-text">Pendiente de procesar</div>
             </div>
 
-            <div class="kpi error">
+            <div class="kpi error kpi-clickable" onclick="cambiarTab('errores')" title="Ir a Errores">
                 <div id="error" class="kpi-num">0</div>
                 <div class="kpi-text">Error</div>
             </div>
 
-            <div class="kpi">
+            <div class="kpi manual kpi-clickable" onclick="cambiarTab('manual')" title="Ir a Corregir manualmente">
                 <div id="manual" class="kpi-num">0</div>
                 <div class="kpi-text">Revisión manual</div>
             </div>
 
-            <div class="kpi error">
+            <div class="kpi error kpi-clickable" onclick="cambiarTab('incidencias')" title="Ir a Incidencias">
                 <div id="incidencias" class="kpi-num">0</div>
                 <div class="kpi-text">Incidencias</div>
             </div>
 
-            <div class="kpi error">
+            <div class="kpi error kpi-clickable" onclick="cambiarTab('esperando_alta')" title="Ir a Esperando alta">
                 <div id="esperando_alta" class="kpi-num">0</div>
                 <div class="kpi-text">Esperando alta proveedor</div>
             </div>
 
-            <div class="kpi">
+            <div class="kpi kpi-clickable" onclick="irARevisarDesdeKpi(false)" title="Ir a Revisar facturas (pendientes de verificación)">
                 <div id="completadas" class="kpi-num">0</div>
                 <div class="kpi-text">Pendientes de verificación</div>
             </div>
 
-            <div class="kpi">
+            <div class="kpi kpi-clickable" onclick="irARevisarDesdeKpi(true)" title="Ir a Revisar facturas (definitivas)">
                 <div id="revisadas" class="kpi-num">0</div>
                 <div class="kpi-text">Revisadas</div>
             </div>
 
-            <div class="kpi">
+            <div class="kpi kpi-clickable" onclick="cambiarTab('no_factura')" title="Ir a No es factura">
                 <div id="no_es_factura" class="kpi-num">0</div>
                 <div class="kpi-text">No es factura</div>
             </div>
 
-            <div class="kpi">
+            <div class="kpi kpi-clickable" onclick="abrirModalReenviadas()" title="Ver facturas reenviadas">
                 <div id="reenviadas" class="kpi-num">0</div>
                 <div class="kpi-text">Reenviadas</div>
             </div>
@@ -1391,6 +1416,51 @@ table.tabla-historial tr.fila-reservada-mia td {
 
 </div>
 
+<div class="tab-panel" id="tab-auditoria" style="display:none">
+
+    <div class="card">
+        <div class="section-title">
+            Historial de registro
+            <button class="btn-secondary" style="margin-left:auto" onclick="cargarVistaAuditoriaActual()">Buscar</button>
+            <button class="btn-secondary" onclick="exportarExcelAuditoria()">Exportar a Excel</button>
+        </div>
+        <p class="help">
+            Quién hizo cada acción (editar, confirmar, marcar revisada/definitiva, descartar, resolver duplicados,
+            clasificar errores, solicitar o crear un envío de correo), cuándo y sobre qué factura.
+        </p>
+
+        <div class="filtro-fecha">
+            <label>Desde <input type="date" id="audFechaDesde"></label>
+            <label>Hasta <input type="date" id="audFechaHasta"></label>
+            <label>Archivo <input type="text" id="audFiltroArchivo" placeholder="Nombre de archivo"></label>
+            <label>Usuario <input type="text" id="audFiltroUsuario" placeholder="Usuario"></label>
+            <button class="btn-secondary" onclick="cargarVistaAuditoriaActual()">Buscar</button>
+            <button class="btn-secondary" onclick="limpiarFiltroAuditoria()">Limpiar filtro</button>
+            <span class="help">Haz clic en el nombre del archivo para abrir el PDF.</span>
+        </div>
+
+        <div class="tabs" style="margin:10px 0">
+            <button class="tab-btn active" id="audSubTabListado" onclick="cambiarVistaAuditoria('listado')">Listado de acciones</button>
+            <button class="tab-btn" id="audSubTabResumen" onclick="cambiarVistaAuditoria('resumen')">Resumen por factura</button>
+        </div>
+
+        <p class="help" id="audAyudaListado">Las 500 acciones más recientes que coincidan con el filtro.</p>
+        <p class="help" id="audAyudaResumen" style="display:none">
+            Las 200 facturas con actividad más reciente que coincidan con el filtro, una fila por factura con sus
+            últimos responsables (incluye facturas ya descartadas o reenviadas, no solo las que siguen activas en
+            alguna cola).
+        </p>
+
+        <div class="scroll-x" id="tablaAuditoria">
+            <span class="help">Cargando...</span>
+        </div>
+        <div class="scroll-x" id="tablaAuditoriaResumen" style="display:none">
+            <span class="help">Cargando...</span>
+        </div>
+    </div>
+
+</div>
+
 </div>
 <!-- fin #columnaContenido -->
 
@@ -1454,6 +1524,8 @@ table.tabla-historial tr.fila-reservada-mia td {
                 <div class="panel-pdf-header">
                     <span>Documento</span>
                     <div class="panel-pdf-acciones">
+                        <button class="btn-secondary" style="padding:4px 10px;font-size:12px" onclick="girarPdfEdicion(-90)" title="Girar 90° a la izquierda">⟲</button>
+                        <button class="btn-secondary" style="padding:4px 10px;font-size:12px" onclick="girarPdfEdicion(90)" title="Girar 90° a la derecha">⟳</button>
                         <button class="btn-secondary" id="btnSeleccionarEnPdf" style="padding:4px 10px;font-size:12px" onclick="alternarSeleccionManual()" title="Arrastra sobre el PDF para rellenar el campo activo con lo que haya ahí">🖉 Seleccionar en el PDF</button>
                     </div>
                 </div>
@@ -1536,6 +1608,12 @@ function cambiarTab(nombre) {
         el.classList.toggle("active", el.dataset.tab === nombre)
     );
     pestanaActiva = nombre;
+}
+
+function irARevisarDesdeKpi(mostrarDefinitivas) {
+    cambiarTab("revisar");
+    document.getElementById("revMostrarDefinitivas").checked = mostrarDefinitivas;
+    filtrarCompletadas();
 }
 
 // =========================================================
@@ -2412,7 +2490,7 @@ async function abrirCorreoYPdf(archivo, asunto) {
         const res = await fetch("/crear-borrador-outlook", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ archivo, asunto })
+            body: JSON.stringify({ archivo, asunto, usuario: obtenerUsuarioActual() })
         });
         if (!res.ok) {
             const err = await res.json();
@@ -2514,6 +2592,7 @@ async function confirmarEnvioCorreo() {
                 archivo: archivoModalCorreo,
                 motivo,
                 motivo_otro: motivoOtro,
+                usuario: obtenerUsuarioActual(),
             })
         });
 
@@ -2670,7 +2749,7 @@ async function clasificarError(archivo, motivo) {
         const res = await fetch("/clasificar-error", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ archivo, motivo })
+            body: JSON.stringify({ archivo, motivo, usuario: obtenerUsuarioActual() })
         });
 
         if (!res.ok) {
@@ -2702,7 +2781,7 @@ async function descartarErrorComoNoFactura(archivo) {
         const res = await fetch("/descartar-pendiente", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ archivo })
+            body: JSON.stringify({ archivo, usuario: obtenerUsuarioActual() })
         });
 
         if (!res.ok) {
@@ -2901,6 +2980,79 @@ function limpiarFiltroVistaGlobal() {
     filtrarVistaGlobal();
 }
 
+// =========================================================
+// PESTAÑA: AUDITORÍA (quién hizo qué acción, cuándo, sobre qué factura)
+// =========================================================
+// A diferencia de "Vista global" (que carga todo y filtra en cliente), aquí
+// el filtrado se hace en servidor en cada búsqueda: la tabla de auditoría
+// crece sin límite con el tiempo, a diferencia de las facturas activas.
+
+let vistaAuditoriaActual = "listado";
+
+function _paramsFiltroAuditoria() {
+    return new URLSearchParams({
+        archivo: document.getElementById("audFiltroArchivo").value.trim(),
+        usuario: document.getElementById("audFiltroUsuario").value.trim(),
+        desde: document.getElementById("audFechaDesde").value,
+        hasta: document.getElementById("audFechaHasta").value,
+    });
+}
+
+async function cargarAuditoria() {
+    const cont = document.getElementById("tablaAuditoria");
+    cont.innerHTML = "<span class='help'><span class='spinner'></span>Cargando...</span>";
+
+    try {
+        const res = await fetch("/auditoria-json?" + _paramsFiltroAuditoria().toString());
+        const data = await res.json();
+        renderTablaGenerica(data.tabla || [], "tablaAuditoria", "No hay registros que coincidan con el filtro.", {
+            archivoClickable: true,
+        });
+    } catch (e) {
+        cont.innerHTML = "<span class='help'>Error al cargar la auditoría.</span>";
+    }
+}
+
+async function cargarResumenAuditoriaPorArchivo() {
+    const cont = document.getElementById("tablaAuditoriaResumen");
+    cont.innerHTML = "<span class='help'><span class='spinner'></span>Cargando...</span>";
+
+    try {
+        const res = await fetch("/auditoria-por-archivo-json?" + _paramsFiltroAuditoria().toString());
+        const data = await res.json();
+        renderTablaGenerica(data.tabla || [], "tablaAuditoriaResumen", "No hay facturas que coincidan con el filtro.", {
+            archivoClickable: true,
+        });
+    } catch (e) {
+        cont.innerHTML = "<span class='help'>Error al cargar el resumen por factura.</span>";
+    }
+}
+
+function cargarVistaAuditoriaActual() {
+    return vistaAuditoriaActual === "listado" ? cargarAuditoria() : cargarResumenAuditoriaPorArchivo();
+}
+
+function cambiarVistaAuditoria(vista) {
+    vistaAuditoriaActual = vista;
+    document.getElementById("audSubTabListado").classList.toggle("active", vista === "listado");
+    document.getElementById("audSubTabResumen").classList.toggle("active", vista === "resumen");
+    document.getElementById("audAyudaListado").style.display = vista === "listado" ? "block" : "none";
+    document.getElementById("audAyudaResumen").style.display = vista === "resumen" ? "block" : "none";
+    document.getElementById("tablaAuditoria").style.display = vista === "listado" ? "block" : "none";
+    document.getElementById("tablaAuditoriaResumen").style.display = vista === "resumen" ? "block" : "none";
+    cargarVistaAuditoriaActual();
+}
+
+function exportarExcelAuditoria() {
+    const containerId = vistaAuditoriaActual === "listado" ? "tablaAuditoria" : "tablaAuditoriaResumen";
+    exportarExcelTabla(containerId, "auditoria");
+}
+
+function limpiarFiltroAuditoria() {
+    limpiarInputsFiltro(["audFechaDesde", "audFechaHasta", "audFiltroArchivo", "audFiltroUsuario"]);
+    cargarVistaAuditoriaActual();
+}
+
 async function abrirCarpetaNoFactura() {
     try {
         const res = await fetch("/abrir-carpeta-no-factura", { method: "POST" });
@@ -3014,7 +3166,7 @@ async function descartarPendiente(archivo) {
         const res = await fetch("/descartar-pendiente", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ archivo })
+            body: JSON.stringify({ archivo, usuario: obtenerUsuarioActual() })
         });
 
         if (!res.ok) {
@@ -3136,7 +3288,7 @@ async function descartarIncidencia(archivo) {
         const res = await fetch("/descartar-pendiente", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ archivo })
+            body: JSON.stringify({ archivo, usuario: obtenerUsuarioActual() })
         });
 
         if (!res.ok) {
@@ -3285,7 +3437,7 @@ async function descartarEsperandoAlta(archivo) {
         const res = await fetch("/descartar-pendiente", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ archivo })
+            body: JSON.stringify({ archivo, usuario: obtenerUsuarioActual() })
         });
 
         if (!res.ok) {
@@ -3549,7 +3701,7 @@ async function descartarFacturaCompletada(archivo) {
         const res = await fetch("/descartar-factura-completada", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ archivo }),
+            body: JSON.stringify({ archivo, usuario: obtenerUsuarioActual() }),
         });
 
         if (!res.ok) {
@@ -3742,7 +3894,7 @@ async function resolverDuplicado(archivoMantener, archivosEliminar) {
         const res = await fetch("/resolver-duplicado", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ archivo_mantener: archivoMantener, archivos_eliminar: archivosEliminar }),
+            body: JSON.stringify({ archivo_mantener: archivoMantener, archivos_eliminar: archivosEliminar, usuario: obtenerUsuarioActual() }),
         });
 
         if (!res.ok) {
@@ -3797,6 +3949,7 @@ function abrirModalEditarFactura(rowCompleta, headersCompletos, tipo) {
         paginasInfo: [],
         cajasCampos: {},
         seleccionManualActiva: false,
+        rotacion: 0,
     };
 
     intentarReservarUnaFactura(archivo);
@@ -4273,16 +4426,22 @@ async function cargarPdfEnEdicion(archivo) {
 
         cont.innerHTML = "";
         edicionFactura.paginasInfo.forEach((pagina, i) => {
+            const wrap = document.createElement("div");
+            wrap.className = "pagina-pdf-wrap";
+            wrap.dataset.pagina = i;
+
             const img = document.createElement("img");
             img.src = "data:image/png;base64," + pagina.imagen_base64;
             img.dataset.pagina = i;
             img.alt = `Página ${i + 1}`;
             img.onload = () => {
+                ajustarTamanoPagina(wrap, img);
                 if (edicionFactura && edicionFactura.camposNavegables.length) {
                     pintarCajaCampoActivo(edicionFactura.camposNavegables[edicionFactura.campoActivoIdx]);
                 }
             };
-            cont.appendChild(img);
+            wrap.appendChild(img);
+            cont.appendChild(wrap);
         });
 
         if (edicionFactura.paginasInfo.length === 0) {
@@ -4362,31 +4521,124 @@ function activarCampoEdicion(idx) {
     pintarCajaCampoActivo(campo);
 }
 
+// Gira el visor propio del PDF (no el archivo en disco: es solo la vista,
+// para leer bien facturas escaneadas apaisadas). Recalcula el tamaño de
+// cada página y vuelve a proyectar el recuadro activo con la nueva rotación.
+function girarPdfEdicion(delta) {
+    if (!edicionFactura) return;
+    edicionFactura.rotacion = ((edicionFactura.rotacion + delta) % 360 + 360) % 360;
+
+    document.querySelectorAll("#editarFacturaPdfPaginas .pagina-pdf-wrap").forEach(wrap => {
+        const img = wrap.querySelector("img");
+        if (img && img.naturalWidth) ajustarTamanoPagina(wrap, img);
+    });
+
+    document.getElementById("editarFacturaCajaManual").style.display = "none";
+    if (edicionFactura.camposNavegables.length) {
+        pintarCajaCampoActivo(edicionFactura.camposNavegables[edicionFactura.campoActivoIdx]);
+    }
+}
+
+// Calcula el tamaño (previo a girar) que debe tener la imagen para que, una
+// vez aplicado el rotate() en CSS, el resultado visual encaje en el ancho
+// del panel sin deformarse; y fija en el wrap el alto ya girado, para que el
+// hueco reservado en el scroll coincida con lo que se ve.
+function ajustarTamanoPagina(wrap, img) {
+    if (!img.naturalWidth) return;
+    const rot = ((edicionFactura.rotacion % 360) + 360) % 360;
+    const nw = img.naturalWidth, nh = img.naturalHeight;
+    const ancho = wrap.clientWidth;
+    const girado = rot === 90 || rot === 270;
+    const alto = girado ? ancho * nw / nh : ancho * nh / nw;
+
+    wrap.style.height = alto + "px";
+    if (girado) {
+        img.style.width = alto + "px";
+        img.style.height = ancho + "px";
+    } else {
+        img.style.width = ancho + "px";
+        img.style.height = alto + "px";
+    }
+    img.style.transform = `translate(-50%, -50%) rotate(${rot}deg)`;
+}
+
+// Coordenadas "naturales" (las que devuelve el backend, sobre la página tal
+// cual está en el PDF) <-> coordenadas mostradas en pantalla (ya giradas).
+// Necesario porque el recuadro automático y la selección a mano viajan en
+// coordenadas naturales, pero se pintan/leen sobre la imagen ya rotada.
+function coordNaturalADisplay(img, xn, yn) {
+    const wrap = img.parentElement;
+    const nw = img.naturalWidth, nh = img.naturalHeight;
+    const ancho = wrap.clientWidth, alto = wrap.clientHeight;
+    const rot = ((edicionFactura.rotacion % 360) + 360) % 360;
+
+    if (rot === 90) {
+        const s = ancho / nh;
+        return { x: (nh - yn) * s, y: xn * s };
+    }
+    if (rot === 180) {
+        const s = ancho / nw;
+        return { x: ancho - xn * s, y: alto - yn * s };
+    }
+    if (rot === 270) {
+        const s = ancho / nh;
+        return { x: yn * s, y: (nw - xn) * s };
+    }
+    const s = ancho / nw;
+    return { x: xn * s, y: yn * s };
+}
+
+function coordDisplayANatural(img, xd, yd) {
+    const wrap = img.parentElement;
+    const nw = img.naturalWidth, nh = img.naturalHeight;
+    const ancho = wrap.clientWidth;
+    const rot = ((edicionFactura.rotacion % 360) + 360) % 360;
+
+    if (rot === 90) {
+        const s = ancho / nh;
+        return { x: yd / s, y: nh - xd / s };
+    }
+    if (rot === 180) {
+        const s = ancho / nw;
+        return { x: nw - xd / s, y: nh - yd / s };
+    }
+    if (rot === 270) {
+        const s = ancho / nh;
+        return { x: nw - yd / s, y: xd / s };
+    }
+    const s = ancho / nw;
+    return { x: xd / s, y: yd / s };
+}
+
 function pintarCajaCampoActivo(campo) {
     const cajaDiv = document.getElementById("editarFacturaCaja");
     document.getElementById("editarFacturaCajaManual").style.display = "none";
 
     const caja = edicionFactura && edicionFactura.cajasCampos && edicionFactura.cajasCampos[campo];
-    const imgPagina = caja
-        ? document.querySelector(`#editarFacturaPdfPaginas img[data-pagina="${caja.pagina}"]`)
+    const wrap = caja
+        ? document.querySelector(`#editarFacturaPdfPaginas .pagina-pdf-wrap[data-pagina="${caja.pagina}"]`)
         : null;
+    const img = wrap ? wrap.querySelector("img") : null;
 
-    if (!caja || !imgPagina || !imgPagina.naturalWidth) {
+    if (!caja || !wrap || !img || !img.naturalWidth) {
         cajaDiv.style.display = "none";
         return;
     }
 
-    const escala = imgPagina.clientWidth / imgPagina.naturalWidth;
+    const p0 = coordNaturalADisplay(img, caja.x0, caja.y0);
+    const p1 = coordNaturalADisplay(img, caja.x1, caja.y1);
+    const izquierda = Math.min(p0.x, p1.x);
+    const arriba = Math.min(p0.y, p1.y);
     const contenedor = document.getElementById("editarFacturaPdfScroll");
 
-    cajaDiv.style.left = (imgPagina.offsetLeft + caja.x0 * escala) + "px";
-    cajaDiv.style.top = (imgPagina.offsetTop + caja.y0 * escala) + "px";
-    cajaDiv.style.width = ((caja.x1 - caja.x0) * escala) + "px";
-    cajaDiv.style.height = ((caja.y1 - caja.y0) * escala) + "px";
+    cajaDiv.style.left = (wrap.offsetLeft + izquierda) + "px";
+    cajaDiv.style.top = (wrap.offsetTop + arriba) + "px";
+    cajaDiv.style.width = Math.abs(p1.x - p0.x) + "px";
+    cajaDiv.style.height = Math.abs(p1.y - p0.y) + "px";
     cajaDiv.style.display = "block";
 
     contenedor.scrollTo({
-        top: Math.max(imgPagina.offsetTop + caja.y0 * escala - contenedor.clientHeight / 3, 0),
+        top: Math.max(wrap.offsetTop + arriba - contenedor.clientHeight / 3, 0),
         behavior: "smooth",
     });
 }
@@ -4438,23 +4690,33 @@ async function terminarArrastreManual(ev) {
     }
 
     const yTope = Math.min(inicio.y, fin.y);
-    let pagina = null, escala = 1, imgElegida = null;
-    for (const img of document.querySelectorAll("#editarFacturaPdfPaginas img")) {
-        if (yTope >= img.offsetTop && yTope <= img.offsetTop + img.clientHeight) {
-            pagina = parseInt(img.dataset.pagina, 10);
-            escala = img.clientWidth / img.naturalWidth;
-            imgElegida = img;
+    let pagina = null, wrapElegido = null, imgElegida = null;
+    for (const wrap of document.querySelectorAll("#editarFacturaPdfPaginas .pagina-pdf-wrap")) {
+        if (yTope >= wrap.offsetTop && yTope <= wrap.offsetTop + wrap.clientHeight) {
+            pagina = parseInt(wrap.dataset.pagina, 10);
+            wrapElegido = wrap;
+            imgElegida = wrap.querySelector("img");
             break;
         }
     }
 
     document.getElementById("editarFacturaCajaManual").style.display = "none";
-    if (pagina === null || !imgElegida || !escala) return;
+    if (pagina === null || !imgElegida || !imgElegida.naturalWidth) return;
 
-    const x0 = (Math.min(inicio.x, fin.x) - imgElegida.offsetLeft) / escala;
-    const y0 = (Math.min(inicio.y, fin.y) - imgElegida.offsetTop) / escala;
-    const x1 = (Math.max(inicio.x, fin.x) - imgElegida.offsetLeft) / escala;
-    const y1 = (Math.max(inicio.y, fin.y) - imgElegida.offsetTop) / escala;
+    const d0 = coordDisplayANatural(
+        imgElegida,
+        Math.min(inicio.x, fin.x) - wrapElegido.offsetLeft,
+        Math.min(inicio.y, fin.y) - wrapElegido.offsetTop,
+    );
+    const d1 = coordDisplayANatural(
+        imgElegida,
+        Math.max(inicio.x, fin.x) - wrapElegido.offsetLeft,
+        Math.max(inicio.y, fin.y) - wrapElegido.offsetTop,
+    );
+    const x0 = Math.min(d0.x, d1.x);
+    const y0 = Math.min(d0.y, d1.y);
+    const x1 = Math.max(d0.x, d1.x);
+    const y1 = Math.max(d0.y, d1.y);
 
     const campo = edicionFactura.camposNavegables[edicionFactura.campoActivoIdx];
     edicionFactura.cajasCampos[campo] = { pagina, x0, y0, x1, y1 };
@@ -4809,6 +5071,7 @@ async function inicializarApp() {
     cargarDuplicadosCompleto();
     cargarNoFacturaCompleto();
     cargarVistaGlobal();
+    cargarAuditoria();
 }
 
 inicializarApp();

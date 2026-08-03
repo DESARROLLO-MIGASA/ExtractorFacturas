@@ -49,6 +49,8 @@ from logic import (
     estado_reservas_sql,
     mis_reservas_sql,
     liberar_todas_las_reservas_sql,
+    listar_auditoria_sql,
+    resumen_auditoria_por_archivo,
 )
 
 router = APIRouter()
@@ -208,6 +210,7 @@ def guardar_cambios_pendiente_endpoint(body: ConfirmacionFactura):
 @router.post("/descartar-pendiente")
 def descartar_pendiente_endpoint(body: dict):
     archivo = str(body.get("archivo", "")).strip()
+    usuario = str(body.get("usuario", "")).strip() or "desconocido"
     if not archivo:
         raise HTTPException(status_code=400, detail="Falta el nombre del archivo.")
 
@@ -215,7 +218,7 @@ def descartar_pendiente_endpoint(body: dict):
         raise HTTPException(status_code=400, detail="Nombre de archivo no válido.")
 
     try:
-        descartar_pendiente(archivo)
+        descartar_pendiente(archivo, usuario)
         return {"ok": True}
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"No se encontró el PDF: {archivo}")
@@ -391,11 +394,12 @@ def actualizar_factura_completada_endpoint(body: ActualizacionFacturaCompletada)
 @router.post("/descartar-factura-completada")
 def descartar_factura_completada_endpoint(body: dict):
     archivo = str(body.get("archivo", "")).strip()
+    usuario = str(body.get("usuario", "")).strip() or "desconocido"
     if not archivo or os.path.basename(archivo) != archivo:
         raise HTTPException(status_code=400, detail="Nombre de archivo no válido.")
 
     try:
-        descartar_factura_completada(archivo)
+        descartar_factura_completada(archivo, usuario)
         return {"ok": True}
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"No se encontró el PDF: {archivo}")
@@ -412,6 +416,7 @@ def duplicados_completo_json():
 def resolver_duplicado_endpoint(body: dict):
     archivo_mantener = str(body.get("archivo_mantener", "")).strip()
     archivos_eliminar = [str(a).strip() for a in body.get("archivos_eliminar", []) if str(a).strip()]
+    usuario = str(body.get("usuario", "")).strip() or "desconocido"
 
     if not archivo_mantener:
         raise HTTPException(status_code=400, detail="Falta el archivo a mantener.")
@@ -419,7 +424,7 @@ def resolver_duplicado_endpoint(body: dict):
         raise HTTPException(status_code=400, detail="Falta al menos un archivo a eliminar.")
 
     try:
-        resolver_duplicado(archivo_mantener, archivos_eliminar)
+        resolver_duplicado(archivo_mantener, archivos_eliminar, usuario)
         return {"ok": True}
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=f"No se encontró el PDF: {e}")
@@ -456,6 +461,32 @@ def exportar_excel_listado(body: ExportarExcelBody):
 @router.get("/vista-global-json")
 def vista_global_json():
     return {"tabla": listar_vista_global_completo()}
+
+
+@router.get("/auditoria-json")
+def auditoria_json(archivo: str = "", usuario: str = "", desde: str = "", hasta: str = "", limite: int = 500):
+    filas = listar_auditoria_sql(
+        archivo=archivo.strip() or None,
+        usuario=usuario.strip() or None,
+        desde=desde.strip() or None,
+        hasta=hasta.strip() or None,
+        limite=limite,
+    )
+    cabeceras = ["Fecha", "Usuario", "Accion", "Archivo", "Detalle"]
+    return {"tabla": [cabeceras, *filas]}
+
+
+@router.get("/auditoria-por-archivo-json")
+def auditoria_por_archivo_json(archivo: str = "", usuario: str = "", desde: str = "", hasta: str = "", limite: int = 200):
+    return {
+        "tabla": resumen_auditoria_por_archivo(
+            archivo=archivo.strip() or None,
+            usuario=usuario.strip() or None,
+            desde=desde.strip() or None,
+            hasta=hasta.strip() or None,
+            limite=limite,
+        )
+    }
 
 
 @router.get("/descargar-facturas-definitivas")

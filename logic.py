@@ -48,6 +48,10 @@ from sql_historial import (
     eliminar_de_cola_revision_sql,
     listar_cola_revision_sql,
     buscar_incidencias_por_cif_sql,
+    registrar_auditoria_sql,
+    listar_auditoria_sql,
+    resumen_auditoria_por_archivo_sql,
+    listar_archivos_auditoria_sql,
 )
 
 _fallback = os.path.join(os.path.dirname(os.path.abspath(__file__)), "facturas")
@@ -173,6 +177,39 @@ EXPECTED_HEADERS = [
     "FOperacion",
     "FEscaneo",
 ]
+
+# Columna (en AuditLog, ver resumen_auditoria_por_archivo_sql) -> etiqueta de
+# cabecera, en el orden en que deben aparecer en cualquier tabla que muestre
+# "quién hizo qué" sobre cada factura (Corregir manualmente, Incidencias,
+# Vista global, resumen por archivo de Historial de registro...).
+COLUMNAS_RESUMEN_AUDITORIA = [
+    ("EditadoPor", "Editado por"),
+    ("ConfirmadaPor", "Confirmada por"),
+    ("RevisadaPor", "Revisada por"),
+    ("DefinitivaPor", "Definitiva por"),
+    ("EsperandoAltaPor", "Esperando alta por"),
+    ("NoEsFacturaPor", "No es factura por"),
+]
+
+
+def _enriquecer_con_auditoria(headers, filas, archivos_lookup=None):
+    """Añade a `headers` y, en el sitio (mutando `filas` in situ), a cada
+    fila de `filas`, las columnas de COLUMNAS_RESUMEN_AUDITORIA. Por
+    defecto busca en AuditLog por `fila[0]` (el Archivo de esa fila); pasa
+    `archivos_lookup` cuando el nombre a mostrar no coincide con el que
+    quedó registrado en AuditLog (ver el caso "Reenviada" en
+    listar_vista_global_completo). Deja "-" en las que no tengan dato.
+    Devuelve la lista de headers ya con las columnas añadidas."""
+    if archivos_lookup is None:
+        archivos_lookup = [fila[0] for fila in filas]
+
+    resumen = resumen_auditoria_por_archivo_sql(archivos_lookup)
+    for fila, archivo_lookup in zip(filas, archivos_lookup):
+        datos = resumen.get(archivo_lookup, {})
+        fila.extend(datos.get(clave) or "-" for clave, _etiqueta in COLUMNAS_RESUMEN_AUDITORIA)
+
+    return headers + [etiqueta for _clave, etiqueta in COLUMNAS_RESUMEN_AUDITORIA]
+
 
 DEFAULT_PROMPT = """Eres un extractor estricto de datos de facturas de proveedor.
 
@@ -1783,6 +1820,8 @@ def marcar_factura_definitiva(archivo, definitiva, usuario):
         quitar_factura_definitiva(archivo)
         _mover_pdf_a_carpeta(archivo, COMPLETADAS_DIR)
 
+    registrar_auditoria_sql(usuario, "marcar_definitiva" if definitiva else "desmarcar_definitiva", archivo)
+
 
 def actualizar_factura_completada(fila_completa, origen, usuario):
     """Corrige los datos de una factura ya examinada (acción "Editar" en
@@ -1797,8 +1836,10 @@ def actualizar_factura_completada(fila_completa, origen, usuario):
     if fila_dict and _es_definitiva(fila_dict):
         agregar_o_actualizar_factura_definitiva(fila_completa, origen, usuario)
 
+    registrar_auditoria_sql(usuario, "editar_completada", archivo)
 
-def descartar_factura_completada(archivo):
+
+def descartar_factura_completada(archivo, usuario):
     """Papelera de "Revisar facturas": quita la factura de FacturasExaminadas
     y del Excel definitivo (si estaba ahí), y mueve el PDF a no_es_factura."""
     ok = eliminar_factura_examinada_sql(archivo)
@@ -1821,19 +1862,23 @@ def descartar_factura_completada(archivo):
     shutil.move(src, dest)
     _liberar_del_disco_local(dest)
 
+    registrar_auditoria_sql(usuario, "descartar_completada", archivo)
 
-def resolver_duplicado(archivo_mantener, archivos_eliminar):
+
+def resolver_duplicado(archivo_mantener, archivos_eliminar, usuario):
     """Resuelve un grupo de facturas duplicadas (mismo NumeroFactura+
     Proveedor+Buyer): descarta cada factura de `archivos_eliminar` igual que
     "Revisar facturas" > papelera (queda fuera de FacturasExaminadas y su PDF
     se mueve a no_es_factura), y quita el aviso de duplicado de la que se
     mantiene."""
     for archivo in archivos_eliminar:
-        descartar_factura_completada(archivo)
+        descartar_factura_completada(archivo, usuario)
 
     ok = marcar_duplicado_sql(archivo_mantener, False)
     if not ok:
         raise RuntimeError("No se pudo actualizar el estado de duplicado en la base de datos.")
+
+    registrar_auditoria_sql(usuario, "resolver_duplicado", archivo_mantener, f"eliminados: {', '.join(archivos_eliminar)}")
 
 
 CAMPOS_EXCLUIR_IMAGEN = {"Archivo", "FEscaneo", "ImporIVA"}
@@ -2489,7 +2534,9 @@ def listar_pendientes_completo():
     mover_pdf y guardar_cambios_pendiente).
 
     Añade la columna "Revisada" (Sí/No): un simple marcador de que alguien ya
-    la miró, independiente de si ya se ha completado o no.
+    la miró, independiente de si ya se ha completado o no. Justo después,
+    las columnas de auditoría (quién editó/confirmó/marcó definitiva/mandó
+    a esperando alta/descartó cada factura, ver COLUMNAS_RESUMEN_AUDITORIA).
     """
     revisados = archivos_revisados_sql()
 
@@ -2500,7 +2547,8 @@ def listar_pendientes_completo():
     for fila in filas:
         fila.append("Sí" if fila[0] in revisados else "No")
 
-    return [HEADERS_PENDIENTES_COMPLETO] + filas
+    headers = _enriquecer_con_auditoria(HEADERS_PENDIENTES_COMPLETO, filas)
+    return [headers] + filas
 
 
 def listar_incidencias_lista():
@@ -2557,7 +2605,8 @@ def listar_incidencias_completo():
     da de alta o se reactiva (cargar_empresas.py/cargar_proveedores.py), en
     vez de recorrer la cola entera en cada recarga de la pestaña.
 
-    Añade también la columna "Revisada" (Sí/No), igual que listar_pendientes_completo.
+    Añade también la columna "Revisada" (Sí/No) y, justo después, las
+    columnas de auditoría, igual que listar_pendientes_completo.
     """
     revisados = archivos_revisados_sql()
 
@@ -2565,7 +2614,8 @@ def listar_incidencias_completo():
     for fila in filas:
         fila.append("Sí" if fila[0] in revisados else "No")
 
-    return [HEADERS_INCIDENCIAS_COMPLETO] + filas
+    headers = _enriquecer_con_auditoria(HEADERS_INCIDENCIAS_COMPLETO, filas)
+    return [headers] + filas
 
 
 def reclasificar_cola_por_cif(cif):
@@ -2657,6 +2707,7 @@ def marcar_esperando_alta(archivo, usuario):
         quitar_factura_definitiva(archivo)
 
     _mover_pdf_a_carpeta(archivo, ESPERANDO_ALTA_DIR)
+    registrar_auditoria_sql(usuario, "marcar_esperando_alta", archivo)
 
 
 def reprocesar_esperando_alta(archivo):
@@ -2701,6 +2752,7 @@ def marcar_revisada(archivo, revisada, usuario):
         ok = marcar_revisada_sql(archivo, False, usuario)
         if not ok:
             raise RuntimeError("No se pudo actualizar el estado de revisión en la base de datos.")
+        registrar_auditoria_sql(usuario, "desmarcar_revisada", archivo)
         return False
 
     fila = buscar_en_historial(archivo)
@@ -2708,11 +2760,13 @@ def marcar_revisada(archivo, revisada, usuario):
         ok = marcar_revisada_sql(archivo, True, usuario)
         if not ok:
             raise RuntimeError("No se pudo actualizar el estado de revisión en la base de datos.")
+        registrar_auditoria_sql(usuario, "marcar_revisada", archivo)
         return False
 
     fila = limpiar_fila(list(fila))
     fila[0] = archivo
     fila = _refrescar_buyer_proveedor(fila)
+    registrar_auditoria_sql(usuario, "marcar_revisada", archivo)
     confirmar_y_mover_factura(archivo, fila, usuario)
     return True
 
@@ -2726,6 +2780,7 @@ def confirmar_y_mover_factura(archivo, fila_completa, usuario):
     guardar_factura_examinada_sql(fila_completa, "manual")
     detectar_y_marcar_duplicados(fila_completa)
     marcar_factura_definitiva(archivo, True, usuario)
+    registrar_auditoria_sql(usuario, "confirmar_factura", archivo)
 
 
 def guardar_cambios_pendiente(fila_completa, usuario):
@@ -2745,9 +2800,10 @@ def guardar_cambios_pendiente(fila_completa, usuario):
     csv_text = tabla_a_pipe_csv([EXPECTED_HEADERS, fila_completa])
     guardar_historial(csv_text, usuario)
     actualizar_campos_cola_revision_sql(fila_completa)
+    registrar_auditoria_sql(usuario, "editar_pendiente", str(fila_completa[0]).strip())
 
 
-def descartar_pendiente(archivo):
+def descartar_pendiente(archivo, usuario):
     """
     "Papelera" de corregir_manualmente (y de incidencias): para documentos
     que la extracción clasificó como pendientes de corrección o como
@@ -2757,6 +2813,7 @@ def descartar_pendiente(archivo):
     """
     dest = _mover_pdf_a_carpeta(archivo, NO_FACTURA_DIR)
     _liberar_del_disco_local(dest)
+    registrar_auditoria_sql(usuario, "descartar_pendiente", archivo)
 
 
 def listar_reenviar_pedido():
@@ -2899,7 +2956,7 @@ _MOTIVOS_QUE_MUEVEN = {"falta_pedido_cliente", "dos_facturas_una_pagina"}
 
 
 
-def solicitar_envio_correo(archivo, motivo, motivo_otro=None):
+def solicitar_envio_correo(archivo, motivo, usuario, motivo_otro=None):
     """
     Mueve el PDF a la carpeta correspondiente al motivo elegido, codificando
     el motivo en el nombre de archivo cuando hace falta distinguirlo (ver
@@ -2983,6 +3040,7 @@ def solicitar_envio_correo(archivo, motivo, motivo_otro=None):
         except Exception as e:
             print(f"AVISO: no se pudo quitar {archivo} del Excel de definitivas: {e}")
 
+    registrar_auditoria_sql(usuario, "solicitar_envio_correo", archivo, motivo)
     return nuevo_nombre, aviso
 
 
@@ -3096,7 +3154,7 @@ def _obtener_token_graph():
     return _token_graph_cache["token"]
 
 
-def crear_borrador_outlook_graph(archivo, asunto=None):
+def crear_borrador_outlook_graph(archivo, usuario, asunto=None):
     """Crea un borrador de correo (destinatario + PDF adjunto) en el buzón
     GRAPH_BUZON_ENVIO vía Microsoft Graph, y devuelve el enlace para abrirlo
     ya hecho en Outlook Web. No lo envía: lo deja como borrador para que la
@@ -3159,6 +3217,7 @@ def crear_borrador_outlook_graph(archivo, asunto=None):
             f"Microsoft Graph devolvió un error ({e.response.status_code}): {e.response.text}"
         ) from e
 
+    registrar_auditoria_sql(usuario, "crear_borrador_correo", archivo)
     return {"webLink": web_link}
 
 
@@ -3241,7 +3300,7 @@ def _mover_a_carpeta_reenvio(pdf_path, archivo, carpeta_destino):
     _mover_via_copia(pdf_path, dest)
 
 
-def clasificar_error(archivo, motivo):
+def clasificar_error(archivo, motivo, usuario):
     """
     Clasifica un PDF de ERROR_DIR y lo mueve a la carpeta correspondiente:
     - "pesa_mucho" -> REENVIAR_ERROR_PESA_MUCHO_DIR
@@ -3262,6 +3321,7 @@ def clasificar_error(archivo, motivo):
         raise FileNotFoundError(archivo)
 
     _mover_a_carpeta_reenvio(src, archivo, carpeta_destino)
+    registrar_auditoria_sql(usuario, "clasificar_error_extraccion", archivo, motivo)
     return extraer_email_de_nombre(archivo)
 
 
@@ -3388,9 +3448,11 @@ HEADERS_VISTA_GLOBAL = EXPECTED_HEADERS + ["Procedencia"]
 
 def listar_vista_global_completo():
     """[headers, *filas] que junta en una sola tabla, con una columna
-    "Procedencia" añadida al final, las seis colas de trabajo: Corregir
-    manualmente, Incidencias, Pendientes de verificación, Revisadas,
-    Esperando alta proveedor y Reenviadas. Reutiliza tal cual las funciones
+    "Procedencia" y las columnas de auditoría (quién editó/confirmó/
+    revisó/marcó definitiva/mandó a esperando alta/descartó cada factura)
+    añadidas al final, las seis colas de trabajo: Corregir manualmente,
+    Incidencias, Pendientes de verificación, Revisadas, Esperando alta
+    proveedor y Reenviadas. Reutiliza tal cual las funciones
     listar_*_completo de cada cola (misma caché/rendimiento que sus
     pestañas), así que esto no repite ninguna consulta ni lectura de disco
     aparte de las que ya hacía cada pestaña por separado.
@@ -3402,6 +3464,11 @@ def listar_vista_global_completo():
     con su propia cola.
     """
     filas = []
+    # Nombre "lógico" de cada fila para buscar en AuditLog: coincide con
+    # fila[0] salvo en "Reenviadas", donde fila[0] lleva los marcadores
+    # __EMAIL__/__MOTIVOENVIO__ que codifica solicitar_envio_correo pero
+    # AuditLog guarda el nombre limpio (el que tenía antes de ese renombrado).
+    archivos_lookup = []
 
     def _agregar(tabla, procedencia, incluir=None):
         headers, *resto = tabla
@@ -3410,6 +3477,7 @@ def listar_vista_global_completo():
             if incluir and not incluir(d):
                 continue
             filas.append([str(d.get(c, "-") or "-") for c in EXPECTED_HEADERS] + [procedencia])
+            archivos_lookup.append(str(d.get("Archivo", "-") or "-"))
 
     _agregar(listar_pendientes_completo(), "Corregir manualmente")
     _agregar(listar_incidencias_completo(), "Incidencia")
@@ -3431,8 +3499,28 @@ def listar_vista_global_completo():
         # el limpio, para que /pdf-factura/{archivo} lo encuentre.
         fila[0] = r["archivo_real"]
         filas.append(fila + ["Reenviada"])
+        archivos_lookup.append(r["archivo"])
 
-    return [HEADERS_VISTA_GLOBAL] + filas
+    headers = _enriquecer_con_auditoria(HEADERS_VISTA_GLOBAL, filas, archivos_lookup)
+    return [headers] + filas
+
+
+def resumen_auditoria_por_archivo(archivo=None, usuario=None, desde=None, hasta=None, limite=200):
+    """[headers, *filas] con una fila por archivo (el más recientemente
+    activo primero) y sus últimos responsables -mismas columnas que en
+    Vista global-, para la vista "por factura" de la pestaña Auditoría.
+    A diferencia de Vista global (que parte de las colas de trabajo
+    activas), aquí los archivos salen del propio AuditLog, así que también
+    aparecen facturas ya descartadas o reenviadas hace tiempo."""
+    archivos = listar_archivos_auditoria_sql(archivo=archivo, usuario=usuario, desde=desde, hasta=hasta, limite=limite)
+    resumen = resumen_auditoria_por_archivo_sql(archivos)
+
+    headers = ["Archivo"] + [etiqueta for _clave, etiqueta in COLUMNAS_RESUMEN_AUDITORIA]
+    filas = [
+        [nombre] + [resumen.get(nombre, {}).get(clave) or "-" for clave, _etiqueta in COLUMNAS_RESUMEN_AUDITORIA]
+        for nombre in archivos
+    ]
+    return [headers] + filas
 
 
 # =========================================================

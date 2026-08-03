@@ -207,12 +207,13 @@ def solicitar_envio_correo_endpoint(body: dict):
     archivo = str(body.get("archivo", "")).strip()
     motivo = str(body.get("motivo", "")).strip()
     motivo_otro = body.get("motivo_otro")
+    usuario = str(body.get("usuario", "")).strip() or "desconocido"
 
     if not archivo or os.path.basename(archivo) != archivo:
         raise HTTPException(status_code=400, detail="Nombre de archivo no válido.")
 
     try:
-        archivo_generado, aviso = solicitar_envio_correo(archivo, motivo, motivo_otro)
+        archivo_generado, aviso = solicitar_envio_correo(archivo, motivo, usuario, motivo_otro)
         return {"ok": True, "archivo_generado": archivo_generado, "aviso": aviso}
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"No se encontró el PDF: {archivo}")
@@ -231,12 +232,13 @@ def crear_borrador_outlook_endpoint(body: dict):
     vía Microsoft Graph y devuelve el enlace para abrirlo en Outlook Web."""
     archivo = str(body.get("archivo", "")).strip()
     asunto = body.get("asunto")
+    usuario = str(body.get("usuario", "")).strip() or "desconocido"
 
     if not archivo or os.path.basename(archivo) != archivo:
         raise HTTPException(status_code=400, detail="Nombre de archivo no válido.")
 
     try:
-        return crear_borrador_outlook_graph(archivo, asunto)
+        return crear_borrador_outlook_graph(archivo, usuario, asunto)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"No se encontró el PDF: {archivo}")
     except RuntimeError as e:
@@ -275,12 +277,13 @@ def abrir_carpeta_no_factura_endpoint():
 def clasificar_error_endpoint(body: dict):
     archivo = str(body.get("archivo", "")).strip()
     motivo = str(body.get("motivo", "")).strip()
+    usuario = str(body.get("usuario", "")).strip() or "desconocido"
 
     if not archivo or os.path.basename(archivo) != archivo:
         raise HTTPException(status_code=400, detail="Nombre de archivo no válido.")
 
     try:
-        email = clasificar_error(archivo, motivo)
+        email = clasificar_error(archivo, motivo, usuario)
         return {"ok": True, "email": email}
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"No se encontró el PDF: {archivo}")
