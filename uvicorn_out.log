@@ -1,0 +1,2 @@
+INFO:     127.0.0.1:61745 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65229 - "GET /whoami HTTP/1.1" 200 OK
