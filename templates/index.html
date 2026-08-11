@@ -1003,12 +1003,12 @@ table.tabla-historial tr.fila-reservada-mia td {
         <button class="tab-btn" data-tab="errores" onclick="cambiarTab('errores')" style="display:none;">Errores <span id="badgeErroresTab" class="badge vacio">0</span></button>
         <button class="tab-btn" data-tab="revisar" onclick="cambiarTab('revisar')" style="display:none;">Revisar facturas</button>
         <button class="tab-btn" data-tab="duplicados" onclick="cambiarTab('duplicados')" style="display:none;">Duplicados <span id="badgeDuplicadosTab" class="badge vacio">0</span></button>
-        <button class="tab-btn" data-tab="no_factura" onclick="cambiarTab('no_factura')" style="display:none;">No es factura <span id="badgeNoFacturaTab" class="badge vacio">0</span></button>
-        <button class="tab-btn" data-tab="vista_global" onclick="cambiarTab('vista_global')">Vista global</button>
-        <button class="tab-btn" data-tab="auditoria" onclick="cambiarTab('auditoria')">Historial de registro</button>
+        <button class="tab-btn" data-tab="no_factura" onclick="cambiarTab('no_factura')" style="display:none;" data-admin-only>No es factura <span id="badgeNoFacturaTab" class="badge vacio">0</span></button>
+        <button class="tab-btn" data-tab="vista_global" onclick="cambiarTab('vista_global')" data-admin-only>Vista global</button>
+        <button class="tab-btn" data-tab="auditoria" onclick="cambiarTab('auditoria')" data-admin-only>Historial de registro</button>
     </div>
     <span id="usuarioActualWidget" class="usuario-actual" onclick="cambiarUsuarioActual()" title="Cambiar usuario"></span>
-    <span class="usuario-actual" onclick="liberarTodasLasReservas()" title="Si alguna factura aparece bloqueada por error, esto la libera">🔓 Liberar todas las reservas</span>
+    <span class="usuario-actual" onclick="liberarTodasLasReservas()" title="Si alguna factura aparece bloqueada por error, esto la libera" data-admin-only>🔓 Liberar todas las reservas</span>
 </div>
 
 <!-- ========================================================= -->
@@ -1024,7 +1024,7 @@ table.tabla-historial tr.fila-reservada-mia td {
             <button class="btn-primary" id="btnProcesar" onclick="procesar()">
                 Procesar carpeta entrada
             </button>
-            <button class="btn-secondary" id="btnVerReenviadas" style="margin-left:auto" onclick="abrirModalReenviadas()">
+            <button class="btn-secondary" id="btnVerReenviadas" style="margin-left:auto" onclick="abrirModalReenviadas()" data-admin-only>
                 Ver facturas reenviadas
             </button>
         </div>
@@ -1061,17 +1061,17 @@ table.tabla-historial tr.fila-reservada-mia td {
                 <div class="kpi-text">Pendientes de verificación</div>
             </div>
 
-            <div class="kpi kpi-clickable" onclick="irARevisarDesdeKpi(true)" title="Ir a Revisar facturas (definitivas)">
+            <div class="kpi kpi-clickable" onclick="irARevisarDesdeKpi(true)" title="Ir a Revisar facturas (definitivas)" data-admin-only>
                 <div id="revisadas" class="kpi-num">0</div>
                 <div class="kpi-text">Revisadas</div>
             </div>
 
-            <div class="kpi kpi-clickable" onclick="cambiarTab('no_factura')" title="Ir a No es factura">
+            <div class="kpi kpi-clickable" onclick="cambiarTab('no_factura')" title="Ir a No es factura" data-admin-only>
                 <div id="no_es_factura" class="kpi-num">0</div>
                 <div class="kpi-text">No es factura</div>
             </div>
 
-            <div class="kpi kpi-clickable" onclick="abrirModalReenviadas()" title="Ver facturas reenviadas">
+            <div class="kpi kpi-clickable" onclick="abrirModalReenviadas()" title="Ver facturas reenviadas" data-admin-only>
                 <div id="reenviadas" class="kpi-num">0</div>
                 <div class="kpi-text">Reenviadas</div>
             </div>
@@ -1092,7 +1092,7 @@ table.tabla-historial tr.fila-reservada-mia td {
             Facturas pendientes de corrección
             <span id="badgePendientes" class="badge vacio">0</span>
             <button class="btn-secondary" style="margin-left:auto" onclick="cargarPendientesCompleto()">Actualizar lista</button>
-            <button class="btn-secondary" onclick="exportarExcelTabla('tablaPendientes', 'facturas_pendientes')">Exportar a Excel</button>
+            <button class="btn-secondary" onclick="exportarExcelTabla('tablaPendientes', 'facturas_pendientes')" data-admin-only>Exportar a Excel</button>
         </div>
 
         <div class="filtro-fecha">
@@ -1132,7 +1132,7 @@ table.tabla-historial tr.fila-reservada-mia td {
             Facturas con incidencia
             <span id="badgeIncidencias" class="badge vacio">0</span>
             <button class="btn-secondary" style="margin-left:auto" onclick="cargarIncidenciasCompleto()">Actualizar lista</button>
-            <button class="btn-secondary" onclick="exportarExcelTabla('tablaIncidencias', 'facturas_incidencias')">Exportar a Excel</button>
+            <button class="btn-secondary" onclick="exportarExcelTabla('tablaIncidencias', 'facturas_incidencias')" data-admin-only>Exportar a Excel</button>
         </div>
         <p class="help">
             El comprador (Buyer) o el proveedor no se han podido resolver contra la base de datos de empresas/proveedores
@@ -1177,7 +1177,7 @@ table.tabla-historial tr.fila-reservada-mia td {
             Facturas esperando alta en la base de datos
             <span id="badgeEsperandoAlta" class="badge vacio">0</span>
             <button class="btn-secondary" style="margin-left:auto" onclick="cargarEsperandoAltaCompleto()">Actualizar lista</button>
-            <button class="btn-secondary" onclick="exportarExcelTabla('tablaEsperandoAlta', 'facturas_esperando_alta')">Exportar a Excel</button>
+            <button class="btn-secondary" onclick="exportarExcelTabla('tablaEsperandoAlta', 'facturas_esperando_alta')" data-admin-only>Exportar a Excel</button>
         </div>
         <p class="help">
             Facturas apartadas a mano (desde Corregir manualmente, Incidencias o Revisar facturas) porque el comprador o
@@ -1223,7 +1223,7 @@ table.tabla-historial tr.fila-reservada-mia td {
             <span id="badgeErrores" class="badge vacio">0</span>
             <button class="btn-secondary" style="margin-left:auto" onclick="cargarErroresCompleto()">Actualizar lista</button>
             <button class="btn-secondary" id="btnReprocesarTodosErrores" onclick="reprocesarTodosLosErrores()">Reprocesar todos</button>
-            <button class="btn-secondary" onclick="exportarExcelTabla('tablaErrores', 'facturas_error')">Exportar a Excel</button>
+            <button class="btn-secondary" onclick="exportarExcelTabla('tablaErrores', 'facturas_error')" data-admin-only>Exportar a Excel</button>
         </div>
         <p class="help">
             La extracción automática ha fallado en estas facturas (fallo puntual de la API, PDF ilegible...) y no
@@ -1254,13 +1254,13 @@ table.tabla-historial tr.fila-reservada-mia td {
         <div class="section-title">
             Facturas completadas
             <span id="badgeCompletadas" class="badge vacio">0</span>
-            <label style="margin-left:auto; font-weight:normal;">
+            <label style="margin-left:auto; font-weight:normal;" data-admin-only>
                 <input type="checkbox" id="revMostrarDefinitivas" onchange="filtrarCompletadas()">
                 Mostrar definitivas
             </label>
             <button class="btn-secondary" onclick="cargarFacturasCompletadas()">Actualizar lista</button>
-            <button class="btn-secondary" onclick="descargarFacturasDefinitivas()">Descargar Excel definitivo</button>
-            <button class="btn-secondary" onclick="exportarExcelTabla('tablaCompletadas', 'facturas_completadas')">Exportar a Excel</button>
+            <button class="btn-secondary" onclick="descargarFacturasDefinitivas()" data-admin-only>Descargar Excel definitivo</button>
+            <button class="btn-secondary" onclick="exportarExcelTabla('tablaCompletadas', 'facturas_completadas')" data-admin-only>Exportar a Excel</button>
         </div>
         <p class="help">
             Revisión final de las facturas ya completadas (extraídas automáticamente sin problemas o corregidas a mano).
@@ -1306,7 +1306,7 @@ table.tabla-historial tr.fila-reservada-mia td {
             Facturas duplicadas
             <span id="badgeDuplicados" class="badge vacio">0</span>
             <button class="btn-secondary" style="margin-left:auto" onclick="cargarDuplicadosCompleto()">Actualizar lista</button>
-            <button class="btn-secondary" onclick="exportarExcelTabla('tablaDuplicados', 'facturas_duplicadas')">Exportar a Excel</button>
+            <button class="btn-secondary" onclick="exportarExcelTabla('tablaDuplicados', 'facturas_duplicadas')" data-admin-only>Exportar a Excel</button>
         </div>
         <p class="help">
             Estas facturas comparten Nº factura, proveedor y cliente con otra ya guardada: es la misma factura
@@ -1345,7 +1345,7 @@ table.tabla-historial tr.fila-reservada-mia td {
             <span id="badgeNoFactura" class="badge vacio">0</span>
             <button class="btn-secondary" style="margin-left:auto" onclick="cargarNoFacturaCompleto()">Actualizar lista</button>
             <button class="btn-secondary" onclick="abrirCarpetaNoFactura()">Abrir carpeta</button>
-            <button class="btn-secondary" onclick="exportarExcelTabla('tablaNoFactura', 'documentos_no_factura')">Exportar a Excel</button>
+            <button class="btn-secondary" onclick="exportarExcelTabla('tablaNoFactura', 'documentos_no_factura')" data-admin-only>Exportar a Excel</button>
         </div>
         <p class="help">
             Documentos descartados por no ser una factura (proveedores no dados de alta, duplicados resueltos,
@@ -1377,7 +1377,7 @@ table.tabla-historial tr.fila-reservada-mia td {
             Vista global de facturas
             <span id="badgeVistaGlobal" class="badge vacio">0</span>
             <button class="btn-secondary" style="margin-left:auto" onclick="cargarVistaGlobal()">Actualizar lista</button>
-            <button class="btn-secondary" onclick="exportarExcelTabla('tablaVistaGlobal', 'vista_global_facturas')">Exportar a Excel</button>
+            <button class="btn-secondary" onclick="exportarExcelTabla('tablaVistaGlobal', 'vista_global_facturas')" data-admin-only>Exportar a Excel</button>
         </div>
         <p class="help">
             Junta en una sola tabla, de solo lectura, las facturas de Corregir manualmente, Incidencias, Pendientes de
@@ -1422,7 +1422,7 @@ table.tabla-historial tr.fila-reservada-mia td {
         <div class="section-title">
             Historial de registro
             <button class="btn-secondary" style="margin-left:auto" onclick="cargarVistaAuditoriaActual()">Buscar</button>
-            <button class="btn-secondary" onclick="exportarExcelAuditoria()">Exportar a Excel</button>
+            <button class="btn-secondary" onclick="exportarExcelAuditoria()" data-admin-only>Exportar a Excel</button>
         </div>
         <p class="help">
             Quién hizo cada acción (editar, confirmar, marcar revisada/definitiva, descartar, resolver duplicados,
@@ -1636,6 +1636,21 @@ function obtenerUsuarioActual() {
 
 function pedirUsuarioActual() {
     return obtenerUsuarioActual();
+}
+
+function esAdmin() {
+    return window.USUARIO_AUTENTICADO?.role === "admin";
+}
+
+// Oculta a los usuarios sin rol admin todo lo marcado con
+// data-admin-only en el HTML (los endpoints correspondientes ya están
+// protegidos en el backend con requerir_admin; esto es solo para no
+// mostrar botones/pestañas que darían un 403 al usarlos).
+function aplicarPermisosPorRol() {
+    if (esAdmin()) return;
+    document.querySelectorAll("[data-admin-only]").forEach(el => {
+        el.style.display = "none";
+    });
 }
 
 function cambiarUsuarioActual() {
@@ -2242,7 +2257,7 @@ async function liberarMiSeleccion(containerId, tipo) {
     }
     await liberarReservas(archivos);
     mostrarToast(`Liberadas ${archivos.length} factura${archivos.length === 1 ? "" : "s"}.`, "ok");
-    volverAPintarTab(tipo);
+    setTimeout(() => location.reload(), 800);
 }
 
 // Refresca los candados (🔒 usuario) de la tabla ya pintada en pantalla SIN
@@ -5068,7 +5083,7 @@ async function guardarEdicionFactura() {
 
 async function inicializarApp() {
     actualizarWidgetUsuario();
-    actualizarWidgetUsuario();
+    aplicarPermisosPorRol();
     await cargarMisReservas();
 
     cargarEstadisticas();
@@ -5076,11 +5091,14 @@ async function inicializarApp() {
     cargarIncidenciasCompleto();
     cargarEsperandoAltaCompleto();
     cargarErroresCompleto();
-    cargarFacturasCompletadas();
     cargarDuplicadosCompleto();
-    cargarNoFacturaCompleto();
-    cargarVistaGlobal();
-    cargarAuditoria();
+    cargarFacturasCompletadas();
+
+    if (esAdmin()) {
+        cargarNoFacturaCompleto();
+        cargarVistaGlobal();
+        cargarAuditoria();
+    }
 }
 
 inicializarApp();

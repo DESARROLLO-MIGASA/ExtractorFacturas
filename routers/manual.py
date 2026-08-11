@@ -10,9 +10,10 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 import posiciones
-from auth import requerir_admin
+from auth import get_current_user, requerir_admin
 from logic import (
     CORREGIR_DIR,
+    COLUMNAS_RESUMEN_AUDITORIA,
     EXPECTED_HEADERS,
     EXCEL_DEFINITIVO_PATH,
     read_pdf_text,
@@ -56,6 +57,23 @@ from logic import (
 
 router = APIRouter()
 
+_ETIQUETAS_AUDITORIA_POR_FILA = {etiqueta for _clave, etiqueta in COLUMNAS_RESUMEN_AUDITORIA}
+
+
+def _quitar_columnas_auditoria(tabla):
+    """Quita del listado las columnas "Editado por"/"Confirmada por"/etc.
+    (quién hizo cada acción): son de solo administrador, el resto de la fila
+    sigue disponible para cualquier usuario."""
+    headers, *filas = tabla
+    indices_a_quitar = [i for i, h in enumerate(headers) if h in _ETIQUETAS_AUDITORIA_POR_FILA]
+    if not indices_a_quitar:
+        return tabla
+
+    def _sin_columnas(fila):
+        return [v for i, v in enumerate(fila) if i not in indices_a_quitar]
+
+    return [_sin_columnas(headers)] + [_sin_columnas(fila) for fila in filas]
+
 
 class ConfirmacionFactura(BaseModel):
     archivo: str
@@ -94,8 +112,11 @@ def pendientes_lista():
 
 
 @router.get("/pendientes-completo-json")
-def pendientes_completo_json():
-    return {"tabla": listar_pendientes_completo()}
+def pendientes_completo_json(usuario: dict = Depends(get_current_user)):
+    tabla = listar_pendientes_completo()
+    if usuario["role"] != "admin":
+        tabla = _quitar_columnas_auditoria(tabla)
+    return {"tabla": tabla}
 
 
 # =========================================================
@@ -103,8 +124,11 @@ def pendientes_completo_json():
 # =========================================================
 
 @router.get("/incidencias-completo-json")
-def incidencias_completo_json():
-    return {"tabla": listar_incidencias_completo()}
+def incidencias_completo_json(usuario: dict = Depends(get_current_user)):
+    tabla = listar_incidencias_completo()
+    if usuario["role"] != "admin":
+        tabla = _quitar_columnas_auditoria(tabla)
+    return {"tabla": tabla}
 
 
 @router.post("/marcar-revisada")
@@ -357,8 +381,17 @@ async def extraer(facturas: List[UploadFile] = File(...)):
 # =========================================================
 
 @router.get("/facturas-completadas-json")
-def facturas_completadas_json():
-    return {"tabla": listar_facturas_completadas()}
+def facturas_completadas_json(usuario: dict = Depends(get_current_user)):
+    """Pendientes de verificación (Definitiva = No) para todos; las ya
+    marcadas como definitivas ("facturas revisadas") solo para admin."""
+    tabla = listar_facturas_completadas()
+    if usuario["role"] == "admin":
+        return {"tabla": tabla}
+
+    headers, *filas = tabla
+    idx_definitiva = headers.index("Definitiva")
+    filas_pendientes = [fila for fila in filas if fila[idx_definitiva] != "Sí"]
+    return {"tabla": [headers] + filas_pendientes}
 
 
 @router.post("/marcar-factura-definitiva")
@@ -439,7 +472,7 @@ class ExportarExcelBody(BaseModel):
 
 
 @router.post("/exportar-excel-listado")
-def exportar_excel_listado(body: ExportarExcelBody):
+def exportar_excel_listado(body: ExportarExcelBody, usuario: dict = Depends(requerir_admin)):
     if len(body.tabla) < 2:
         raise HTTPException(status_code=400, detail="No hay filas para exportar.")
 
@@ -460,12 +493,12 @@ def exportar_excel_listado(body: ExportarExcelBody):
 # =========================================================
 
 @router.get("/vista-global-json")
-def vista_global_json():
+def vista_global_json(usuario: dict = Depends(requerir_admin)):
     return {"tabla": listar_vista_global_completo()}
 
 
 @router.get("/auditoria-json")
-def auditoria_json(archivo: str = "", usuario: str = "", desde: str = "", hasta: str = "", limite: int = 500):
+def auditoria_json(archivo: str = "", usuario: str = "", desde: str = "", hasta: str = "", limite: int = 500, admin: dict = Depends(requerir_admin)):
     filas = listar_auditoria_sql(
         archivo=archivo.strip() or None,
         usuario=usuario.strip() or None,
@@ -478,7 +511,7 @@ def auditoria_json(archivo: str = "", usuario: str = "", desde: str = "", hasta:
 
 
 @router.get("/auditoria-por-archivo-json")
-def auditoria_por_archivo_json(archivo: str = "", usuario: str = "", desde: str = "", hasta: str = "", limite: int = 200):
+def auditoria_por_archivo_json(archivo: str = "", usuario: str = "", desde: str = "", hasta: str = "", limite: int = 200, admin: dict = Depends(requerir_admin)):
     return {
         "tabla": resumen_auditoria_por_archivo(
             archivo=archivo.strip() or None,
@@ -491,7 +524,7 @@ def auditoria_por_archivo_json(archivo: str = "", usuario: str = "", desde: str 
 
 
 @router.get("/descargar-facturas-definitivas")
-def descargar_facturas_definitivas():
+def descargar_facturas_definitivas(usuario: dict = Depends(requerir_admin)):
     if not os.path.exists(EXCEL_DEFINITIVO_PATH):
         raise HTTPException(status_code=404, detail="Todavía no hay ninguna factura marcada como definitiva.")
 

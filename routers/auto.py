@@ -2,9 +2,10 @@ import os
 import shutil
 
 from dotenv import get_key
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse
 
+from auth import requerir_admin
 from logic import (
     FACTURAS_DIR,
     ERROR_DIR,
@@ -187,7 +188,7 @@ def estadisticas():
 # =========================================================
 
 @router.get("/reenviadas-detalle")
-def reenviadas_detalle():
+def reenviadas_detalle(usuario: dict = Depends(requerir_admin)):
     return {"facturas": listar_reenviadas_detalle()}
 
 
@@ -271,7 +272,7 @@ def errores_completo_json():
 
 
 @router.get("/no-factura-completo-json")
-def no_factura_completo_json():
+def no_factura_completo_json(usuario: dict = Depends(requerir_admin)):
     return {"tabla": listar_no_factura_completo()}
 
 

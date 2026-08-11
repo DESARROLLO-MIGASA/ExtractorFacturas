@@ -263,36 +263,95 @@ python vigilante.py
 | http://localhost:8000/docs | Documentación interactiva (Swagger) de todos los endpoints |
 | http://localhost:8000/upload-pdf | Endpoint que debe apuntar el flujo de Power Automate |
 
-### Despliegue en producción (IIS + Windows Authentication delante de uvicorn)
+### Despliegue en producción (IIS + proxy .NET/YARP delante de uvicorn)
 
 En el VM de producción, uvicorn **no** se expone directamente a la red: escucha
-solo en localhost y es IIS (con Windows Authentication + Application Request
-Routing como proxy inverso) quien atiende a los usuarios, autentica contra el
-dominio MIGASA y le pasa a esta app quién es en la cabecera `X-Forwarded-User`
-(ver `auth.py`). Arranque en el VM:
+solo en `127.0.0.1:8800` y delante hay un sitio IIS llamado **`EscanerIA`**
+(`C:\sites\EscanerIAProxy\publish`) que ejecuta una app ASP.NET Core aparte,
+**`EscanerIA.AuthProxy`**, vía `AspNetCoreModuleV2`. Esa app es la que atiende
+a los usuarios, se apoya en Windows Authentication de IIS para autenticar
+contra el dominio MIGASA y usa `Yarp.ReverseProxy` para reenviar cada petición
+a FastAPI, añadiendo la cabecera `X-Forwarded-User` con el usuario de Windows
+ya autenticado (y quitando primero cualquier valor de esa cabecera que viniera
+del cliente, para que no se pueda suplantar). Es la app que lee `auth.py`.
 
-```powershell
-python -m uvicorn main:app --host 127.0.0.1 --port 8000
-```
+> El código fuente de `EscanerIA.AuthProxy` **no vive en este repositorio**:
+> está en `C:\sites\EscanerIAProxy\EscanerIA.AuthProxy\` en el propio VM
+> (`Program.cs` + `appsettings.json`, este último con la URL de destino
+> `http://127.0.0.1:8800/`). El script `deploy/iis_setup/configurar_iis_windows_auth.ps1`
+> de esta carpeta describe un montaje distinto y **más antiguo** (IIS +
+> Application Request Routing + URL Rewrite haciendo el proxy inverso
+> directamente, sin esta app .NET intermedia); quedó desactualizado cuando se
+> migró a `EscanerIA.AuthProxy` y no refleja lo que hay desplegado hoy. Antes
+> de volver a ejecutarlo en el VM, confirmar primero si sigue siendo el
+> método vigente o si hay que actualizarlo para que arranque este proxy.
 
-`get_current_user`/`requerir_admin` (`auth.py`) leen esa cabecera y devuelven
-`{"username", "usuario_dominio", "role"}`; `role` se calcula consultando por
-LDAP (vía ADSI/`pywin32`, con la identidad de Windows del propio proceso, sin
-contraseña de ninguna cuenta de servicio) si el usuario es miembro directo de
-`AD_GRUPO_ADMINS` (`.env`) -> `"admin"`, de `AD_GRUPO_USUARIOS` -> `"usuario"`,
-o ninguno de los dos -> 403. `GET /whoami` (con sesión iniciada en Windows)
-sirve para comprobar que todo esto está bien enchufado.
+`GET /proxy-health` (servido por el propio `EscanerIA.AuthProxy`, sin pasar a
+FastAPI) devuelve si la petición llegó autenticada y con qué usuario; útil
+para comprobar la parte de IIS/Windows Auth sin depender de que uvicorn esté
+levantado. `GET /whoami` (ya dentro de FastAPI) comprueba el mismo dato una
+vez atravesado el proxy.
+
+`get_current_user`/`requerir_admin` (`auth.py`) leen la cabecera
+`X-Forwarded-User` y devuelven `{"username", "usuario_dominio", "role"}`;
+`role` se calcula consultando por LDAP (vía ADSI/`pywin32`, con la identidad
+de Windows del propio proceso, sin contraseña de ninguna cuenta de servicio)
+si el usuario es miembro directo de `AD_GRUPO_ADMINS` (`.env`) -> `"admin"`,
+de `AD_GRUPO_USUARIOS` -> `"usuario"`, o ninguno de los dos -> 403.
 
 Nota de threading: `_es_miembro_de_grupo` llama a `pythoncom.CoInitialize()`
 antes de usar ADSI porque FastAPI ejecuta esta dependencia (síncrona) en un
 hilo del thread pool, no en el principal -sin esa llamada falla con "No se ha
 llamado a CoInitialize" en cada request-.
 
+### Arranque y parada en producción
+
+En el VM, uvicorn no lo arranca nadie a mano: lo hace la **tarea programada de
+Windows `EscanerIA-FastAPI`**, configurada directamente en el servidor (no
+forma parte de este repositorio, no hay ningún script que la cree ni la
+reproduzca). Sus características:
+
+- **Disparador**: al iniciar el sistema (`MSFT_TaskBootTrigger`) — se lanza
+  sola en cada arranque del VM, sin necesidad de que nadie inicie sesión.
+- **Cuenta**: `SYSTEM`, con privilegio "Highest".
+- **Acción**: `...\.venv\Scripts\python.exe -m uvicorn main:app --host 127.0.0.1 --port 8800`
+- **Reintentos**: hasta 10 veces, cada 1 minuto, dentro de una ventana de 72h,
+  si el proceso muere.
+
+Comandos útiles (PowerShell, como Administrador, en el propio VM):
+
+```powershell
+# Ver estado, última ejecución y resultado
+Get-ScheduledTask -TaskName "EscanerIA-FastAPI" | Get-ScheduledTaskInfo
+
+# Parar (mata el proceso de uvicorn en marcha)
+Stop-ScheduledTask -TaskName "EscanerIA-FastAPI"
+
+# Arrancar (o relanzar tras un cambio de código)
+Start-ScheduledTask -TaskName "EscanerIA-FastAPI"
+```
+
+El sitio IIS `EscanerIA` (el proxy `EscanerIA.AuthProxy`) es independiente de
+esta tarea y normalmente no hace falta tocarlo; si hiciera falta, se gestiona
+como cualquier sitio de IIS (`Start-Website`/`Stop-Website -Name "EscanerIA"`,
+o desde el Administrador de IIS).
+
+`vigilante.py` **no** tiene ninguna tarea programada equivalente: hoy en el VM
+depende de que alguien lo deje corriendo a mano (`python vigilante.py`, en su
+propia ventana/sesión) y se para en cuanto esa sesión se cierra. Sin él
+corriendo, `entrada`/`imagenes` no se vigilan solas — solo se procesa lo que
+llegue directamente vía `/upload-pdf` o lo que se dispare a mano desde
+"Procesar carpeta entrada" en la interfaz. Antes de dar por sentado que el
+vigilante está activo en el VM, conviene comprobarlo (por ejemplo, si
+`vigilante_out.log`/`vigilante_err.log` en la raíz del proyecto se están
+actualizando).
+
 `deploy/iis_setup/` contiene el script `configurar_iis_windows_auth.ps1`
-(instala IIS + Windows Authentication, ARR y URL Rewrite, y configura la
-regla de proxy inverso hacia `127.0.0.1:8000`) junto con los dos instaladores
-MSI oficiales de Microsoft que necesita, ya descargados. Requiere ejecutarse
-como Administrador en el servidor donde vaya a correr IIS.
+(instala IIS + Windows Authentication, ARR y URL Rewrite, y configuraba la
+regla de proxy inverso hacia `127.0.0.1:8000` directamente) junto con los dos
+instaladores MSI oficiales de Microsoft que necesita, ya descargados. Ver el
+aviso más arriba: describe el montaje anterior a `EscanerIA.AuthProxy`, no el
+actual.
 
 ### Pestañas de la interfaz
 
