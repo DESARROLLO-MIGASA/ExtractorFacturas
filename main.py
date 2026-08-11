@@ -1,5 +1,6 @@
 import os
 import sys
+import json
 
 # En Windows la consola suele quedar en cp1252, que no puede codificar
 # muchos caracteres Unicode (emojis, flechas, tildes exóticas de nombres de
@@ -9,11 +10,12 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
-from fastapi import FastAPI
-from fastapi.responses import FileResponse
+from fastapi import Depends, FastAPI
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
+from auth import get_current_user
 from routers import auto as auto_router
 from routers import manual as manual_router
 
@@ -48,6 +50,35 @@ app.include_router(auto_router.router)
 app.include_router(manual_router.router)
 
 
-@app.get("/")
-def home():
-    return FileResponse(os.path.join(TEMPLATES_DIR, "index.html"))
+@app.get("/", response_class=HTMLResponse)
+def home(usuario: dict = Depends(get_current_user)):
+    ruta_index = os.path.join(TEMPLATES_DIR, "index.html")
+
+    with open(ruta_index, "r", encoding="utf-8") as f:
+        html = f.read()
+
+    usuario_json = json.dumps(
+        usuario,
+        ensure_ascii=False
+    ).replace("</", "<\\/")
+
+    script_usuario = f"""
+    <script>
+        window.USUARIO_AUTENTICADO = {usuario_json};
+    </script>
+    """
+
+    html = html.replace(
+        "</head>",
+        script_usuario + "\n</head>",
+        1
+    )
+
+    return HTMLResponse(content=html)
+
+
+@app.get("/whoami")
+def whoami(usuario: dict = Depends(get_current_user)):
+    """Para comprobar desde el navegador (tras configurar IIS) que la
+    cabecera X-Forwarded-User llega y el rol se calcula bien."""
+    return usuario

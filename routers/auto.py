@@ -1,6 +1,7 @@
 import os
 import shutil
 
+from dotenv import get_key
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse
 
@@ -50,8 +51,15 @@ from logic import (
 )
 
 CARPETA_ENTRADA = os.path.join(FACTURAS_DIR, "entrada")
+ENV_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
 
 router = APIRouter()
+
+
+def procesamiento_pausado():
+    """Se relee el .env en cada llamada (no os.getenv) para que activar/desactivar
+    la pausa cambiando PAUSAR_API no requiera reiniciar uvicorn."""
+    return (get_key(ENV_PATH, "PAUSAR_API") or "").strip().lower() == "true"
 
 
 # =========================================================
@@ -76,6 +84,9 @@ def upload_pdf(file: UploadFile = File(...)):
 
     with open(pdf_path, "wb") as f:
         shutil.copyfileobj(file.file, f)
+
+    if procesamiento_pausado():
+        return JSONResponse({"archivo": file.filename, "estado": "pausado"})
 
     try:
         if rechazar_si_pesa_demasiado(pdf_path, file.filename):

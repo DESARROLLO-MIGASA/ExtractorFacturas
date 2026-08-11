@@ -5,11 +5,12 @@ from datetime import datetime
 from typing import List
 
 import fitz  # PyMuPDF
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 import posiciones
+from auth import requerir_admin
 from logic import (
     CORREGIR_DIR,
     EXPECTED_HEADERS,
@@ -566,10 +567,11 @@ def reservas_mias_endpoint(usuario: str = ""):
 
 
 @router.post("/reservas-liberar-todas")
-def reservas_liberar_todas_endpoint():
+def reservas_liberar_todas_endpoint(usuario: dict = Depends(requerir_admin)):
     """Vía de escape: vacía TODA la tabla de reservas (de cualquier
     usuario). Pensada para desatascar reservas que se hayan quedado
-    "colgadas" en vez de esperar a que caduquen solas."""
+    "colgadas" en vez de esperar a que caduquen solas. Solo admins: es una
+    acción que afecta al trabajo de todo el mundo revisando a la vez."""
     ok = liberar_todas_las_reservas_sql()
     if not ok:
         raise HTTPException(status_code=500, detail="No se pudieron liberar las reservas.")

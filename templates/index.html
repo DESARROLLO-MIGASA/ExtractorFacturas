@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -997,13 +997,13 @@ table.tabla-historial tr.fila-reservada-mia td {
     Extractor de facturas
     <div class="tabs">
         <button class="tab-btn active" data-tab="auto" onclick="cambiarTab('auto')">Visualización automática</button>
-        <button class="tab-btn" data-tab="manual" onclick="cambiarTab('manual')">Corregir manualmente <span id="badgePendientesTab" class="badge vacio">0</span></button>
-        <button class="tab-btn" data-tab="incidencias" onclick="cambiarTab('incidencias')">Incidencias <span id="badgeIncidenciasTab" class="badge vacio">0</span></button>
-        <button class="tab-btn" data-tab="esperando_alta" onclick="cambiarTab('esperando_alta')">Esperando alta <span id="badgeEsperandoAltaTab" class="badge vacio">0</span></button>
-        <button class="tab-btn" data-tab="errores" onclick="cambiarTab('errores')">Errores <span id="badgeErroresTab" class="badge vacio">0</span></button>
-        <button class="tab-btn" data-tab="revisar" onclick="cambiarTab('revisar')">Revisar facturas</button>
-        <button class="tab-btn" data-tab="duplicados" onclick="cambiarTab('duplicados')">Duplicados <span id="badgeDuplicadosTab" class="badge vacio">0</span></button>
-        <button class="tab-btn" data-tab="no_factura" onclick="cambiarTab('no_factura')">No es factura <span id="badgeNoFacturaTab" class="badge vacio">0</span></button>
+        <button class="tab-btn" data-tab="manual" onclick="cambiarTab('manual')" style="display:none;">Corregir manualmente <span id="badgePendientesTab" class="badge vacio">0</span></button>
+        <button class="tab-btn" data-tab="incidencias" onclick="cambiarTab('incidencias')" style="display:none;">Incidencias <span id="badgeIncidenciasTab" class="badge vacio">0</span></button>
+        <button class="tab-btn" data-tab="esperando_alta" onclick="cambiarTab('esperando_alta')" style="display:none;">Esperando alta <span id="badgeEsperandoAltaTab" class="badge vacio">0</span></button>
+        <button class="tab-btn" data-tab="errores" onclick="cambiarTab('errores')" style="display:none;">Errores <span id="badgeErroresTab" class="badge vacio">0</span></button>
+        <button class="tab-btn" data-tab="revisar" onclick="cambiarTab('revisar')" style="display:none;">Revisar facturas</button>
+        <button class="tab-btn" data-tab="duplicados" onclick="cambiarTab('duplicados')" style="display:none;">Duplicados <span id="badgeDuplicadosTab" class="badge vacio">0</span></button>
+        <button class="tab-btn" data-tab="no_factura" onclick="cambiarTab('no_factura')" style="display:none;">No es factura <span id="badgeNoFacturaTab" class="badge vacio">0</span></button>
         <button class="tab-btn" data-tab="vista_global" onclick="cambiarTab('vista_global')">Vista global</button>
         <button class="tab-btn" data-tab="auditoria" onclick="cambiarTab('auditoria')">Historial de registro</button>
     </div>
@@ -1624,35 +1624,44 @@ function irARevisarDesdeKpi(mostrarDefinitivas) {
 // =========================================================
 
 function obtenerUsuarioActual() {
-    const guardado = localStorage.getItem("usuarioActual");
-    return guardado || pedirUsuarioActual();
+    const usuario = window.USUARIO_AUTENTICADO?.username;
+
+    if (!usuario) {
+        console.error("No se ha podido obtener el usuario autenticado.");
+        return "";
+    }
+
+    return usuario.trim().toLowerCase();
 }
 
 function pedirUsuarioActual() {
-    let usuario = "";
-    while (!usuario) {
-        usuario = (window.prompt("¿Cuál es tu usuario de dominio?") || "").trim().toLowerCase();
-    }
-    localStorage.setItem("usuarioActual", usuario);
-    actualizarWidgetUsuario();
-    return usuario;
+    return obtenerUsuarioActual();
 }
 
 function cambiarUsuarioActual() {
-    const actual = localStorage.getItem("usuarioActual") || "";
-    const nuevo = (window.prompt("¿Cuál es tu usuario de dominio?", actual) || "").trim().toLowerCase();
-    if (nuevo && nuevo !== actual) {
-        localStorage.setItem("usuarioActual", nuevo);
-        actualizarWidgetUsuario();
-        mostrarToast(`Ahora eres "${nuevo}".`, "ok");
-    }
+    const usuarioDominio =
+        window.USUARIO_AUTENTICADO?.usuario_dominio ||
+    actualizarWidgetUsuario();
+    mostrarToast(
+        `Usuario identificado por Windows: ${usuarioDominio}`,
+        "ok"
+    );
 }
 
 function actualizarWidgetUsuario() {
     const el = document.getElementById("usuarioActualWidget");
-    if (el) el.textContent = "👤 " + (localStorage.getItem("usuarioActual") || "¿quién eres?");
-}
 
+    if (!el) return;
+
+    const datos = window.USUARIO_AUTENTICADO;
+
+    if (datos) {
+        el.textContent = "👤 " + (datos.usuario_dominio || datos.username);
+        el.title = `Usuario autenticado por Windows · Rol: ${datos.role || "sin rol"}`;
+    } else {
+        el.textContent = "👤 Usuario no identificado";
+    }
+}
 // =========================================================
 // TOAST
 // =========================================================
@@ -5058,7 +5067,7 @@ async function guardarEdicionFactura() {
 // =========================================================
 
 async function inicializarApp() {
-    obtenerUsuarioActual();
+    actualizarWidgetUsuario();
     actualizarWidgetUsuario();
     await cargarMisReservas();
 
@@ -5079,3 +5088,4 @@ inicializarApp();
 </script>
 </body>
 </html>
+

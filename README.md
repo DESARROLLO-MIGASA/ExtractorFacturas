@@ -230,6 +230,15 @@ GRAPH_TENANT_ID=
 GRAPH_CLIENT_ID=
 GRAPH_CLIENT_SECRET=
 GRAPH_BUZON_ENVIO=escanerIA@migasa.com
+
+# --- Login con Windows Authentication (IIS por delante de uvicorn, ver
+# "Despliegue en producción" más abajo) — el rol se calcula por pertenencia
+# a estos dos grupos de Active Directory (los gestiona IT: alta/baja de
+# gente es cosa suya, no de este .env). Quien no esté en ninguno de los dos
+# se queda sin acceso (403).
+AD_DOMINIO=DOMINT
+AD_GRUPO_ADMINS=G-HQ-TEC-INF-SG-Admins_Escaner_Facturas
+AD_GRUPO_USUARIOS=G-SAT-TEC-INF-SG-Users_Escaner_Facturas
 ```
 
 Si la conexión a la base de datos falla o no está configurada, se registra un aviso por consola y el procesamiento de facturas continúa con normalidad (el histórico Excel no depende de ella). Ojo: si el login SQL configurado no tiene permiso de `CREATE TABLE`, la app intenta crear las tablas (incluidas `ReservasFacturas` y `ColaRevision`) al vuelo y ese fallo es silencioso — sin `ReservasFacturas` la función de reservas multiusuario deja de funcionar, y sin `ColaRevision` las pestañas "Corregir manualmente" e "Incidencias" dejan de poder listar nada, hasta que alguien con permisos ejecute a mano los scripts de `sql/`.
@@ -253,6 +262,37 @@ python vigilante.py
 | http://localhost:8000 | Interfaz web con las ocho pestañas |
 | http://localhost:8000/docs | Documentación interactiva (Swagger) de todos los endpoints |
 | http://localhost:8000/upload-pdf | Endpoint que debe apuntar el flujo de Power Automate |
+
+### Despliegue en producción (IIS + Windows Authentication delante de uvicorn)
+
+En el VM de producción, uvicorn **no** se expone directamente a la red: escucha
+solo en localhost y es IIS (con Windows Authentication + Application Request
+Routing como proxy inverso) quien atiende a los usuarios, autentica contra el
+dominio MIGASA y le pasa a esta app quién es en la cabecera `X-Forwarded-User`
+(ver `auth.py`). Arranque en el VM:
+
+```powershell
+python -m uvicorn main:app --host 127.0.0.1 --port 8000
+```
+
+`get_current_user`/`requerir_admin` (`auth.py`) leen esa cabecera y devuelven
+`{"username", "usuario_dominio", "role"}`; `role` se calcula consultando por
+LDAP (vía ADSI/`pywin32`, con la identidad de Windows del propio proceso, sin
+contraseña de ninguna cuenta de servicio) si el usuario es miembro directo de
+`AD_GRUPO_ADMINS` (`.env`) -> `"admin"`, de `AD_GRUPO_USUARIOS` -> `"usuario"`,
+o ninguno de los dos -> 403. `GET /whoami` (con sesión iniciada en Windows)
+sirve para comprobar que todo esto está bien enchufado.
+
+Nota de threading: `_es_miembro_de_grupo` llama a `pythoncom.CoInitialize()`
+antes de usar ADSI porque FastAPI ejecuta esta dependencia (síncrona) en un
+hilo del thread pool, no en el principal -sin esa llamada falla con "No se ha
+llamado a CoInitialize" en cada request-.
+
+`deploy/iis_setup/` contiene el script `configurar_iis_windows_auth.ps1`
+(instala IIS + Windows Authentication, ARR y URL Rewrite, y configura la
+regla de proxy inverso hacia `127.0.0.1:8000`) junto con los dos instaladores
+MSI oficiales de Microsoft que necesita, ya descargados. Requiere ejecutarse
+como Administrador en el servidor donde vaya a correr IIS.
 
 ### Pestañas de la interfaz
 

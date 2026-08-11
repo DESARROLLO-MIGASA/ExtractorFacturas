@@ -14,6 +14,7 @@ Soporta dos motores, seleccionables con SQL_ENGINE en .env:
 """
 
 import os
+import time
 
 from dotenv import load_dotenv
 
@@ -1043,50 +1044,66 @@ def _crear_tabla_cola_si_no_existe(cursor):
 _crear_tabla_cola_si_no_existe = _una_vez_por_proceso(TABLA_COLA, _crear_tabla_cola_si_no_existe)
 
 
-def guardar_en_cola_revision_sql(fila, cola):
+def guardar_en_cola_revision_sql(fila, cola, intentos=3, espera=2):
     """
     Inserta o actualiza (según 'Archivo') la fila cacheada de un PDF en
     corregir_manualmente/ (cola="pendiente") o incidencias/
     (cola="incidencia"). `fila` en el mismo orden que COLUMNAS/EXPECTED_HEADERS.
 
-    No propaga excepciones: un fallo aquí solo hace que la próxima carga
-    vuelva a depender de las carpetas para ese archivo, no rompe el
-    procesamiento de facturas.
+    El PDF ya se movió de carpeta cuando se llama a esto (ver mover_pdf /
+    _mover_pdf_a_carpeta en logic.py), y listar_pendientes_completo /
+    listar_incidencias_completo ya no leen la carpeta como respaldo: si esta
+    escritura falla, el PDF queda huérfano (visible en disco, invisible en
+    su pestaña) hasta que alguien lo repare a mano. Por eso se reintenta
+    ante un corte transitorio de conexión antes de rendirse, y si aun así
+    falla se registra como ERROR (no como aviso) para que no pase
+    desapercibido.
     """
-    try:
-        datos = dict(zip(COLUMNAS, (list(fila) + ["-"] * len(COLUMNAS))[:len(COLUMNAS)]))
+    datos = dict(zip(COLUMNAS, (list(fila) + ["-"] * len(COLUMNAS))[:len(COLUMNAS)]))
 
-        with _conectar() as conn:
-            cursor = conn.cursor()
-            _crear_tabla_cola_si_no_existe(cursor)
-            conn.commit()
+    for intento in range(1, intentos + 1):
+        try:
+            with _conectar() as conn:
+                cursor = conn.cursor()
+                _crear_tabla_cola_si_no_existe(cursor)
+                conn.commit()
 
-            columnas_sin_archivo = [c for c in COLUMNAS if c != "Archivo"]
-            set_clause = ", ".join(f"[{c}] = ?" for c in columnas_sin_archivo)
-            valores_update = [datos[c] for c in columnas_sin_archivo]
+                columnas_sin_archivo = [c for c in COLUMNAS if c != "Archivo"]
+                set_clause = ", ".join(f"[{c}] = ?" for c in columnas_sin_archivo)
+                valores_update = [datos[c] for c in columnas_sin_archivo]
 
-            cursor.execute(
-                f"UPDATE {TABLA_COLA} SET {set_clause}, Cola = ?, FechaActualizacion = {FECHA_ACTUAL_SQL} "
-                f"WHERE Archivo = ?",
-                (*valores_update, cola, datos["Archivo"]),
-            )
-
-            if cursor.rowcount == 0:
-                columnas_insert = ", ".join(f"[{c}]" for c in COLUMNAS)
-                placeholders = ", ".join("?" for _ in COLUMNAS)
                 cursor.execute(
-                    f"INSERT INTO {TABLA_COLA} ({columnas_insert}, Cola) "
-                    f"VALUES ({placeholders}, ?)",
-                    (*[datos[c] for c in COLUMNAS], cola),
+                    f"UPDATE {TABLA_COLA} SET {set_clause}, Cola = ?, FechaActualizacion = {FECHA_ACTUAL_SQL} "
+                    f"WHERE Archivo = ?",
+                    (*valores_update, cola, datos["Archivo"]),
                 )
 
-            conn.commit()
+                if cursor.rowcount == 0:
+                    columnas_insert = ", ".join(f"[{c}]" for c in COLUMNAS)
+                    placeholders = ", ".join("?" for _ in COLUMNAS)
+                    cursor.execute(
+                        f"INSERT INTO {TABLA_COLA} ({columnas_insert}, Cola) "
+                        f"VALUES ({placeholders}, ?)",
+                        (*[datos[c] for c in COLUMNAS], cola),
+                    )
 
-        return True
+                conn.commit()
 
-    except Exception as e:
-        print(f"AVISO: no se pudo guardar la fila en {TABLA_COLA} ({cola}, {MOTOR}): {e}")
-        return False
+            return True
+
+        except Exception as e:
+            if intento < intentos:
+                print(f"AVISO: fallo guardando {datos.get('Archivo')} en {TABLA_COLA} "
+                      f"({cola}, {MOTOR}), intento {intento}/{intentos}: {e}")
+                time.sleep(espera)
+            else:
+                print(f"ERROR: no se pudo guardar {datos.get('Archivo')} en {TABLA_COLA} "
+                      f"({cola}, {MOTOR}) tras {intentos} intentos: {e}. "
+                      "El PDF queda en su carpeta pero sin fila en ColaRevision "
+                      "(quedará huérfano hasta que se repare)."
+                      )
+
+    return False
 
 
 def actualizar_campos_cola_revision_sql(fila):
