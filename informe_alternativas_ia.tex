@@ -1,0 +1,223 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish,es-tabla]{babel}
+\usepackage[a4paper,margin=2.5cm]{geometry}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+
+\definecolor{riesgoalto}{RGB}{178,34,34}
+\definecolor{riesgomedio}{RGB}{184,134,11}
+\definecolor{riesgobajo}{RGB}{34,120,60}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue!50!black,
+    urlcolor=blue!50!black,
+    pdftitle={Alternativas de respaldo ante caida de OpenAI},
+    pdfauthor={Escaneria - Migasa}
+}
+
+\titleformat{\section}{\normalfont\Large\bfseries}{\thesection}{1em}{}
+\titleformat{\subsection}{\normalfont\large\bfseries}{\thesubsection}{1em}{}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small Alternativas de respaldo ante caída de OpenAI}
+\fancyhead[R]{\small Proyecto Escaneria (Migasa)}
+\fancyfoot[C]{\thepage}
+
+\newcommand{\riesgo}[1]{\textcolor{riesgoalto}{\textbf{[#1]}}}
+\newcommand{\advertencia}[1]{\textcolor{riesgomedio}{\textbf{[#1]}}}
+\newcommand{\ok}[1]{\textcolor{riesgobajo}{\textbf{[#1]}}}
+
+\title{\textbf{Alternativas de respaldo ante una caída de OpenAI}\\[0.3em]
+\large Evaluación de Azure OpenAI, OpenRouter y LiteLLM para el pipeline\\
+de extracción automática de facturas (Escaneria) --- Migasa}
+\author{}
+\date{11 de agosto de 2026}
+
+\begin{document}
+
+\maketitle
+\thispagestyle{empty}
+
+\begin{abstract}
+\noindent
+Este informe complementa la evaluación previa de Mammouth.ai. El objetivo real
+que motiva la búsqueda de una capa de acceso a varios modelos de IA no es evitar
+integraciones directas por sí mismas, sino \textbf{poder seguir procesando
+facturas si un día la API de OpenAI deja de estar disponible}. Bajo esa premisa,
+Mammouth.ai resultó poco adecuado (riesgos de compatibilidad no confirmados,
+modelo de cuotas pensado para chat interactivo, coste peor que el actual). Aquí
+se evalúan tres alternativas más orientadas a uso programático de respaldo:
+\textbf{Azure OpenAI}, \textbf{OpenRouter} y \textbf{LiteLLM} (autoalojado).
+\end{abstract}
+
+\tableofcontents
+
+\section{Objetivo y criterio de evaluación}
+
+El criterio ya no es "evitar integrarse con cada proveedor" en abstracto, sino
+tres preguntas concretas para cada alternativa:
+
+\begin{enumerate}
+    \item Si hoy \texttt{extract\_invoice\_with\_agent} usa
+    \texttt{response\_format} con JSON Schema en modo \texttt{strict}, y
+    \texttt{imagenes.py} manda imágenes como entrada para visión,
+    \textbf{¿sigue funcionando igual con esta alternativa?}
+    \item Si OpenAI se cae, \textbf{¿cuánto esfuerzo (manual o automático) hace
+    falta para seguir procesando facturas?}
+    \item \textbf{¿El coste y el modelo de facturación son predecibles} (pago por
+    consumo real, sin cuotas de sesión ni degradación silenciosa de modelo)?
+\end{enumerate}
+
+\section{Opción 1: Azure OpenAI}
+
+\subsection{Qué es}
+El mismo servicio de OpenAI (incluido \texttt{gpt-4.1}), operado por Microsoft en
+su propia infraestructura de nube, con SLA formal de disponibilidad.
+
+\subsection{Evaluación}
+
+\begin{itemize}
+    \item \ok{Sin riesgo} \textbf{Compatibilidad total.} Es la misma API que
+    usáis hoy: \texttt{response\_format} con \texttt{strict} y visión funcionan
+    exactamente igual, sin necesidad de probar nada nuevo en la lógica de
+    extracción.
+    \item \ok{Esfuerzo mínimo} El propio diseño de \texttt{OPENAI\_BASE\_URL} en
+    \texttt{build\_client()} (\texttt{logic.py}) ya está pensado para apuntar a
+    un endpoint alternativo como este. El cambio de proveedor hoy sería manual
+    (editar \texttt{.env} y reiniciar el servicio), salvo que se añada
+    detección automática de fallo.
+    \item \advertencia{Cobertura parcial} Protege frente a una caída del
+    \emph{endpoint} de \texttt{openai.com} (el tipo de incidencia más habitual),
+    pero no frente a un problema propio del modelo GPT en sí, al ser la misma
+    familia de modelo servida por otra infraestructura.
+    \item \ok{Facturación} Pago por consumo real, sin cuotas de sesión ni
+    degradación de modelo; tarifa por token publicada y comparable a la de
+    OpenAI directo.
+\end{itemize}
+
+\section{Opción 2: OpenRouter}
+
+\subsection{Qué es}
+Agregador de modelos orientado a desarrolladores (no a chat de consumo), con más
+de 300 modelos de distintos proveedores bajo una única API compatible con el
+formato de OpenAI.
+
+\subsection{Evaluación}
+
+\begin{itemize}
+    \item \ok{Facturación transparente y predecible.} Cobra el precio base del
+    proveedor más una comisión fija y publicada del 5,5\% por petición. No hay
+    suscripción con crédito incluido ni degradación automática de modelo: si
+    hay saldo, la petición se sirve; si no, se rechaza con un error explícito.
+    Esto coincide con el modelo de "pago por consumo" al que ya estáis
+    acostumbrados con OpenAI directo.
+    \item \ok{Selección de modelo explícita.} Se elige el modelo exacto
+    (\texttt{openai/gpt-4.1}, \texttt{anthropic/claude-3.5-sonnet}...), no un
+    alias que Mammouth pueda cambiar sin avisar.
+    \item \ok{Fallback automático entre proveedores, como función nativa.} Se
+    define una lista de modelos por prioridad; si el primero falla (error 5xx,
+    rate limit, caída), OpenRouter reintenta automáticamente con el siguiente.
+    Es exactamente la función que se busca, y está documentada como tal, no es
+    un efecto colateral de otra cosa.
+    \item \advertencia{Riesgo medio} \textbf{Compatibilidad de
+    \texttt{response\_format strict} y visión pendiente de verificar} cuando el
+    modelo pinneado es el mismo proveedor (p.~ej. \texttt{openai/gpt-4.1}), el
+    riesgo es prácticamente nulo porque la petición llega sin traducir al
+    endpoint real de OpenAI. El riesgo aparece si el fallback salta a un
+    proveedor distinto (p.~ej. Anthropic), ya que cada proveedor tiene su
+    propio mecanismo de salida estructurada y la traducción entre ambos debe
+    probarse antes de confiar en ella en producción.
+\end{itemize}
+
+\section{Opción 3: LiteLLM (proxy autoalojado)}
+
+\subsection{Qué es}
+Proxy de código abierto, desplegado en infraestructura propia, que expone una
+única API compatible con OpenAI por delante de más de 100 proveedores.
+
+\subsection{Evaluación}
+
+\begin{itemize}
+    \item \ok{Sin intermediario que cobre margen.} Al ejecutarse en
+    infraestructura propia, se paga directamente a cada proveedor (OpenAI,
+    Anthropic, Azure...) su tarifa pública, sin comisión de un tercero.
+    \item \ok{Máximo control y verificabilidad.} Al ser código abierto, se
+    puede leer exactamente cómo traduce \texttt{response\_format} y las
+    entradas de visión entre proveedores, en vez de confiar en el
+    comportamiento de una caja negra.
+    \item \ok{Fallback declarativo.} Cadenas de reintento entre modelos/
+    proveedores configurables en un único archivo \texttt{config.yaml}, sin
+    cambios en el código de \texttt{logic.py}/\texttt{imagenes.py} más allá de
+    apuntar \texttt{OPENAI\_BASE\_URL} al proxy local.
+    \item \riesgo{Coste operativo} Es una pieza de infraestructura más que hay
+    que desplegar, actualizar y monitorizar (encaja con el stack actual de
+    IIS/Windows Server/Python, pero añade mantenimiento propio que las otras
+    dos opciones no requieren).
+    \item \advertencia{Riesgo medio} Misma verificación pendiente que
+    OpenRouter para la traducción de \texttt{response\_format strict} y visión
+    al saltar entre familias de proveedor distintas.
+\end{itemize}
+
+\section{Comparativa}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{p{3cm}p{3.3cm}p{3.3cm}p{3.3cm}}
+\toprule
+& \textbf{Azure OpenAI} & \textbf{OpenRouter} & \textbf{LiteLLM autoalojado} \\
+\midrule
+Compatibilidad \texttt{strict}/visión & Total (misma API) & Segura si se fija el mismo proveedor & Segura si se fija el mismo proveedor, verificable por ser código abierto \\
+\addlinespace
+Diversifica familia de modelo & No (mismo GPT) & Sí & Sí \\
+\addlinespace
+Fallback automático & No incluido de fábrica & Sí, nativo & Sí, declarativo \\
+\addlinespace
+Facturación & Pago por consumo, tarifa publicada & Pago por consumo + 5,5\% comisión publicada & Pago por consumo, sin comisión de terceros \\
+\addlinespace
+Esfuerzo de puesta en marcha & Mínimo (variables de entorno) & Bajo (cuenta + clave) & Medio (desplegar y mantener el proxy) \\
+\addlinespace
+Encaje con \texttt{OPENAI\_BASE\_URL} actual & Directo & Directo & Directo (apuntando al proxy local) \\
+\bottomrule
+\end{tabular}
+\caption{Comparativa de las tres alternativas frente al objetivo de seguir
+funcionando si OpenAI se cae.}
+\end{table}
+
+\section{Recomendación}
+
+\begin{enumerate}
+    \item \textbf{Corto plazo, mínimo esfuerzo:} activar \textbf{Azure OpenAI}
+    como respaldo inmediato. Es el mismo modelo, la misma API, sin nada que
+    probar ni que pueda romperse, y cubre el escenario más probable (caída del
+    endpoint de \texttt{openai.com}).
+    \item \textbf{Si además se quiere protección ante un problema específico de
+    los modelos GPT} (no solo de la infraestructura de OpenAI), añadir
+    \textbf{OpenRouter} como segunda capa, con un modelo de otra familia (p.~ej.
+    Claude) configurado como fallback --- probando antes, con una factura de
+    control, que la extracción con \texttt{json\_schema strict} funciona igual
+    contra ese modelo concreto.
+    \item \textbf{LiteLLM autoalojado} queda como opción a futuro si el volumen
+    o el número de proveedores crece lo suficiente como para justificar
+    mantener una pieza de infraestructura propia a cambio de eliminar cualquier
+    comisión de terceros.
+\end{enumerate}
+
+No se recomienda Mammouth.ai para este objetivo: su modelo de cuotas por sesión
+con degradación automática de modelo y su coste (superior al actual incluso en
+el escenario más favorable) lo hacen menos adecuado que cualquiera de las tres
+opciones anteriores, tal como se detalla en el informe previo
+(\texttt{informe\_mammouth\_ai.tex}).
+
+\end{document}

@@ -21,7 +21,8 @@ CREATE TABLE FacturasExaminadas (
     [Moneda]            NVARCHAR(255) NULL,
     [NombreProveedor]   NVARCHAR(255) NULL,
     [NumeroFactura]     NVARCHAR(255) NULL,
-    [PedidoCliente]     NVARCHAR(1000) NULL,  -- puede traer varios pedidos concatenados con ";"
+    [NumerosAlbaran]    NVARCHAR(MAX) NULL,   -- puede traer varios albaranes concatenados con ";" (se ha visto un caso real por encima de 1000 caracteres)
+    [PedidoCliente]     NVARCHAR(MAX) NULL,   -- puede traer varios pedidos concatenados con ";" (se ha visto un caso real por encima de 1000 caracteres)
     [Proveedor]         NVARCHAR(255) NULL,
     [TipoIVA]           NVARCHAR(255) NULL,
     [TipoIVA2]          NVARCHAR(255) NULL,

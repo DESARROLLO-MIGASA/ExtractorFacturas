@@ -1,4 +1,5 @@
 import os
+import csv
 import base64
 import tempfile
 from datetime import datetime
@@ -41,6 +42,10 @@ from logic import (
     listar_vista_global_completo,
     facturas_definitivas_tabla,
     buscar_pdf_por_nombre,
+    buscar_lineas_csv_por_nombre,
+    guardar_lineas_csv,
+    ruta_lineas_csv,
+    extraer_lineas_de_region,
     tabla_a_pipe_csv,
     export_to_excel,
     buscar_empresas_por_prefijo,
@@ -91,6 +96,18 @@ class ActualizacionFacturaCompletada(BaseModel):
 class PosicionesFactura(BaseModel):
     archivo: str
     fila_completa: list
+
+
+class LineaFacturaPayload(BaseModel):
+    Descripcion: str = "-"
+    Cantidad: str = "-"
+    Precio: str = "-"
+    Importe: str = "-"
+    Otros: str = "-"
+
+
+class LineasFacturaPayload(BaseModel):
+    lineas: List[LineaFacturaPayload]
 
 
 class OcrRegion(BaseModel):
@@ -263,6 +280,53 @@ def ver_pdf_factura(archivo: str):
     return FileResponse(ruta, media_type="application/pdf")
 
 
+@router.get("/lineas-factura/{archivo}")
+def ver_lineas_factura(archivo: str):
+    """Líneas de una factura (descripción/cantidad/precio/importe/otros),
+    extraídas por el LLM y guardadas como CSV junto al PDF (ver
+    guardar_lineas_csv en logic.py). No todas las facturas tienen: si no
+    desglosaban líneas, o el CSV se perdió al mover el PDF, se devuelve 404
+    en vez de una lista vacía, para que la UI pueda distinguir ambos casos."""
+    if os.path.basename(archivo) != archivo:
+        raise HTTPException(status_code=400, detail="Nombre de archivo no válido.")
+
+    ruta_csv = buscar_lineas_csv_por_nombre(archivo)
+    if ruta_csv is None:
+        raise HTTPException(status_code=404, detail=f"Esta factura no tiene líneas extraídas: {archivo}")
+
+    with open(ruta_csv, "r", newline="", encoding="utf-8-sig") as f:
+        lineas = list(csv.DictReader(f, delimiter=";"))
+
+    return {"lineas": lineas}
+
+
+@router.post("/lineas-factura/{archivo}")
+def guardar_lineas_factura(archivo: str, payload: LineasFacturaPayload):
+    """Sobrescribe el CSV de líneas de una factura con el contenido final del
+    modal de edición (ver cargarLineasEnEdicion / registrarEditLinea /
+    anadirLineaEdicion / eliminarLineaEdicion en el frontend): admite
+    corregir valores, añadir líneas nuevas y quitar líneas existentes, sea
+    cual sea el número de líneas resultante. Una lista vacía borra el CSV en
+    vez de dejar un archivo vacío."""
+    if os.path.basename(archivo) != archivo:
+        raise HTTPException(status_code=400, detail="Nombre de archivo no válido.")
+
+    ruta_pdf = buscar_pdf_por_nombre(archivo)
+    if ruta_pdf is None:
+        raise HTTPException(status_code=404, detail=f"No se encontró el PDF: {archivo}")
+
+    lineas = [linea.dict() for linea in payload.lineas]
+
+    if not lineas:
+        ruta_csv = ruta_lineas_csv(ruta_pdf)
+        if os.path.exists(ruta_csv):
+            os.remove(ruta_csv)
+    else:
+        guardar_lineas_csv(ruta_pdf, lineas)
+
+    return {"ok": True}
+
+
 @router.get("/pdf-factura-paginas/{archivo}")
 def pdf_factura_paginas(archivo: str):
     """Todas las páginas del PDF como imagen (PNG en base64), para el visor
@@ -317,6 +381,31 @@ def posiciones_factura(body: PosicionesFactura):
     return cajas
 
 
+@router.get("/posiciones-lineas-factura/{archivo}")
+def posiciones_lineas_factura(archivo: str):
+    """Igual que /posiciones-factura, pero una caja por cada línea de la
+    factura (ver /lineas-factura), para resaltarla en el visor al pinchar
+    sobre ella. Si la factura no tiene líneas extraídas, devuelve una lista
+    vacía en vez de 404 (no es un error, simplemente no hay nada que
+    resaltar)."""
+    if os.path.basename(archivo) != archivo:
+        raise HTTPException(status_code=400, detail="Nombre de archivo no válido.")
+
+    ruta_csv = buscar_lineas_csv_por_nombre(archivo)
+    if ruta_csv is None:
+        return {"cajas": []}
+
+    with open(ruta_csv, "r", newline="", encoding="utf-8-sig") as f:
+        lineas = list(csv.DictReader(f, delimiter=";"))
+
+    try:
+        cajas = posiciones.obtener_o_calcular_cajas_lineas(archivo, lineas)
+    except Exception:
+        cajas = [None] * len(lineas)
+
+    return {"cajas": cajas}
+
+
 @router.post("/ocr-region")
 def ocr_region(body: OcrRegion):
     """Selección manual con arrastre: recorta esa región de esa página y le
@@ -332,6 +421,25 @@ def ocr_region(body: OcrRegion):
         raise HTTPException(status_code=503, detail=str(e))
 
     return {"texto": texto}
+
+
+@router.post("/reextraer-lineas-region")
+def reextraer_lineas_region(body: OcrRegion):
+    """Vuelve a llamar a la IA (vision), pero solo con la región de la tabla
+    de líneas que se ha seleccionado a mano en el visor -no con la factura
+    entera-, para poder corregir de golpe muchas líneas mal extraídas (o
+    ninguna) sin arrastrar campo a campo. No guarda nada por sí solo: el
+    resultado sustituye a edicionLineas.lineas en el frontend, y se guarda
+    junto con el resto de la factura al pulsar "Guardar"."""
+    if os.path.basename(body.archivo) != body.archivo:
+        raise HTTPException(status_code=400, detail="Nombre de archivo no válido.")
+
+    ruta_pdf = buscar_pdf_por_nombre(body.archivo)
+    if ruta_pdf is None:
+        raise HTTPException(status_code=404, detail=f"No se encontró el PDF: {body.archivo}")
+
+    lineas = extraer_lineas_de_region(ruta_pdf, body.pagina, body.x0, body.y0, body.x1, body.y1)
+    return {"lineas": lineas}
 
 
 # =========================================================

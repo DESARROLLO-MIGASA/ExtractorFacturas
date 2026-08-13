@@ -176,6 +176,7 @@ EXPECTED_HEADERS = [
     "FFactura",
     "FOperacion",
     "FEscaneo",
+    "NumerosAlbaran",
 ]
 
 # Columna (en AuditLog, ver resumen_auditoria_por_archivo_sql) -> etiqueta de
@@ -211,7 +212,44 @@ def _enriquecer_con_auditoria(headers, filas, archivos_lookup=None):
     return headers + [etiqueta for _clave, etiqueta in COLUMNAS_RESUMEN_AUDITORIA]
 
 
-DEFAULT_PROMPT = """Eres un extractor estricto de datos de facturas de proveedor.
+# Bloque de definición de LineasFactura, aparte de DEFAULT_PROMPT (que lo
+# interpola más abajo) para poder reutilizarlo tal cual en un prompt más
+# corto y centrado cuando se reextraen líneas a partir de una región
+# recortada en vez de la factura entera (ver extraer_lineas_de_region): así
+# el criterio de qué es cada campo no se puede desincronizar entre los dos
+# usos con solo tocar uno de ellos.
+PROMPT_LINEAS_FACTURA = """LineasFactura:
+- Lista de las líneas/conceptos individuales que componen la factura (la
+  tabla de artículos/servicios facturados), NO las líneas de IVA ni de
+  totales.
+- Para cada línea, rellena:
+  Descripcion: descripción del producto o servicio de esa línea.
+  Cantidad: cantidad/peso TOTAL facturado en esa línea, solo el número.
+    - Si la línea desglosa la cantidad en dos columnas -por ejemplo "5 PAL"
+      (número de bultos/palés/cajas) y "165.000" (la cantidad o peso total)-,
+      devuelve ÚNICAMENTE la cantidad/peso total ("165.000" en ese ejemplo),
+      nunca el número de bultos/palés.
+    - No antepongas ni mezcles unidades de embalaje (PAL, CAJAS, BULTOS,
+      UDS...) junto al número de Cantidad.
+    - Si el número de bultos/palés es un dato que merece la pena conservar,
+      va en el campo Otros (p.ej. "5 PAL"), nunca dentro de Cantidad.
+  Precio: precio unitario de esa línea.
+  Importe: importe total de esa línea (cantidad × precio, o el importe que
+    indique la propia línea).
+  Otros: cualquier otro dato que traiga la línea y no encaje en los
+    anteriores (número de bultos/palés, referencia/código de producto, lote,
+    descuento, IVA de la línea...), como texto libre. Si no hay ningún dato
+    adicional, "-".
+- Si alguno de estos datos no aparece para una línea concreta, devuelve "-"
+  en ese campo, pero no omitas la línea.
+- Devuelve una línea por cada línea real de la factura, en el mismo orden en
+  que aparecen en el documento. No agrupes ni resumas varias líneas en una.
+- No inventes líneas ni datos: si la factura no desglosa líneas (por
+  ejemplo, solo indica un importe global) o el desglose no es legible,
+  devuelve una lista vacía."""
+
+
+DEFAULT_PROMPT = f"""Eres un extractor estricto de datos de facturas de proveedor.
 
 Debes devolver los datos como un objeto JSON con un valor de texto por cada
 campo indicado más abajo (el formato exacto del JSON ya viene forzado por el
@@ -363,6 +401,28 @@ PedidoCliente:
   realmente un pedido del cliente, devuelve "-": es preferible dejarlo vacío
   a devolver un dato que no corresponde a un pedido.
 
+NumerosAlbaran:
+- Número(s) de albarán indicados por el PROVEEDOR/emisor de la factura (el
+  documento de entrega de la mercancía), nunca un pedido ni el número de
+  factura.
+- Puede aparecer como:
+  Albarán
+  Nº Albarán
+  Num. Albarán
+  Delivery Note
+  Delivery Note Number
+  Packing List
+  Bon de Livraison
+  Lieferschein
+  Documento di Trasporto
+  DDT
+  Guia de Remessa
+- Si hay varios albaranes en la factura (por ejemplo una línea por albarán),
+  devuelve todos separados por punto y coma (;), sin repetir el mismo
+  albarán más de una vez.
+- NO devolver el número de factura ni el número de pedido.
+- Si no aparece claramente ningún albarán, devuelve "-".
+
 Proveedor:
 - CIF/NIF/VAT del proveedor/vendedor que emite la factura (nunca del comprador/cliente).
 - Puede aparecer bajo etiquetas como:
@@ -408,6 +468,8 @@ TotalFact:
 - Importe total final de la factura, impuestos incluidos.
 - Es un importe en dinero, nunca un porcentaje de IVA.
 
+{PROMPT_LINEAS_FACTURA}
+
 
 IMPORTANTE:
 
@@ -419,6 +481,7 @@ Debes reconocer automáticamente los campos aunque aparezcan en:
 - portugués
 - francés
 - italiano
+- arabe
 - alemán
 - neerlandés
 - chino
@@ -1115,8 +1178,8 @@ def combinar_csvs(lista_csv):
 # =========================================================
 
 # Esquema JSON estricto para la respuesta del modelo: con "strict": true la
-# API garantiza que el objeto devuelto tiene EXACTAMENTE estas 18 claves (ni
-# de menos ni de más), así que a diferencia del antiguo formato de texto
+# API garantiza que el objeto devuelto tiene EXACTAMENTE estas claves (ni de
+# menos ni de más), así que a diferencia del antiguo formato de texto
 # separado por "|" es imposible que el modelo se salte un campo a mitad de
 # la fila y desplace los siguientes.
 FACTURA_JSON_SCHEMA = {
@@ -1130,10 +1193,170 @@ FACTURA_JSON_SCHEMA = {
         # la página en esta misma llamada, así que preguntarle esto no
         # cuesta una llamada aparte.
         "MultiplesFacturas": {"type": "string", "enum": ["si", "no"]},
+        # Tampoco es una columna del CSV/Excel de cabecera: se guarda aparte,
+        # en un CSV propio junto al PDF (ver ruta_lineas_csv), porque una
+        # factura puede tener muchas líneas y aquí solo hay una fila por
+        # factura.
+        "LineasFactura": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "Descripcion": {"type": "string"},
+                    "Cantidad": {"type": "string"},
+                    "Precio": {"type": "string"},
+                    "Importe": {"type": "string"},
+                    "Otros": {"type": "string"},
+                },
+                "required": ["Descripcion", "Cantidad", "Precio", "Importe", "Otros"],
+                "additionalProperties": False,
+            },
+        },
     },
-    "required": EXPECTED_HEADERS + ["MultiplesFacturas"],
+    "required": EXPECTED_HEADERS + ["MultiplesFacturas", "LineasFactura"],
     "additionalProperties": False,
 }
+
+# Mismo esquema de LineasFactura que FACTURA_JSON_SCHEMA, pero como único
+# campo del objeto: para cuando solo interesa reextraer las líneas (ver
+# extraer_lineas_de_imagen), sin pedirle al modelo el resto de la factura.
+LINEAS_JSON_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "LineasFactura": FACTURA_JSON_SCHEMA["properties"]["LineasFactura"],
+    },
+    "required": ["LineasFactura"],
+    "additionalProperties": False,
+}
+
+
+def ruta_lineas_csv(pdf_path):
+    """Ruta del CSV de líneas que acompaña a `pdf_path`: mismo directorio y
+    mismo nombre base que el PDF, con el sufijo "_lineas.csv" (ver
+    guardar_lineas_csv). Así viaja junto al PDF cuando este se mueve entre
+    las carpetas del flujo, sin necesitar una tabla ni un identificador
+    aparte."""
+    base, _ext = os.path.splitext(pdf_path)
+    return base + "_lineas.csv"
+
+
+_LINEAS_CSV_CAMPOS = ["Descripcion", "Cantidad", "Precio", "Importe", "Otros"]
+
+
+def guardar_lineas_csv(pdf_path, lineas):
+    """Escribe las líneas de una factura (lista de dicts con las claves de
+    _LINEAS_CSV_CAMPOS, tal como las devuelve el modelo en "LineasFactura")
+    en un CSV junto al PDF, para poder consultarlas desde la UI igual que el
+    propio PDF (ver buscar_lineas_csv_por_nombre y el endpoint
+    /lineas-factura en routers/manual.py).
+
+    Delimitador ";" y codificación con BOM (utf-8-sig): así Excel en español
+    lo abre bien con acentos/ñ y sin confundir la coma decimal de los
+    importes con el separador de columnas.
+
+    Si `lineas` está vacía no se crea ningún archivo, para no dejar sueltos
+    CSV vacíos por cada factura que no desglosa líneas."""
+    if not lineas or not pdf_path:
+        return
+
+    ruta = ruta_lineas_csv(pdf_path)
+    with open(ruta, "w", newline="", encoding="utf-8-sig") as f:
+        writer = csv.DictWriter(f, fieldnames=_LINEAS_CSV_CAMPOS, delimiter=";")
+        writer.writeheader()
+        for linea in lineas:
+            writer.writerow({campo: normalizar_valor(linea.get(campo, "-")) for campo in _LINEAS_CSV_CAMPOS})
+
+
+# =========================================================
+# REEXTRACCIÓN DE LÍNEAS DESDE UNA REGIÓN (vision)
+# =========================================================
+#
+# Cuando la extracción automática se deja líneas o las lee mal, corregirlas
+# arrastrando el recuadro campo a campo no escala si son muchas (p.ej. 30
+# líneas x 5 columnas). En vez de eso, la persona que revisa selecciona a
+# mano en el visor la región donde está la tabla de líneas (puede ser toda
+# la tabla de golpe) y se le pide al modelo -mirando solo esa imagen
+# recortada, no la factura entera, para gastar menos por llamada- que
+# devuelva las líneas que reconozca ahí. El resultado sustituye por
+# completo a las líneas que hubiera (ver /reextraer-lineas-region en
+# routers/manual.py).
+
+def extraer_lineas_de_imagen(png_bytes):
+    """Le pide al modelo (vision) las líneas de factura que reconozca en esa
+    imagen ya recortada (ver posiciones.recortar_region_png). Devuelve la
+    lista de líneas (puede ser vacía); nunca lanza excepción -un fallo aquí
+    se traduce en "no se reconoció nada", no en romper la edición-."""
+    try:
+        client = build_client()
+        model = get_model()
+        img_b64 = base64.b64encode(png_bytes).decode("utf-8")
+
+        response = client.chat.completions.create(
+            model=model,
+            temperature=0,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Eres un extractor documental muy estricto. Devuelve "
+                        "los datos en el objeto JSON solicitado, sin "
+                        "explicaciones ni texto adicional."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": (
+                                "Esta imagen es un recorte de la tabla de líneas/"
+                                "conceptos de una factura (puede contener una o "
+                                "varias líneas). Sigue estas reglas para rellenar "
+                                f"LineasFactura:\n\n{PROMPT_LINEAS_FACTURA}"
+                            ),
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/png;base64,{img_b64}"},
+                        },
+                    ],
+                },
+            ],
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "lineas_factura",
+                    "schema": LINEAS_JSON_SCHEMA,
+                    "strict": True,
+                },
+            },
+        )
+
+        datos = json.loads(response.choices[0].message.content or "{}")
+        return datos.get("LineasFactura", [])
+    except Exception as e:
+        print(f"AVISO: fallo reextrayendo líneas por visión: {e}")
+        return []
+
+
+def extraer_lineas_de_region(pdf_path, pagina, x0, y0, x1, y1):
+    """Recorta esa región de esa página del PDF (mismo sistema de
+    coordenadas que usa el visor: píxeles a posiciones.DPI_CACHE) y le pide
+    al modelo las líneas que reconozca ahí. Import de posiciones aplazado
+    (no al principio del módulo) porque posiciones.py ya importa logic.py;
+    hacerlo arriba crearía un import circular."""
+    import posiciones as _posiciones
+
+    try:
+        png_bytes = _posiciones.recortar_region_png(pdf_path, pagina, x0, y0, x1, y1)
+    except Exception as e:
+        print(f"AVISO: no se pudo recortar la región para reextraer líneas: {e}")
+        return []
+
+    if png_bytes is None:
+        return []
+
+    return extraer_lineas_de_imagen(png_bytes)
 
 
 def extract_invoice_with_agent(file_name, invoice_text, agent_prompt=DEFAULT_PROMPT, pdf_path=None):
@@ -1335,6 +1558,15 @@ FACTURA:
             _posiciones.calcular_y_cachear(file_name, datos, pdf_path=pdf_path)
         except Exception as e:
             print(f"AVISO: no se pudieron calcular posiciones para {file_name}: {e}")
+
+    # No se guarda el desglose de líneas cuando la página mezcla varias
+    # facturas: no hay forma fiable de saber a cuál de ellas pertenece cada
+    # línea, así que es mejor no guardar nada que guardarlo mal asociado.
+    if pdf_path and not multiples_facturas:
+        try:
+            guardar_lineas_csv(pdf_path, datos_json.get("LineasFactura", []))
+        except Exception as e:
+            print(f"AVISO: no se pudo guardar el CSV de líneas para {file_name}: {e}")
 
     output = StringIO()
     writer = csv.writer(output, delimiter="|", lineterminator="\n")
@@ -1761,6 +1993,35 @@ def _liberar_del_disco_local(ruta):
         pass
 
 
+# El CSV de líneas (ver ruta_lineas_csv/guardar_lineas_csv en la sección de
+# extracción) no tiene tabla ni identificador propio: vive junto al PDF, así
+# que cada función que mueve/copia un PDF entre las carpetas del flujo debe
+# replicar la misma operación sobre su companion si existe. Una factura sin
+# líneas extraídas simplemente no tiene companion, y estas dos funciones no
+# hacen nada en ese caso.
+#
+# Son "best effort" a propósito (igual que _liberar_del_disco_local): el
+# companion es un añadido informativo, así que un fallo puntual al mover/
+# copiarlo (p.ej. el CSV bloqueado por otro proceso) no debe impedir que el
+# PDF -el dato que de verdad importa- termine de moverse.
+def _mover_companion_lineas(origen_pdf, destino_pdf):
+    try:
+        origen_csv = ruta_lineas_csv(origen_pdf)
+        if os.path.exists(origen_csv):
+            shutil.move(origen_csv, ruta_lineas_csv(destino_pdf))
+    except Exception as e:
+        print(f"AVISO: no se pudo mover el CSV de líneas de {origen_pdf}: {e}")
+
+
+def _copiar_companion_lineas(origen_pdf, destino_pdf):
+    try:
+        origen_csv = ruta_lineas_csv(origen_pdf)
+        if os.path.exists(origen_csv):
+            shutil.copy2(origen_csv, ruta_lineas_csv(destino_pdf))
+    except Exception as e:
+        print(f"AVISO: no se pudo copiar el CSV de líneas de {origen_pdf}: {e}")
+
+
 def _mover_pdf_a_carpeta(archivo, carpeta_destino, fila=None):
     """Mueve el PDF de `archivo` a `carpeta_destino` (buscándolo en cualquiera
     de las carpetas del flujo), evitando colisiones de nombre.
@@ -1786,6 +2047,7 @@ def _mover_pdf_a_carpeta(archivo, carpeta_destino, fila=None):
         dest = os.path.join(carpeta_destino, f"{base}_{datetime.now().strftime('%Y%m%d%H%M%S')}{ext}")
 
     shutil.move(src, dest)
+    _mover_companion_lineas(src, dest)
 
     destino_normalizado = os.path.normpath(carpeta_destino)
     if destino_normalizado == os.path.normpath(CORREGIR_DIR):
@@ -1860,6 +2122,7 @@ def descartar_factura_completada(archivo, usuario):
         dest = os.path.join(NO_FACTURA_DIR, f"{base}_{datetime.now().strftime('%Y%m%d%H%M%S')}{ext}")
 
     shutil.move(src, dest)
+    _mover_companion_lineas(src, dest)
     _liberar_del_disco_local(dest)
 
     registrar_auditoria_sql(usuario, "descartar_completada", archivo)
@@ -2119,12 +2382,14 @@ def mover_pdf(pdf_path, tipo, fila=None):
     os.makedirs(carpeta_procesadas, exist_ok=True)
     dest_procesadas = os.path.join(carpeta_procesadas, os.path.basename(pdf_path))
     _copiar_con_reintentos(pdf_path, dest_procesadas)
+    _copiar_companion_lineas(pdf_path, dest_procesadas)
     print("PDF COPIADO A PROCESADAS:", dest_procesadas)
 
     # Carpeta específica según categoría
     os.makedirs(carpeta_destino, exist_ok=True)
     destino = os.path.join(carpeta_destino, os.path.basename(pdf_path))
     _copiar_con_reintentos(pdf_path, destino)
+    _copiar_companion_lineas(pdf_path, destino)
     print("PDF COPIADO A", tipo.upper() + ":", destino)
 
     for _ in range(10):
@@ -2142,6 +2407,13 @@ def mover_pdf(pdf_path, tipo, fila=None):
         except Exception:
 
             time.sleep(1)
+
+    try:
+        origen_csv = ruta_lineas_csv(pdf_path)
+        if os.path.exists(origen_csv):
+            os.remove(origen_csv)
+    except Exception:
+        pass
 
     cola = _TIPO_A_COLA.get(tipo)
     if cola is not None:
@@ -2876,6 +3148,8 @@ def _mover_via_copia(origen, destino, intentos=10, espera=1):
                 raise
             time.sleep(espera)
 
+    _mover_companion_lineas(origen, destino)
+
     for intento in range(intentos):
         try:
             os.remove(origen)
@@ -2934,6 +3208,18 @@ def buscar_pdf_por_nombre(archivo):
                 return os.path.join(raiz, archivo)
 
     return None
+
+
+def buscar_lineas_csv_por_nombre(archivo):
+    """Igual que buscar_pdf_por_nombre, pero devuelve la ruta del CSV de
+    líneas asociado a `archivo` (ver ruta_lineas_csv), o None si el PDF no
+    tiene líneas extraídas o no se encuentra."""
+    ruta_pdf = buscar_pdf_por_nombre(archivo)
+    if ruta_pdf is None:
+        return None
+
+    ruta_csv = ruta_lineas_csv(ruta_pdf)
+    return ruta_csv if os.path.exists(ruta_csv) else None
 
 
 _CARPETA_POR_MOTIVO_CORREO = {

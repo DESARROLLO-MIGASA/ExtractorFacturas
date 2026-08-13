@@ -589,7 +589,8 @@ table.tabla-historial th.th-acciones {
     pointer-events: none;
 }
 
-#btnSeleccionarEnPdf.activo {
+#btnSeleccionarEnPdf.activo,
+#btnReextraerLineas.activo {
     background: #1F6F43;
     color: white;
 }
@@ -598,7 +599,8 @@ table.tabla-campos tr.campo-activo td {
     background: #FFF6D5;
 }
 
-table.tabla-campos tr[data-campo] {
+table.tabla-campos tr[data-campo],
+table.tabla-campos tr.fila-linea-factura {
     cursor: pointer;
 }
 
@@ -1102,6 +1104,7 @@ table.tabla-historial tr.fila-reservada-mia td {
             <label>Empresa <input type="text" id="pendFiltroEmpresa" oninput="filtrarPendientes()" placeholder="Empresa"></label>
             <label>Nombre proveedor <input type="text" id="pendFiltroNombreProveedor" oninput="filtrarPendientes()" placeholder="Nombre proveedor"></label>
             <label>Nº factura <input type="text" id="pendFiltroNumeroFactura" oninput="filtrarPendientes()" placeholder="Nº factura"></label>
+            <label>Nº albarán <input type="text" id="pendFiltroNumerosAlbaran" oninput="filtrarPendientes()" placeholder="Nº albarán"></label>
             <label>Pedido cliente <input type="text" id="pendFiltroPedidoCliente" oninput="filtrarPendientes()" placeholder="Pedido cliente"></label>
             <label>Proveedor <input type="text" id="pendFiltroProveedor" oninput="filtrarPendientes()" placeholder="CIF/NIF proveedor"></label>
             <button class="btn-secondary" onclick="limpiarFiltroPendientes()">Limpiar filtro</button>
@@ -1147,6 +1150,7 @@ table.tabla-historial tr.fila-reservada-mia td {
             <label>Empresa <input type="text" id="incFiltroEmpresa" oninput="filtrarIncidencias()" placeholder="Empresa"></label>
             <label>Nombre proveedor <input type="text" id="incFiltroNombreProveedor" oninput="filtrarIncidencias()" placeholder="Nombre proveedor"></label>
             <label>Nº factura <input type="text" id="incFiltroNumeroFactura" oninput="filtrarIncidencias()" placeholder="Nº factura"></label>
+            <label>Nº albarán <input type="text" id="incFiltroNumerosAlbaran" oninput="filtrarIncidencias()" placeholder="Nº albarán"></label>
             <label>Pedido cliente <input type="text" id="incFiltroPedidoCliente" oninput="filtrarIncidencias()" placeholder="Pedido cliente"></label>
             <label>Proveedor <input type="text" id="incFiltroProveedor" oninput="filtrarIncidencias()" placeholder="CIF/NIF proveedor"></label>
             <button class="btn-secondary" onclick="limpiarFiltroIncidencias()">Limpiar filtro</button>
@@ -1192,6 +1196,7 @@ table.tabla-historial tr.fila-reservada-mia td {
             <label>Empresa <input type="text" id="eaFiltroEmpresa" oninput="filtrarEsperandoAlta()" placeholder="Empresa"></label>
             <label>Nombre proveedor <input type="text" id="eaFiltroNombreProveedor" oninput="filtrarEsperandoAlta()" placeholder="Nombre proveedor"></label>
             <label>Nº factura <input type="text" id="eaFiltroNumeroFactura" oninput="filtrarEsperandoAlta()" placeholder="Nº factura"></label>
+            <label>Nº albarán <input type="text" id="eaFiltroNumerosAlbaran" oninput="filtrarEsperandoAlta()" placeholder="Nº albarán"></label>
             <label>Pedido cliente <input type="text" id="eaFiltroPedidoCliente" oninput="filtrarEsperandoAlta()" placeholder="Pedido cliente"></label>
             <label>Proveedor <input type="text" id="eaFiltroProveedor" oninput="filtrarEsperandoAlta()" placeholder="CIF/NIF proveedor"></label>
             <button class="btn-secondary" onclick="limpiarFiltroEsperandoAlta()">Limpiar filtro</button>
@@ -1275,6 +1280,7 @@ table.tabla-historial tr.fila-reservada-mia td {
             <label>Empresa <input type="text" id="revFiltroEmpresa" oninput="filtrarCompletadas()" placeholder="Empresa"></label>
             <label>Nombre proveedor <input type="text" id="revFiltroNombreProveedor" oninput="filtrarCompletadas()" placeholder="Nombre proveedor"></label>
             <label>Nº factura <input type="text" id="revFiltroNumeroFactura" oninput="filtrarCompletadas()" placeholder="Nº factura"></label>
+            <label>Nº albarán <input type="text" id="revFiltroNumerosAlbaran" oninput="filtrarCompletadas()" placeholder="Nº albarán"></label>
             <label>Pedido cliente <input type="text" id="revFiltroPedidoCliente" oninput="filtrarCompletadas()" placeholder="Pedido cliente"></label>
             <label>Proveedor <input type="text" id="revFiltroProveedor" oninput="filtrarCompletadas()" placeholder="CIF/NIF proveedor"></label>
             <label>Email proveedor <input type="text" id="revFiltroEmail" oninput="filtrarCompletadas()" placeholder="Email proveedor"></label>
@@ -1321,6 +1327,7 @@ table.tabla-historial tr.fila-reservada-mia td {
             <label>Empresa <input type="text" id="dupFiltroEmpresa" oninput="filtrarDuplicados()" placeholder="Empresa"></label>
             <label>Nombre proveedor <input type="text" id="dupFiltroNombreProveedor" oninput="filtrarDuplicados()" placeholder="Nombre proveedor"></label>
             <label>Nº factura <input type="text" id="dupFiltroNumeroFactura" oninput="filtrarDuplicados()" placeholder="Nº factura"></label>
+            <label>Nº albarán <input type="text" id="dupFiltroNumerosAlbaran" oninput="filtrarDuplicados()" placeholder="Nº albarán"></label>
             <label>Pedido cliente <input type="text" id="dupFiltroPedidoCliente" oninput="filtrarDuplicados()" placeholder="Pedido cliente"></label>
             <label>Proveedor <input type="text" id="dupFiltroProveedor" oninput="filtrarDuplicados()" placeholder="CIF/NIF proveedor"></label>
             <button class="btn-secondary" onclick="limpiarFiltroDuplicados()">Limpiar filtro</button>
@@ -1403,6 +1410,7 @@ table.tabla-historial tr.fila-reservada-mia td {
             <label>Empresa <input type="text" id="vgFiltroEmpresa" oninput="filtrarVistaGlobal()" placeholder="Empresa"></label>
             <label>Nombre proveedor <input type="text" id="vgFiltroNombreProveedor" oninput="filtrarVistaGlobal()" placeholder="Nombre proveedor"></label>
             <label>Nº factura <input type="text" id="vgFiltroNumeroFactura" oninput="filtrarVistaGlobal()" placeholder="Nº factura"></label>
+            <label>Nº albarán <input type="text" id="vgFiltroNumerosAlbaran" oninput="filtrarVistaGlobal()" placeholder="Nº albarán"></label>
             <label>Pedido cliente <input type="text" id="vgFiltroPedidoCliente" oninput="filtrarVistaGlobal()" placeholder="Pedido cliente"></label>
             <label>Proveedor <input type="text" id="vgFiltroProveedor" oninput="filtrarVistaGlobal()" placeholder="CIF/NIF proveedor"></label>
             <button class="btn-secondary" onclick="limpiarFiltroVistaGlobal()">Limpiar filtro</button>
@@ -1471,11 +1479,26 @@ table.tabla-historial tr.fila-reservada-mia td {
     <div class="panel-pdf-header">
         <span id="panelPdfNombre"></span>
         <div class="panel-pdf-acciones">
+            <button class="btn-secondary" style="padding:4px 10px;font-size:12px" onclick="abrirModalLineasFactura(panelPdfArchivoActual)">📋 Líneas</button>
             <a id="panelPdfAbrirNueva" class="btn-secondary" style="padding:4px 10px;font-size:12px" target="_blank" rel="noopener">↗ Nueva pestaña</a>
             <button class="btn-secondary" style="padding:4px 10px;font-size:12px" onclick="cerrarPanelPdf()">✕ Cerrar</button>
         </div>
     </div>
     <iframe id="panelPdfIframe" src="about:blank"></iframe>
+</div>
+
+<!-- ========================================================= -->
+<!-- MODAL: LÍNEAS DE FACTURA                                    -->
+<!-- ========================================================= -->
+<div id="overlayLineasFactura" class="modal-overlay" style="display:none">
+    <div class="modal-box modal-box-ancho">
+        <div class="modal-titulo">Líneas de factura</div>
+        <p class="help" id="lineasFacturaAviso" style="display:none"></p>
+        <div class="scroll-x" id="lineasFacturaTabla"></div>
+        <div class="modal-acciones">
+            <button class="btn-secondary" onclick="cerrarModalLineasFactura()">Cerrar</button>
+        </div>
+    </div>
 </div>
 
 </div>
@@ -1538,6 +1561,7 @@ table.tabla-historial tr.fila-reservada-mia td {
 
             <div id="editarFacturaContenido">
                 <div id="editarFacturaCampos"></div>
+                <div id="editarFacturaLineas"></div>
             </div>
         </div>
 
@@ -1882,13 +1906,68 @@ function marcarFilaSeleccionada(archivo) {
     );
 }
 
+let panelPdfArchivoActual = null;
+
 function abrirPanelPdf(archivo, nombreMostrar) {
     const url = "/pdf-factura/" + encodeURIComponent(archivo);
+    panelPdfArchivoActual = archivo;
     document.getElementById("panelPdfNombre").textContent = nombreMostrar || archivo;
     document.getElementById("panelPdfIframe").src = url;
     document.getElementById("panelPdfAbrirNueva").href = url;
     document.getElementById("panelPdf").style.display = "flex";
     marcarFilaSeleccionada(archivo);
+}
+
+async function abrirModalLineasFactura(archivo) {
+    if (!archivo) return;
+
+    const aviso = document.getElementById("lineasFacturaAviso");
+    const cont = document.getElementById("lineasFacturaTabla");
+    aviso.style.display = "none";
+    cont.innerHTML = "<span class='help'>Cargando...</span>";
+    document.getElementById("overlayLineasFactura").style.display = "flex";
+
+    try {
+        const res = await fetch("/lineas-factura/" + encodeURIComponent(archivo));
+
+        if (res.status === 404) {
+            cont.innerHTML = "";
+            aviso.textContent = "Esta factura no tiene líneas extraídas.";
+            aviso.style.display = "block";
+            return;
+        }
+        if (!res.ok) throw new Error("Error al cargar las líneas.");
+
+        const data = await res.json();
+        cont.innerHTML = renderTablaLineasFactura(data.lineas);
+    } catch (e) {
+        cont.innerHTML = "";
+        aviso.textContent = "No se pudieron cargar las líneas de esta factura.";
+        aviso.style.display = "block";
+    }
+}
+
+function renderTablaLineasFactura(lineas) {
+    if (!lineas || lineas.length === 0) {
+        return "<span class='help'>Esta factura no tiene líneas extraídas.</span>";
+    }
+
+    let html = "<table><thead><tr><th>Descripción</th><th>Cantidad</th><th>Precio</th><th>Importe</th><th>Otros</th></tr></thead><tbody>";
+    lineas.forEach(l => {
+        html += "<tr>"
+            + `<td>${escaparAttr(l.Descripcion ?? "")}</td>`
+            + `<td>${escaparAttr(l.Cantidad ?? "")}</td>`
+            + `<td>${escaparAttr(l.Precio ?? "")}</td>`
+            + `<td>${escaparAttr(l.Importe ?? "")}</td>`
+            + `<td>${escaparAttr(l.Otros ?? "")}</td>`
+            + "</tr>";
+    });
+    html += "</tbody></table>";
+    return html;
+}
+
+function cerrarModalLineasFactura() {
+    document.getElementById("overlayLineasFactura").style.display = "none";
 }
 
 function cerrarPanelPdf() {
@@ -1938,6 +2017,7 @@ const FILTROS_TEXTO_FACTURA = [
     { id: null, columna: "Empresa" },
     { id: null, columna: "NombreProveedor" },
     { id: null, columna: "NumeroFactura" },
+    { id: null, columna: "NumerosAlbaran" },
     { id: null, columna: "PedidoCliente" },
     { id: null, columna: "Proveedor" },
 ];
@@ -3976,6 +4056,10 @@ function abrirModalEditarFactura(rowCompleta, headersCompletos, tipo) {
         rotacion: 0,
     };
 
+    seleccionActivaCaja = "campo";
+    lineaActivaIdx = null;
+    campoLineaActivo = null;
+
     intentarReservarUnaFactura(archivo);
 
     document.getElementById("editarFacturaTitulo").textContent =
@@ -4001,6 +4085,7 @@ function abrirModalEditarFactura(rowCompleta, headersCompletos, tipo) {
 
     construirAccionesExtraEdicion(tipo, rowCompleta, headersCompletos);
     pintarCamposEdicion(headers, fila);
+    cargarLineasEnEdicion(archivo);
     document.getElementById("overlayEditarFactura").style.display = "flex";
 
     document.addEventListener("keydown", manejarTecladoEdicion);
@@ -4429,6 +4514,194 @@ function pintarCamposEdicion(headers, fila) {
     document.getElementById("editarFacturaCampos").innerHTML = html;
 }
 
+// Estado de las líneas de la factura que se está editando ahora mismo (ver
+// abrirModalEditarFactura). Paralelo a edicionFactura, pero aparte: las
+// líneas viven en su propio CSV (no en la fila de EXPECTED_HEADERS), así que
+// se cargan/guardan con su propio endpoint (ver /lineas-factura en
+// routers/manual.py), no como una columna más de edicionFactura.edits.
+let edicionLineas = { archivo: null, lineas: [], cajas: [], hubolineas: false };
+
+const CAMPOS_LINEA_FACTURA = ["Descripcion", "Cantidad", "Precio", "Importe", "Otros"];
+const ETIQUETAS_LINEA_FACTURA = { Descripcion: "Descripción", Cantidad: "Cantidad", Precio: "Precio", Importe: "Importe", Otros: "Otros" };
+
+// Muestra, al final de los campos de edición, las líneas ya extraídas de la
+// factura, editables igual que el resto de campos (mismo estilo tabla-campos
+// y mismo botón ✎ de edición inline), más los botones para añadir una línea
+// nueva o eliminar una existente -- por si la extracción se ha dejado
+// alguna, o ha detectado de más. Si la factura no tiene líneas (o falla la
+// consulta), se muestra igualmente la sección, vacía, para poder añadir
+// líneas a mano.
+async function cargarLineasEnEdicion(archivo) {
+    edicionLineas = { archivo, lineas: [], cajas: [], hubolineas: false };
+
+    try {
+        const res = await fetch("/lineas-factura/" + encodeURIComponent(archivo));
+        if (res.ok) {
+            const data = await res.json();
+            edicionLineas.lineas = (data.lineas || []).map(linea => ({ ...linea }));
+        }
+        // Un 404 (factura sin líneas extraídas) no es un error: se deja la
+        // lista vacía, para que el usuario pueda añadir líneas a mano si la
+        // extracción no encontró ninguna.
+    } catch (e) {
+        // Silencioso: si falla la consulta, se empieza con la lista vacía en
+        // vez de bloquear la edición del resto de la factura.
+    }
+
+    edicionLineas.hubolineas = edicionLineas.lineas.length > 0;
+    renderizarSeccionLineas();
+
+    if (edicionLineas.lineas.length) {
+        cargarPosicionesLineas(archivo);
+    }
+}
+
+function renderizarSeccionLineas() {
+    document.getElementById("editarFacturaLineas").innerHTML =
+        "<div class='modal-titulo' style='font-size:14px;margin:16px 0 8px'>Líneas de factura</div>" +
+        "<div style='max-height:280px;overflow:auto;padding-right:4px'>" +
+        renderTablaLineasEditable(edicionLineas.lineas) +
+        "</div>" +
+        "<div style='margin-top:8px;display:flex;gap:8px;flex-wrap:wrap'>" +
+        "<button type='button' class='btn-secondary' onclick='anadirLineaEdicion()'>➕ Añadir línea</button>" +
+        "<button type='button' class='btn-secondary' id='btnReextraerLineas' onclick='alternarModoReextraerLineas()' " +
+        "title='Arrastra sobre una tabla de líneas en el PDF para que la IA la lea; se añaden a las que ya haya, así que en facturas de varias páginas puedes repetirlo en cada una'>🔄 Reextraer líneas (seleccionar región)</button>" +
+        "<button type='button' class='btn-secondary' onclick='vaciarLineasEdicion()' title='Borra todas las líneas para volver a reextraerlas desde cero'>🗑 Vaciar líneas</button>" +
+        "</div>";
+}
+
+// Cajas (página + coordenadas) para resaltar cada línea en el PDF al
+// pincharla, igual que cargarPosicionesEdicion hace por campo. Aparte de esa
+// llamada (no en la misma) porque unas y otras se sirven de endpoints
+// distintos: las líneas no son parte de EXPECTED_HEADERS/fila_completa.
+async function cargarPosicionesLineas(archivo) {
+    try {
+        const res = await fetch("/posiciones-lineas-factura/" + encodeURIComponent(archivo));
+        const data = await res.json();
+        if (edicionLineas.archivo !== archivo) return; // se cambió de factura mientras llegaba
+        edicionLineas.cajas = data.cajas || [];
+    } catch (e) {
+        if (edicionLineas.archivo === archivo) edicionLineas.cajas = [];
+    }
+
+    if (edicionLineas.archivo === archivo && seleccionActivaCaja === "linea" && lineaActivaIdx !== null) {
+        pintarCajaLineaActiva(lineaActivaIdx);
+    }
+}
+
+function renderTablaLineasEditable(lineas) {
+    if (!lineas.length) {
+        return "<p class='help' style='margin:4px 0'>Sin líneas registradas.</p>";
+    }
+
+    let html = "<table class='tabla-campos'><tr>";
+    CAMPOS_LINEA_FACTURA.forEach(campo => html += `<th>${ETIQUETAS_LINEA_FACTURA[campo]}</th>`);
+    html += "<th></th></tr>";
+
+    lineas.forEach((linea, rowIdx) => {
+        html += `<tr class="fila-linea-factura" data-linea-idx="${rowIdx}" onclick="activarLineaEdicion(${rowIdx})">`;
+        CAMPOS_LINEA_FACTURA.forEach(campo => {
+            const val = String(linea[campo] ?? "-").trim() || "-";
+            html += `<td class="campo-valor" data-linea-idx="${rowIdx}" data-campo="${campo}">
+                        <span class="valor-ok">${val}</span>
+                        <input
+                            type="text"
+                            value="${escaparAttr(val)}"
+                            style="display:none;width:100%;box-sizing:border-box;border:1px solid #1F6F43;border-radius:4px;padding:4px 7px;font-size:13px"
+                            oninput="registrarEditLinea(${rowIdx}, '${campo}', this.value)"
+                            onblur="cerrarEditInline(this)"
+                            onclick="event.stopPropagation(); activarCeldaLinea(${rowIdx}, '${campo}')"
+                        >
+                        <button
+                            class="btn-secondary"
+                            style="padding:2px 7px;font-size:11px;margin-left:6px"
+                            onclick="event.stopPropagation(); activarCeldaLinea(${rowIdx}, '${campo}'); abrirEditInline(this)"
+                            title="Editar">✎</button>
+                     </td>`;
+        });
+        html += `<td class="campo-valor">
+                    <button
+                        class="btn-secondary"
+                        style="padding:2px 7px;font-size:11px;color:#C62828"
+                        onclick="event.stopPropagation(); eliminarLineaEdicion(${rowIdx})"
+                        title="Eliminar esta línea">🗑</button>
+                 </td>`;
+        html += "</tr>";
+    });
+
+    html += "</table>";
+    return html;
+}
+
+// Línea nueva en blanco, para cuando la extracción se ha dejado alguna: no
+// tiene caja en el PDF todavía (no viene del LLM ni se ha vuelto a calcular
+// su posición), así que se activa igual pero sin recuadro hasta guardar y
+// reabrir la factura.
+function anadirLineaEdicion() {
+    edicionLineas.lineas.push({ Descripcion: "-", Cantidad: "-", Precio: "-", Importe: "-", Otros: "-" });
+    edicionLineas.cajas.push(null);
+
+    renderizarSeccionLineas();
+    activarLineaEdicion(edicionLineas.lineas.length - 1);
+}
+
+// Al eliminar, se reindexan `lineas` y `cajas` a la vez (van siempre
+// alineadas por posición) y se recalcula qué línea queda activa, si había
+// alguna.
+function eliminarLineaEdicion(rowIdx) {
+    edicionLineas.lineas.splice(rowIdx, 1);
+    edicionLineas.cajas.splice(rowIdx, 1);
+
+    if (!edicionLineas.lineas.length) {
+        lineaActivaIdx = null;
+        campoLineaActivo = null;
+        seleccionActivaCaja = "campo";
+        document.getElementById("editarFacturaCaja").style.display = "none";
+    } else if (lineaActivaIdx !== null) {
+        if (rowIdx < lineaActivaIdx) {
+            lineaActivaIdx -= 1;
+        } else if (rowIdx === lineaActivaIdx) {
+            lineaActivaIdx = Math.min(lineaActivaIdx, edicionLineas.lineas.length - 1);
+        }
+    }
+
+    renderizarSeccionLineas();
+    if (seleccionActivaCaja === "linea" && lineaActivaIdx !== null) {
+        activarLineaEdicion(lineaActivaIdx);
+    }
+}
+
+function registrarEditLinea(rowIdx, campo, valor) {
+    if (!edicionLineas.lineas[rowIdx]) return;
+    edicionLineas.lineas[rowIdx][campo] = valor.trim() || "-";
+}
+
+// Envía al servidor las líneas de `archivo` si se cargaron para esta misma
+// factura (ver cargarLineasEnEdicion). Se envía también cuando ya no queda
+// ninguna (edicionLineas.hubolineas), para que borrar a mano todas las
+// líneas se refleje de verdad en el CSV -si nunca hubo líneas y tampoco se
+// añadió ninguna, no hay nada que sincronizar-. Se llama tras guardar bien
+// los campos principales (tanto en guardarEdicionFactura como en
+// guardarBorradorFactura); un fallo aquí no debe hacer parecer que el
+// guardado principal (que ya tuvo éxito) falló.
+async function guardarLineasSiHayCambios(archivo) {
+    if (edicionLineas.archivo !== archivo) return;
+    if (!edicionLineas.lineas.length && !edicionLineas.hubolineas) return;
+
+    try {
+        const res = await fetch("/lineas-factura/" + encodeURIComponent(archivo), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ lineas: edicionLineas.lineas }),
+        });
+        if (!res.ok) {
+            mostrarToast("Aviso: no se pudieron guardar los cambios en las líneas de factura.", "error");
+        }
+    } catch (e) {
+        mostrarToast("Aviso: no se pudieron guardar los cambios en las líneas de factura.", "error");
+    }
+}
+
 // =========================================================
 // PANTALLA DIVIDIDA: VISOR DE PDF PROPIO, NAVEGACIÓN POR TECLADO,
 // RECUADRO AUTOMÁTICO Y SELECCIÓN MANUAL CON ARRASTRE
@@ -4478,6 +4751,27 @@ async function cargarPdfEnEdicion(archivo) {
     }
 }
 
+// Los campos normales y las líneas de factura pintan su recuadro en el
+// MISMO div (#editarFacturaCaja), pero se cargan con dos llamadas
+// independientes (cargarPosicionesEdicion / cargarPosicionesLineas) que
+// pueden tardar cada una lo suyo. Sin esta variable, la que tarde más en
+// responder repintaría por encima el recuadro de la otra aunque el usuario
+// ya hubiera hecho clic en un campo/línea distinto mientras tanto -por
+// ejemplo, si el usuario pincha una línea y justo después llega la
+// respuesta (más lenta) de los campos, el recuadro volvería a saltar al
+// campo activo, dando la sensación de que pinchar la línea "no hace nada".
+// Solo se repinta al llegar los datos si lo último que activó el usuario
+// sigue siendo del mismo tipo que acaba de cargar.
+let seleccionActivaCaja = "campo";
+let lineaActivaIdx = null;
+// Cuál de las 5 columnas de la línea activa (Descripcion/Cantidad/Precio/
+// Importe/Otros) es el destino de "Seleccionar en el PDF": una línea tiene
+// varias celdas, a diferencia de un campo normal (una sola), así que hace
+// falta saber cuál en concreto. Se fija al activar una línea entera (por
+// defecto Descripcion) y se afina al abrir la edición de una celda concreta
+// (ver activarCeldaLinea).
+let campoLineaActivo = null;
+
 async function cargarPosicionesEdicion() {
     const archivo = edicionFactura.archivo;
 
@@ -4494,7 +4788,7 @@ async function cargarPosicionesEdicion() {
         if (edicionFactura && edicionFactura.archivo === archivo) edicionFactura.cajasCampos = {};
     }
 
-    if (edicionFactura && edicionFactura.camposNavegables.length) {
+    if (edicionFactura && edicionFactura.camposNavegables.length && seleccionActivaCaja === "campo") {
         pintarCajaCampoActivo(edicionFactura.camposNavegables[edicionFactura.campoActivoIdx]);
     }
 }
@@ -4511,10 +4805,29 @@ function manejarTecladoEdicion(ev) {
     }
 }
 
+// La navegación con ↓/↑ recorre primero los campos y, al llegar al último,
+// sigue por las líneas de factura (si las hay) antes de volver a dar la
+// vuelta al primer campo -- un único recorrido circular en vez de dos
+// independientes, para poder revisar la factura entera sin soltar el
+// teclado.
 function moverCampoActivo(delta) {
     if (!edicionFactura || !edicionFactura.camposNavegables.length) return;
-    const n = edicionFactura.camposNavegables.length;
-    activarCampoEdicion(((edicionFactura.campoActivoIdx + delta) % n + n) % n);
+
+    const nCampos = edicionFactura.camposNavegables.length;
+    const nLineas = edicionLineas.lineas.length;
+    const total = nCampos + nLineas;
+
+    const actual = (seleccionActivaCaja === "linea" && lineaActivaIdx !== null)
+        ? nCampos + lineaActivaIdx
+        : edicionFactura.campoActivoIdx;
+
+    const siguiente = ((actual + delta) % total + total) % total;
+
+    if (siguiente < nCampos) {
+        activarCampoEdicion(siguiente);
+    } else {
+        activarLineaEdicion(siguiente - nCampos);
+    }
 }
 
 function activarCampoEdicion(idx) {
@@ -4525,6 +4838,11 @@ function activarCampoEdicion(idx) {
 
     document.querySelectorAll("#editarFacturaCampos tr[data-campo]").forEach(tr =>
         tr.classList.toggle("campo-activo", tr.dataset.campo === campo)
+    );
+    // Quita el resaltado de líneas: solo puede haber un campo/línea activo a
+    // la vez (ver también activarLineaEdicion, que hace lo simétrico).
+    document.querySelectorAll("#editarFacturaLineas tr.fila-linea-factura").forEach(tr =>
+        tr.classList.remove("campo-activo")
     );
 
     const fila = document.querySelector(`#editarFacturaCampos tr[data-campo="${CSS.escape(campo)}"]`);
@@ -4542,6 +4860,7 @@ function activarCampoEdicion(idx) {
         }
     }
 
+    seleccionActivaCaja = "campo";
     pintarCajaCampoActivo(campo);
 }
 
@@ -4558,7 +4877,9 @@ function girarPdfEdicion(delta) {
     });
 
     document.getElementById("editarFacturaCajaManual").style.display = "none";
-    if (edicionFactura.camposNavegables.length) {
+    if (seleccionActivaCaja === "linea" && lineaActivaIdx !== null) {
+        pintarCajaLineaActiva(lineaActivaIdx);
+    } else if (edicionFactura.camposNavegables.length) {
         pintarCajaCampoActivo(edicionFactura.camposNavegables[edicionFactura.campoActivoIdx]);
     }
 }
@@ -4634,11 +4955,14 @@ function coordDisplayANatural(img, xd, yd) {
     return { x: xd / s, y: yd / s };
 }
 
-function pintarCajaCampoActivo(campo) {
+// Compartida por pintarCajaCampoActivo (campos normales) y
+// pintarCajaLineaActiva (líneas de factura): ambas resuelven qué caja les
+// toca pintar (de una fuente de datos distinta cada una) y delegan aquí el
+// cálculo de coordenadas y el recuadro en sí.
+function _pintarCajaEnPdf(caja) {
     const cajaDiv = document.getElementById("editarFacturaCaja");
     document.getElementById("editarFacturaCajaManual").style.display = "none";
 
-    const caja = edicionFactura && edicionFactura.cajasCampos && edicionFactura.cajasCampos[campo];
     const wrap = caja
         ? document.querySelector(`#editarFacturaPdfPaginas .pagina-pdf-wrap[data-pagina="${caja.pagina}"]`)
         : null;
@@ -4667,11 +4991,74 @@ function pintarCajaCampoActivo(campo) {
     });
 }
 
+function pintarCajaCampoActivo(campo) {
+    _pintarCajaEnPdf(edicionFactura && edicionFactura.cajasCampos && edicionFactura.cajasCampos[campo]);
+}
+
+function pintarCajaLineaActiva(rowIdx) {
+    _pintarCajaEnPdf(edicionLineas.cajas && edicionLineas.cajas[rowIdx]);
+}
+
+// Al pinchar una línea (fuera de sus botones/inputs de edición, ver
+// event.stopPropagation() en renderTablaLineasEditable): la marca como
+// activa (mismo estilo campo-activo que usan los campos normales) y pinta
+// su recuadro en el PDF, igual que al navegar entre campos con el teclado.
+function activarLineaEdicion(rowIdx) {
+    document.querySelectorAll("#editarFacturaLineas tr.fila-linea-factura").forEach(tr =>
+        tr.classList.toggle("campo-activo", parseInt(tr.dataset.lineaIdx, 10) === rowIdx)
+    );
+    // Quita el resaltado de campos: solo puede haber un campo/línea activo a
+    // la vez (ver también activarCampoEdicion, que hace lo simétrico).
+    document.querySelectorAll("#editarFacturaCampos tr[data-campo]").forEach(tr =>
+        tr.classList.remove("campo-activo")
+    );
+
+    const fila = document.querySelector(`#editarFacturaLineas tr.fila-linea-factura[data-linea-idx="${rowIdx}"]`);
+    if (fila) fila.scrollIntoView({ block: "nearest" });
+
+    seleccionActivaCaja = "linea";
+    lineaActivaIdx = rowIdx;
+    // Al activar la fila entera (clic en la fila / navegación con teclado,
+    // no en una celda concreta) se asume Descripcion como destino de
+    // "Seleccionar en el PDF" -es la columna más identificativa-; si el
+    // usuario abre la edición de otra celda, activarCeldaLinea la sustituye.
+    campoLineaActivo = "Descripcion";
+    pintarCajaLineaActiva(rowIdx);
+}
+
+// Se llama al abrir la edición de una celda CONCRETA de una línea (ver el
+// botón ✎ y el propio <input> en renderTablaLineasEditable): además de
+// activar la fila (resaltado, recuadro en el PDF), deja esa celda en
+// concreto como destino de "Seleccionar en el PDF", en vez del valor por
+// defecto (Descripcion) que pone activarLineaEdicion.
+function activarCeldaLinea(rowIdx, campo) {
+    activarLineaEdicion(rowIdx);
+    campoLineaActivo = campo;
+}
+
 function alternarSeleccionManual() {
     if (!edicionFactura) return;
     edicionFactura.seleccionManualActiva = !edicionFactura.seleccionManualActiva;
+    // Comparten el mismo mecanismo de arrastre (ver iniciarArrastreManual):
+    // no pueden estar los dos modos activos a la vez.
+    modoReextraerLineas = false;
+    document.getElementById("btnReextraerLineas")?.classList.remove("activo");
     document.getElementById("btnSeleccionarEnPdf").classList.toggle("activo", edicionFactura.seleccionManualActiva);
     document.getElementById("editarFacturaPdfScroll").style.cursor = edicionFactura.seleccionManualActiva ? "crosshair" : "";
+}
+
+// Modo "Reextraer líneas": arrastrar una región llama a la IA con esa
+// imagen recortada (ver reextraerLineasDeRegion) en vez de rellenar un
+// campo/celda como hace el modo normal de arriba.
+let modoReextraerLineas = false;
+
+function alternarModoReextraerLineas() {
+    if (!edicionFactura) return;
+    modoReextraerLineas = !modoReextraerLineas;
+    edicionFactura.seleccionManualActiva = modoReextraerLineas;
+    document.getElementById("btnSeleccionarEnPdf").classList.remove("activo");
+    document.getElementById("btnReextraerLineas").classList.toggle("activo", modoReextraerLineas);
+    document.getElementById("editarFacturaPdfScroll").style.cursor = modoReextraerLineas ? "crosshair" : "";
 }
 
 let _arrastreManual = null;
@@ -4742,9 +5129,34 @@ async function terminarArrastreManual(ev) {
     const x1 = Math.max(d0.x, d1.x);
     const y1 = Math.max(d0.y, d1.y);
 
-    const campo = edicionFactura.camposNavegables[edicionFactura.campoActivoIdx];
-    edicionFactura.cajasCampos[campo] = { pagina, x0, y0, x1, y1 };
-    pintarCajaCampoActivo(campo);
+    if (modoReextraerLineas) {
+        await reextraerLineasDeRegion(pagina, x0, y0, x1, y1);
+        return;
+    }
+
+    // Si lo último activo es una línea (no un campo), el texto reconocido va
+    // a la celda concreta de esa línea (ver activarCeldaLinea), no al último
+    // campo normal que se hubiera activado antes.
+    const escribirEnLinea = seleccionActivaCaja === "linea" && lineaActivaIdx !== null && campoLineaActivo;
+
+    let campo = null;
+    if (!escribirEnLinea) {
+        campo = edicionFactura.camposNavegables[edicionFactura.campoActivoIdx];
+        edicionFactura.cajasCampos[campo] = { pagina, x0, y0, x1, y1 };
+        pintarCajaCampoActivo(campo);
+    }
+    // Si es una línea que YA tenía caja (calculada en el servidor a partir
+    // de Descripcion+Importe, ver calcular_cajas_lineas), no se toca: es la
+    // de la fila entera, y una celda suelta sería peor que esa. Pero si
+    // todavía no tenía ninguna -típicamente una línea añadida a mano, que
+    // nunca ha pasado por esa localización automática- se usa el propio
+    // arrastre como su caja: ya sabemos justo dónde está (es el usuario
+    // quien lo acaba de señalar), así el recuadro aparece la próxima vez que
+    // se active en vez de quedarse sin ninguno.
+    if (escribirEnLinea && !edicionLineas.cajas[lineaActivaIdx]) {
+        edicionLineas.cajas[lineaActivaIdx] = { pagina, x0, y0, x1, y1 };
+        pintarCajaLineaActiva(lineaActivaIdx);
+    }
 
     try {
         const res = await fetch("/ocr-region", {
@@ -4757,16 +5169,83 @@ async function terminarArrastreManual(ev) {
         if (res.status === 503) {
             mostrarToast(data.detail || "Tesseract OCR no está disponible en el servidor.", "error");
         } else if (data.texto) {
-            establecerValorCampoEdicion(campo, data.texto);
-            const fila = document.querySelector(`#editarFacturaCampos tr[data-campo="${CSS.escape(campo)}"]`);
-            const input = fila && fila.querySelector("input");
-            if (input) { input.focus(); input.select(); }
+            if (escribirEnLinea) {
+                establecerValorCeldaLinea(lineaActivaIdx, campoLineaActivo, data.texto);
+            } else {
+                establecerValorCampoEdicion(campo, data.texto);
+                const fila = document.querySelector(`#editarFacturaCampos tr[data-campo="${CSS.escape(campo)}"]`);
+                const input = fila && fila.querySelector("input");
+                if (input) { input.focus(); input.select(); }
+            }
         } else {
             mostrarToast("No se ha podido leer texto ahí; escribe el valor a mano.", "error");
         }
     } catch (e) {
         mostrarToast("Error de conexión al leer la selección.", "error");
     }
+}
+
+// Reextrae con la IA (vision) las líneas de la región seleccionada y las
+// AÑADE a las que ya hubiera (no las sustituye): así una factura de varias
+// páginas se puede reextraer página a página -o tabla a tabla- sin perder
+// lo ya reconocido antes; para empezar de cero, usar "Vaciar líneas" (ver
+// vaciarLineasEdicion). El modo NO se desactiva solo, para poder seguir
+// seleccionando otra región (p.ej. la página siguiente) sin volver a pulsar
+// el botón cada vez -se sale de él pulsándolo de nuevo (alternarModoReextraerLineas)-.
+// Solo se manda la imagen recortada de esa región, no la factura entera,
+// para gastar menos por llamada.
+async function reextraerLineasDeRegion(pagina, x0, y0, x1, y1) {
+    const archivo = edicionFactura.archivo;
+    mostrarToast("Leyendo líneas de la región seleccionada...", "ok");
+
+    try {
+        const res = await fetch("/reextraer-lineas-region", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ archivo, pagina, x0, y0, x1, y1 }),
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+            mostrarToast(data.detail || "No se pudieron reextraer las líneas.", "error");
+            return;
+        }
+        if (!data.lineas || !data.lineas.length) {
+            mostrarToast("No se ha reconocido ninguna línea en esa región.", "error");
+            return;
+        }
+
+        const nuevasLineas = data.lineas.map(linea => ({ ...linea }));
+        edicionLineas.lineas.push(...nuevasLineas);
+        // No se conoce todavía la caja individual de estas líneas nuevas (no
+        // ha pasado por calcular_cajas_lineas en el servidor, solo por esta
+        // llamada de vision).
+        edicionLineas.cajas.push(...nuevasLineas.map(() => null));
+        edicionLineas.hubolineas = true;
+        renderizarSeccionLineas();
+        mostrarToast(`✓ ${nuevasLineas.length} línea(s) añadida(s) (total: ${edicionLineas.lineas.length}).`, "ok");
+    } catch (e) {
+        mostrarToast("Error de conexión al reextraer las líneas.", "error");
+    }
+}
+
+// Vacía todas las líneas de la factura en edición, para volver a
+// reextraerlas desde cero (p.ej. si el resultado acumulado con
+// reextraerLineasDeRegion ha quedado mal y se prefiere empezar de nuevo).
+function vaciarLineasEdicion() {
+    if (edicionLineas.lineas.length && !confirm("¿Vaciar todas las líneas de esta factura?")) return;
+
+    edicionLineas.lineas = [];
+    edicionLineas.cajas = [];
+
+    if (seleccionActivaCaja === "linea") {
+        seleccionActivaCaja = "campo";
+        document.getElementById("editarFacturaCaja").style.display = "none";
+    }
+    lineaActivaIdx = null;
+    campoLineaActivo = null;
+
+    renderizarSeccionLineas();
 }
 
 document.getElementById("editarFacturaPdfScroll").addEventListener("mousedown", iniciarArrastreManual);
@@ -4795,6 +5274,26 @@ function establecerValorCampoEdicion(nombreCampo, valor) {
     input.value = valor;
 
     const span = input.closest("td")?.querySelector("span.valor-ok");
+    if (span) span.textContent = valor.trim() || "-";
+}
+
+// Equivalente a establecerValorCampoEdicion, pero para una celda de línea
+// (rowIdx + nombre de columna en vez de un único índice de campo): la usa
+// terminarArrastreManual cuando lo activo es una línea (ver
+// activarCeldaLinea/campoLineaActivo).
+function establecerValorCeldaLinea(rowIdx, campo, valor) {
+    if (!edicionLineas.lineas[rowIdx]) return;
+    registrarEditLinea(rowIdx, campo, valor);
+
+    const celda = document.querySelector(
+        `#editarFacturaLineas td[data-linea-idx="${rowIdx}"][data-campo="${CSS.escape(campo)}"]`
+    );
+    if (!celda) return;
+
+    const input = celda.querySelector("input");
+    if (input) input.value = valor;
+
+    const span = celda.querySelector("span.valor-ok");
     if (span) span.textContent = valor.trim() || "-";
 }
 
@@ -4924,6 +5423,10 @@ function cerrarModalEditarFactura() {
     document.getElementById("editarFacturaCajaManual").style.display = "none";
     _arrastreManual = null;
     edicionFactura = null;
+    edicionLineas = { archivo: null, lineas: [], cajas: [], hubolineas: false };
+    seleccionActivaCaja = "campo";
+    lineaActivaIdx = null;
+    campoLineaActivo = null;
 }
 
 function construirFilaFinalEdicion() {
@@ -4969,6 +5472,8 @@ async function guardarBorradorFactura() {
         }
 
         mostrarToast(`✓ Cambios guardados en ${edicionFactura.archivo} (sigue pendiente de completar).`, "ok");
+
+        await guardarLineasSiHayCambios(edicionFactura.archivo);
 
         if (edicionFactura.tipo === "incidencia") {
             await cargarIncidenciasCompleto();
@@ -5060,6 +5565,8 @@ async function guardarEdicionFactura() {
                 esPendienteOIncidencia ? `✓ ${archivo} movida a completadas.` : `✓ ${archivo} actualizada.`,
                 "ok"
             );
+
+            await guardarLineasSiHayCambios(archivo);
 
             if (tipo === "pendiente") quitarDePendientesCache(archivo);
             else if (tipo === "incidencia") quitarDeIncidenciasCache(archivo);

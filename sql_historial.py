@@ -57,6 +57,7 @@ COLUMNAS = [
     "FFactura",
     "FOperacion",
     "FEscaneo",
+    "NumerosAlbaran",
 ]
 
 
@@ -130,6 +131,8 @@ def _crear_tabla_si_no_existe(cursor):
             )
         """)
         columnas_existentes = {row[1] for row in cursor.execute(f"PRAGMA table_info({TABLA})").fetchall()}
+        if "NumerosAlbaran" not in columnas_existentes:
+            _alter_columna_si_procede(cursor, "NumerosAlbaran", f"ALTER TABLE {TABLA} ADD COLUMN NumerosAlbaran TEXT")
         if "Definitiva" not in columnas_existentes:
             _alter_columna_si_procede(cursor, "Definitiva", f"ALTER TABLE {TABLA} ADD COLUMN Definitiva INTEGER DEFAULT 0")
         if "UsuarioDefinitiva" not in columnas_existentes:
@@ -140,10 +143,12 @@ def _crear_tabla_si_no_existe(cursor):
             _alter_columna_si_procede(cursor, "Duplicado", f"ALTER TABLE {TABLA} ADD COLUMN Duplicado INTEGER DEFAULT 0")
         return
 
-    # PedidoCliente puede traer varios números de pedido concatenados con ";"
-    # (facturas que agrupan varios pedidos), así que necesita más margen que
-    # el resto de columnas.
-    ANCHOS = {"PedidoCliente": 1000}
+    # PedidoCliente y NumerosAlbaran pueden traer un número de valores
+    # concatenados inusualmente alto (se ha visto una factura real con ~85
+    # pedidos/~96 albaranes, muy por encima de 1000 caracteres), así que sin
+    # límite de tamaño en vez de un ancho fijo que tarde o temprano se vuelva
+    # a quedar corto.
+    ANCHOS = {"PedidoCliente": "MAX", "NumerosAlbaran": "MAX"}
     columnas_sql = ",\n".join(f"[{c}] NVARCHAR({ANCHOS.get(c, 255)}) NULL" for c in COLUMNAS)
 
     cursor.execute(f"""
@@ -156,9 +161,18 @@ def _crear_tabla_si_no_existe(cursor):
             CONSTRAINT UQ_{TABLA}_Archivo UNIQUE (Archivo)
         )
     """)
+    # COL_LENGTH devuelve -1 para una columna ya NVARCHAR(MAX), así que estos
+    # ALTER solo se repiten mientras la columna siga en un ancho fijo (255 por
+    # defecto, o 1000 en las bases ya migradas antes de pasar a MAX).
     _alter_columna_si_procede(cursor, "PedidoCliente", f"""
-        IF COL_LENGTH('{TABLA}', 'PedidoCliente') IS NOT NULL AND COL_LENGTH('{TABLA}', 'PedidoCliente') < 1000
-        ALTER TABLE {TABLA} ALTER COLUMN [PedidoCliente] NVARCHAR(1000) NULL
+        IF COL_LENGTH('{TABLA}', 'PedidoCliente') IS NOT NULL AND COL_LENGTH('{TABLA}', 'PedidoCliente') <> -1
+        ALTER TABLE {TABLA} ALTER COLUMN [PedidoCliente] NVARCHAR(MAX) NULL
+    """)
+    _alter_columna_si_procede(cursor, "NumerosAlbaran", f"""
+        IF COL_LENGTH('{TABLA}', 'NumerosAlbaran') IS NULL
+        ALTER TABLE {TABLA} ADD NumerosAlbaran NVARCHAR(MAX) NULL
+        ELSE IF COL_LENGTH('{TABLA}', 'NumerosAlbaran') <> -1
+        ALTER TABLE {TABLA} ALTER COLUMN [NumerosAlbaran] NVARCHAR(MAX) NULL
     """)
     _alter_columna_si_procede(cursor, "Definitiva", f"""
         IF COL_LENGTH('{TABLA}', 'Definitiva') IS NULL
@@ -1025,9 +1039,12 @@ def _crear_tabla_cola_si_no_existe(cursor):
                 UNIQUE([Archivo])
             )
         """)
+        columnas_existentes = {row[1] for row in cursor.execute(f"PRAGMA table_info({TABLA_COLA})").fetchall()}
+        if "NumerosAlbaran" not in columnas_existentes:
+            _alter_columna_si_procede(cursor, "NumerosAlbaran", f"ALTER TABLE {TABLA_COLA} ADD COLUMN NumerosAlbaran TEXT")
         return
 
-    ANCHOS = {"PedidoCliente": 1000}
+    ANCHOS = {"PedidoCliente": "MAX", "NumerosAlbaran": "MAX"}
     columnas_sql = ",\n".join(f"[{c}] NVARCHAR({ANCHOS.get(c, 255)}) NULL" for c in COLUMNAS)
     cursor.execute(f"""
         IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = '{TABLA_COLA}')
@@ -1039,6 +1056,26 @@ def _crear_tabla_cola_si_no_existe(cursor):
             CONSTRAINT UQ_{TABLA_COLA}_Archivo UNIQUE (Archivo)
         )
     """)
+    # La tabla puede ya existir de antes de añadir/ensanchar estas columnas
+    # (CREATE TABLE IF NOT EXISTS no toca una tabla ya creada), así que hace
+    # falta el ALTER aparte -- ver el mismo caso para PedidoCliente en
+    # _crear_tabla_si_no_existe, más arriba.
+    try:
+        cursor.execute(f"""
+            IF COL_LENGTH('{TABLA_COLA}', 'PedidoCliente') IS NOT NULL AND COL_LENGTH('{TABLA_COLA}', 'PedidoCliente') <> -1
+            ALTER TABLE {TABLA_COLA} ALTER COLUMN [PedidoCliente] NVARCHAR(MAX) NULL
+        """)
+    except Exception as e:
+        print(f"AVISO: no se pudo migrar el esquema de {TABLA_COLA} (PedidoCliente, {MOTOR}): {e}")
+    try:
+        cursor.execute(f"""
+            IF COL_LENGTH('{TABLA_COLA}', 'NumerosAlbaran') IS NULL
+            ALTER TABLE {TABLA_COLA} ADD NumerosAlbaran NVARCHAR(MAX) NULL
+            ELSE IF COL_LENGTH('{TABLA_COLA}', 'NumerosAlbaran') <> -1
+            ALTER TABLE {TABLA_COLA} ALTER COLUMN [NumerosAlbaran] NVARCHAR(MAX) NULL
+        """)
+    except Exception as e:
+        print(f"AVISO: no se pudo migrar el esquema de {TABLA_COLA} (NumerosAlbaran, {MOTOR}): {e}")
 
 
 _crear_tabla_cola_si_no_existe = _una_vez_por_proceso(TABLA_COLA, _crear_tabla_cola_si_no_existe)

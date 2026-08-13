@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS FacturasExaminadas (
     [Moneda]            TEXT,
     [NombreProveedor]   TEXT,
     [NumeroFactura]     TEXT,
+    [NumerosAlbaran]    TEXT,
     [PedidoCliente]     TEXT,
     [Proveedor]         TEXT,
     [TipoIVA]           TEXT,

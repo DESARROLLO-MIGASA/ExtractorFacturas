@@ -1,0 +1,406 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish,es-tabla]{babel}
+\usepackage[a4paper,margin=2.5cm]{geometry}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+
+\definecolor{riesgoalto}{RGB}{178,34,34}
+\definecolor{riesgomedio}{RGB}{184,134,11}
+\definecolor{gris}{RGB}{90,90,90}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue!50!black,
+    urlcolor=blue!50!black,
+    pdftitle={Evaluacion tecnica de Mammouth.ai},
+    pdfauthor={Escaneria - Migasa}
+}
+
+\titleformat{\section}{\normalfont\Large\bfseries}{\thesection}{1em}{}
+\titleformat{\subsection}{\normalfont\large\bfseries}{\thesubsection}{1em}{}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small Evaluación técnica --- Mammouth.ai}
+\fancyhead[R]{\small Proyecto Escaneria (Migasa)}
+\fancyfoot[C]{\thepage}
+
+\newcommand{\riesgo}[1]{\textcolor{riesgoalto}{\textbf{[#1]}}}
+\newcommand{\advertencia}[1]{\textcolor{riesgomedio}{\textbf{[#1]}}}
+
+\title{\textbf{Evaluación técnica de Mammouth.ai como capa de acceso\\y orquestación de modelos de IA} \\[0.3em]
+\large Proyecto de extracción automática de facturas (Escaneria) --- Migasa}
+\author{}
+\date{11 de agosto de 2026}
+
+\begin{document}
+
+\maketitle
+\thispagestyle{empty}
+
+\begin{abstract}
+\noindent
+Este informe evalúa la viabilidad de usar \textbf{Mammouth.ai} como capa de acceso y
+orquestación frente a distintos proveedores de modelos de IA, en sustitución o como
+respaldo de la integración directa actual con la API de OpenAI en el pipeline de
+extracción automática de datos de facturas. Se analiza el encaje con la arquitectura
+existente, las capacidades de integración documentadas, los riesgos técnicos y
+económicos, y dos escenarios de uso: sustitución del proveedor principal y uso como
+contingencia ante una caída de OpenAI.
+\end{abstract}
+
+\tableofcontents
+
+\section{Contexto y objetivo}
+
+El proyecto Escaneria procesa facturas de proveedor de forma automática: extrae
+texto de los PDF, y cuando el texto no es fiable o el documento es una imagen
+escaneada, recurre a visión por computador sobre el propio PDF. Toda la
+inteligencia de extracción se apoya hoy en la API de OpenAI, a través de dos
+funciones centralizadas en \texttt{logic.py}:
+
+\begin{itemize}
+    \item \texttt{build\_client()} --- crea el cliente del SDK de OpenAI leyendo
+    \texttt{OPENAI\_API\_KEY} y, opcionalmente, \texttt{OPENAI\_BASE\_URL} (pensado
+    para poder apuntar a un endpoint alternativo compatible sin tocar el resto
+    del código).
+    \item \texttt{get\_model()} --- devuelve el modelo a usar, configurable vía
+    \texttt{OPENAI\_MODEL} (por defecto \texttt{gpt-4.1}).
+\end{itemize}
+
+El motivo por el que se plantea evaluar Mammouth.ai es doble:
+
+\begin{enumerate}
+    \item Evitar depender de integraciones directas con cada proveedor de IA si en
+    el futuro se quisiera usar más de un modelo.
+    \item \textbf{Disponer de una vía alternativa si un día OpenAI deja de estar
+    disponible}, para poder seguir procesando facturas con otro proveedor de IA.
+\end{enumerate}
+
+Este segundo punto es, tras el análisis, el que realmente encaja con el caso de
+uso: se evalúa por tanto tanto el escenario de \emph{sustitución} como el de
+\emph{contingencia} (sección~\ref{sec:contingencia}).
+
+\section{Qué es Mammouth.ai}
+
+Mammouth AI SAS es una empresa francesa (sede en París), fundada en 2024, con una
+plantilla pequeña (2-10 empleados). Su producto principal es una
+\textbf{suscripción de consumo/equipo} que da acceso, bajo un único login, a
+más de 25 modelos de terceros (GPT, Claude, Gemini, Mistral, DeepSeek, GLM,
+generadores de imagen y vídeo, etc.). El acceso programático mediante API es una
+funcionalidad \emph{secundaria} de ese producto, no su núcleo de negocio.
+
+\subsection{Capacidades de integración documentadas}
+
+\begin{itemize}
+    \item Endpoint: \texttt{https://api.mammouth.ai/v1/chat/completions}, compatible
+    con el formato de la API de OpenAI (Chat Completions).
+    \item Autenticación: cabecera \texttt{Authorization: Bearer <API\_KEY>}.
+    \item Streaming de respuestas (\texttt{stream: true}) vía Server-Sent Events.
+    \item Embeddings (\texttt{text-embedding-3-large/small}).
+    \item Selección de modelo por nombre o por alias de conveniencia
+    (\texttt{mammouth-recommended}, \texttt{mammouth}, \texttt{recommended}) que
+    elige modelo automáticamente y puede cambiar sin previo aviso.
+    \item Compañía europea, declara cumplimiento GDPR y no usar contenido de
+    usuario para entrenar modelos; se financia solo por suscripción.
+\end{itemize}
+
+\subsection{Lo que la documentación pública \emph{no} confirma}
+
+\begin{itemize}
+    \item Soporte de \texttt{response\_format} con JSON Schema en modo
+    \texttt{strict} (Structured Outputs).
+    \item Soporte de imágenes como \emph{entrada} (visión/comprensión de imagen);
+    solo documentan modelos de \emph{generación} de imagen.
+    \item Límites de peticiones por minuto/hora para uso con clave de API.
+    \item SLA de disponibilidad formal.
+    \item Tarifa por token para uso de pago por consumo (\emph{pay-as-you-go}).
+\end{itemize}
+
+\section{Viabilidad técnica frente a la arquitectura actual}
+
+El coste de \emph{conectar} Mammouth es prácticamente nulo: al existir ya
+\texttt{OPENAI\_BASE\_URL} en \texttt{build\_client()}, probarlo es cambiar dos
+variables en \texttt{.env}. El problema no es la conexión, sino que dos piezas
+muy concretas del pipeline dependen de comportamiento \emph{no estándar} de la
+API de OpenAI:
+
+\begin{enumerate}
+    \item \riesgo{Riesgo crítico} \textbf{Structured Outputs estricto.}
+    \texttt{extract\_invoice\_with\_agent} (\texttt{logic.py}) y la extracción por
+    visión (\texttt{imagenes.py}) usan
+    \texttt{response\_format={"type": "json\_schema", "strict": true}}. Este modo
+    estricto es precisamente lo que corrigió un bug histórico del proyecto (el
+    CIF del proveedor terminando en la columna de TipoIVA por desplazamiento de
+    campos). Si Mammouth no respeta ese modo con la misma garantía, se podría
+    reintroducir ese bug sin que salte ningún error.
+    \item \riesgo{Riesgo crítico} \textbf{Visión sobre imágenes de entrada.}
+    \texttt{imagenes.py} manda páginas del PDF como \texttt{image\_url} en base64
+    para leer el CIF en facturas escaneadas sin texto extraíble. No hay
+    confirmación de que la capa de compatibilidad de Mammouth soporte
+    comprensión de imagen de entrada, solo generación.
+    \item \advertencia{Riesgo medio} \textbf{No determinismo de modelo.} Los
+    alias de selección automática de modelo pueden cambiar de versión sin
+    aviso, lo que dificulta auditar por qué una factura concreta se extrajo mal.
+\end{enumerate}
+
+\textbf{Recomendación de verificación:} antes de tomar cualquier decisión, replicar
+exactamente la llamada de texto (con el \texttt{json\_schema strict}) y la llamada
+de visión contra el endpoint de Mammouth, usando una factura con datos ya
+conocidos (\emph{ground truth}), y comparar el resultado campo a campo.
+
+\section{Ventajas}
+
+\begin{itemize}
+    \item Coste de integración casi nulo: la abstracción ya existente
+    (\texttt{build\_client()}/\texttt{get\_model()}) permite probarlo sin tocar
+    lógica de negocio.
+    \item Compañía con sede en la Unión Europea, con compromiso GDPR declarado y
+    modelo de negocio basado en suscripción (no en monetizar datos de usuario).
+    \item Un único panel/factura si en algún momento se quisiera tener acceso a
+    varios modelos (Claude, Gemini) sin gestionar N claves y N SDKs distintos.
+\end{itemize}
+
+\section{Desventajas y riesgos}
+
+\subsection{Técnicos}
+\begin{itemize}
+    \item Compatibilidad no confirmada con \texttt{response\_format strict} (sección~3).
+    \item Compatibilidad no confirmada con visión de entrada (sección~3).
+    \item Selección de modelo no determinista mediante alias.
+\end{itemize}
+
+\subsection{Modelo de cuotas, pensado para chat interactivo, no para un backend 24/7}
+\begin{itemize}
+    \item Cuotas por \emph{sesión}, renovadas cada 3 horas.
+    \item Al agotar la cuota del modelo elegido, Mammouth \textbf{degrada
+    automáticamente a un modelo más ligero, sin lanzar ningún error} (por
+    ejemplo, Opus~$\rightarrow$~Sonnet~$\rightarrow$~Haiku). Para un proceso
+    desatendido que procesa lotes de facturas, esto significa degradación
+    silenciosa de la calidad de extracción, no un límite que se pueda capturar
+    y reintentar.
+    \item Sin límites de peticiones por minuto/hora documentados para uso con
+    clave de API.
+    \item Créditos incluidos no acumulables entre meses.
+\end{itemize}
+
+\subsection{Económicos}
+Ver análisis detallado en la sección~\ref{sec:coste}. En resumen: al volumen real
+de Migasa, el crédito incluido en cualquiera de los planes se agota en los
+primeros días del mes.
+
+\subsection{Negocio y continuidad}
+\begin{itemize}
+    \item Empresa muy pequeña (2-10 empleados), fundada en 2024, sin SLA de
+    disponibilidad publicado.
+    \item Reseñas independientes reportan soporte deficiente y dificultades
+    para cancelar o conseguir reembolsos.
+    \item El acceso vía API es una funcionalidad secundaria de un producto
+    orientado a consumidor final, no el foco de su negocio.
+\end{itemize}
+
+\subsection{Datos y cumplimiento}
+\begin{itemize}
+    \item Se añade un salto adicional de tratamiento de datos: CIF/NIF e
+    importes de Migasa y sus proveedores pasarían por Mammouth antes de llegar
+    al proveedor real del modelo (OpenAI, Anthropic, Google...).
+    \item No hay un DPA (Data Processing Agreement) formal verificado para este
+    caso de uso concreto, más allá de la política de privacidad genérica.
+\end{itemize}
+
+\section{Análisis de consumo de tokens y coste}
+\label{sec:coste}
+
+\subsection{Estimación por tipo de llamada}
+
+La siguiente tabla se basa en los límites que ya existen en el propio código
+(\texttt{MAX\_CHARS = 35000} en \texttt{logic.py}, \texttt{DPI\_IMAGENES = 200} y
+\texttt{MAX\_PAGINAS = 3} en \texttt{imagenes.py}), no en cifras de marketing.
+
+\begin{longtable}{@{}p{4cm}p{5.5cm}p{2.3cm}p{1.8cm}@{}}
+\toprule
+\textbf{Llamada} & \textbf{Origen del tamaño} & \textbf{Input (tokens)} & \textbf{Output} \\
+\midrule
+\endhead
+\texttt{detectar\_numero\_factura} (por página) &
+Prompt fijo corto + página de texto (hasta 15.000 caracteres) &
+500 (típico) -- 3.750 (límite) & 5--10 \\
+\addlinespace
+\texttt{extract\_invoice\_with\_agent} (por factura) &
+\texttt{DEFAULT\_PROMPT} ($\approx$2.100 tokens fijos) + texto de la factura
+(hasta 35.000 caracteres) + JSON Schema de 19 campos ($\approx$500--700 tokens) &
+3.450 (típico) -- 11.500 (límite) & 150--300 \\
+\addlinespace
+Fallback de visión (hasta 3 páginas a 200~DPI) &
+3 imágenes tamaño A4 ($\approx$1.100 tokens/imagen) + prompt y schema &
+6.000 -- 6.500 & 200--300 \\
+\bottomrule
+\end{longtable}
+
+\subsection{Coste equivalente a tarifa de OpenAI directa}
+
+Usando la tarifa pública de \texttt{gpt-4.1} (\$2/millón de tokens de entrada,
+\$8/millón de salida, el modelo por defecto de \texttt{get\_model()}):
+
+\begin{itemize}
+    \item Factura simple con texto extraíble (1 página): \textbf{\$0,009 -- \$0,010} por factura.
+    \item Factura larga/compleja (cerca del límite de 35.000 caracteres): \textbf{\$0,025 -- \$0,03} por factura.
+    \item Factura escaneada con fallback de visión: \textbf{+\$0,015 -- \$0,02} adicionales sobre el intento de texto previo.
+\end{itemize}
+
+\subsection{Datos reales de producción}
+
+El consumo real reportado es de \textbf{\$3/día} con una media de
+\textbf{400 facturas/día}, es decir:
+
+\begin{itemize}
+    \item \textbf{\$0,0075 por factura} (coincide con la parte baja del rango estimado).
+    \item \textbf{$\approx$\$90/mes} ($\approx$\$1.080/año).
+    \item \textbf{$\approx$12.000 facturas/mes.}
+\end{itemize}
+
+\subsection{Comparativa con los planes de Mammouth}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lccc}
+\toprule
+\textbf{Plan} & \textbf{Precio/mes} & \textbf{Crédito incluido} & \textbf{Cobertura del consumo real} \\
+\midrule
+Starter  & \$12 & \$2  & $\approx$16 horas de 720 \\
+Standard & \$24 & \$4  & $\approx$32 horas \\
+Expert   & \$72 & \$10 & $\approx$3,3 días de 30 \\
+\bottomrule
+\end{tabular}
+\caption{Horas/días del mes que cubre el crédito incluido de cada plan al ritmo
+real de consumo de Migasa (\$3/día).}
+\end{table}
+
+Incluso en el plan más caro para un solo usuario, el crédito incluido se agota en
+los primeros 3--4 días del mes. El resto de días, cada mes, habría que recurrir a
+pago adicional por consumo (tarifa no publicada) o asumir la degradación
+automática de modelo.
+
+\subsection{Coste total estimado si se usara como motor principal}
+
+Suponiendo el escenario \emph{más favorable posible} para Mammouth --- que su
+tarifa de pago por consumo fuera idéntica a la de OpenAI directo, sin ningún
+margen de reventa ---:
+
+\begin{align*}
+\text{Plan Expert} &= \$72/\text{mes} \\
++\ \text{consumo real} &= \$90/\text{mes} \\
+-\ \text{crédito ya incluido} &= -\$10/\text{mes} \\
+\hline
+\textbf{Total estimado} &\approx \textbf{\$152/mes}
+\end{align*}
+
+Esto supone un \textbf{$\approx$69\% más caro} que el coste actual (\$90/mes) por
+el mismo resultado, en el caso optimista y sin degradación de modelo. Con
+cualquier margen de reventa razonable, el coste real probablemente estaría entre
+\$180 y \$220/mes.
+
+\section{Escenario de contingencia: OpenAI como principal, Mammouth como respaldo}
+\label{sec:contingencia}
+
+Si el objetivo real no es sustituir a OpenAI sino \textbf{tener con qué seguir
+funcionando si un día OpenAI se cae}, el análisis cambia en lo económico pero no
+en lo técnico:
+
+\begin{itemize}
+    \item El argumento de coste mensual (\$152 vs \$90) pierde fuerza, porque
+    Mammouth no sería el motor de las 12.000 facturas/mes, solo estaría
+    disponible para activarse en una caída puntual.
+    \item El riesgo técnico (Structured Outputs estricto y visión) \textbf{sigue
+    intacto}: si no funciona bien, se descubriría en el peor momento posible
+    --- durante una caída real de OpenAI, con facturas acumulándose --- si no se
+    ha probado antes. Debe verificarse en frío, no esperar a necesitarlo.
+    \item El cambio de proveedor \textbf{no es automático hoy}: \texttt{build\_client()}
+    lee las variables de entorno una sola vez al arrancar el servicio; pasar a
+    Mammouth exige editar \texttt{.env} y reiniciar el servicio a mano. Si se
+    quiere failover automático, hay que añadir lógica de detección de fallo y
+    reintento que hoy no existe en el código.
+\end{itemize}
+
+\subsection{Alternativa a considerar: Azure OpenAI}
+
+Para este objetivo concreto (resiliencia ante una caída del endpoint de
+\texttt{openai.com}) existe una alternativa con \textbf{riesgo de compatibilidad
+nulo}: \textbf{Azure OpenAI}. Son los mismos modelos (incluido \texttt{gpt-4.1}),
+operados por Microsoft, con el mismo soporte garantizado de
+\texttt{response\_format strict} y visión, y con SLA formal. El propio diseño de
+\texttt{OPENAI\_BASE\_URL} en el proyecto parece anticipar precisamente este caso.
+No protege frente a un problema sistémico del propio modelo, pero sí frente al
+tipo de caída más habitual (infraestructura/API de OpenAI).
+
+\section{¿Pagar más soluciona el problema de las cuotas?}
+
+Con OpenAI directo el modelo es de \emph{pago por consumo puro}: mientras haya
+saldo, cada petición se sirve al mismo modelo y a la misma tarifa, sin sorpresas.
+
+Con Mammouth, según su propia documentación, el comportamiento \textbf{por
+defecto} al agotar la cuota incluida no es ``cóbrame más y sigue igual'': es
+\textbf{bajar de modelo automáticamente}. Mencionan la posibilidad de comprar
+créditos adicionales de pago por consumo, pero:
+
+\begin{itemize}
+    \item No publican la tarifa de esos créditos adicionales.
+    \item No confirman si comprarlos \emph{evita} la degradación de modelo o
+    simplemente amplía la misma cuota, que puede volver a agotarse.
+\end{itemize}
+
+Antes de asumir que ``pagando se soluciona'', debería confirmarse por escrito con
+su equipo comercial que el pago adicional impide el downgrade automático, y a qué
+tarifa exacta --- especialmente relevante si el uso previsto es de contingencia
+ante una caída real, donde no interesa descubrir esa letra pequeña en caliente.
+
+\section{Cambios necesarios si se decide avanzar}
+
+\begin{enumerate}
+    \item \textbf{Prueba de compatibilidad real} antes de cualquier otra cosa:
+    replicar la llamada exacta de \texttt{extract\_invoice\_with\_agent} (con
+    \texttt{json\_schema strict}) y la de visión de \texttt{imagenes.py} contra el
+    endpoint de Mammouth, con un caso de \emph{ground truth} conocido.
+    \item \textbf{Código:} en principio basta cambiar \texttt{OPENAI\_BASE\_URL} y
+    \texttt{OPENAI\_API\_KEY} en \texttt{.env}; no haría falta tocar
+    \texttt{logic.py} ni \texttt{imagenes.py} salvo que fallen las pruebas del
+    punto~1.
+    \item \textbf{Detección de degradación de modelo:} como Mammouth no avisa al
+    bajar de modelo, habría que comparar el campo \texttt{model} de la respuesta
+    contra el esperado y alertar o frenar el pipeline si cambia, para no procesar
+    facturas reales con un modelo peor sin saberlo.
+    \item \textbf{Negociación comercial directa} con Mammouth: pedir tarifa de
+    volumen publicada, confirmación por escrito de soporte de
+    \texttt{response\_format strict} y visión, y SLA formal.
+    \item \textbf{Comparar con alternativas} diseñadas desde el origen para
+    consumo programático 24/7 con varios proveedores (Azure OpenAI, LiteLLM
+    autoalojado, OpenRouter), en lugar de un producto de chat con API añadida
+    encima.
+\end{enumerate}
+
+\section{Conclusión}
+
+Como \textbf{sustituto} del proveedor principal, Mammouth.ai no aporta ventaja
+clara sobre la integración directa con OpenAI que ya existe y está abstraída en
+el código: introduce riesgos técnicos no confirmados sobre las dos capacidades
+que el pipeline usa de forma crítica (Structured Outputs estricto y visión), un
+modelo de cuotas pensado para chat interactivo que degrada silenciosamente la
+calidad al alcanzar el límite, y un coste estimado un $\approx$69\% superior al
+actual incluso en el escenario más favorable.
+
+Como \textbf{respaldo de contingencia} ante una caída de OpenAI, el argumento
+económico pierde peso, pero el riesgo técnico sigue siendo el mismo y debe
+verificarse antes de necesitarlo. Para ese objetivo concreto, \textbf{Azure
+OpenAI} es una alternativa con el mismo nivel de compatibilidad garantizada y
+sin las incertidumbres de cuotas y soporte descritas en este informe.
+
+\end{document}
