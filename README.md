@@ -56,7 +56,8 @@ Sistema que extrae automáticamente los datos estructurados de facturas en PDF u
 - **Alertas grandes** en "Visualización automática" cuando hay facturas pendientes de revisión manual, incidencias, errores u otras colas con elementos esperando
 - **Filtro de fecha por pestaña**: las tablas de Corregir manualmente, Incidencias, Esperando alta, Errores, Revisar facturas, Duplicados y No es factura se pueden acotar por fecha de procesamiento, cada una sobre su propia cola (no existe una tabla única con todo el histórico)
 - **Corrección manual**: vista web para completar los campos que faltan en `corregir_manualmente`, confirmar y mover la factura a `completadas`
-- **Revisión en pantalla dividida**: al editar una factura (pendiente, incidencia, esperando alta o completada) se abre un visor propio del PDF junto al formulario, con un recuadro pastel que salta automáticamente sobre la posición de cada dato; con ↓/Enter se pasa al siguiente campo y con ↑ al anterior. Si el recuadro no acierta o el dato no se detectó, se puede arrastrar un recuadro a mano sobre el PDF (funciona igual en facturas con texto que en escaneadas, vía OCR) para rellenar el campo con lo que haya ahí
+- **Revisión en pantalla dividida**: al editar una factura (pendiente, incidencia, esperando alta o completada) se abre un visor propio del PDF junto al formulario, con un recuadro pastel que salta automáticamente sobre la posición de cada dato; con ↓/Enter se pasa al siguiente campo y con ↑ al anterior — la navegación no se para en el último campo: si la factura tiene líneas, sigue por ellas y solo vuelve al principio al pasar la última. Si el recuadro no acierta o el dato no se detectó, se puede arrastrar un recuadro a mano sobre el PDF (funciona igual en facturas con texto que en escaneadas, vía OCR) para rellenar el campo con lo que haya ahí
+- **Líneas de factura editables y localizables en el PDF**: ver la sección [Líneas de factura](#líneas-de-factura) más abajo — añadir/quitar líneas a mano, corregirlas celda a celda con recuadro en el visor, o reextraer con IA la región de la tabla que se seleccione (sin tener que reextraer la factura entera)
 - **Papelera de corrección manual**: si un PDF de la cola de `corregir_manualmente` resulta no ser una factura, se puede apartar a `no_es_factura` con un clic, sin borrarlo
 - **Ver el PDF sin salir de la app**: cada pendiente de corrección se puede abrir directamente en el navegador, sin ir a buscarlo a la carpeta
 - **Exportar cualquier listado a Excel**: las tablas de las distintas pestañas se pueden descargar tal cual se están viendo (filtradas), además de la descarga específica de "facturas definitivas"
@@ -90,6 +91,19 @@ Orden real de `EXPECTED_HEADERS` en `logic.py` (es también el orden de las colu
 | 16 | FFactura | Fecha de la factura |
 | 17 | FOperacion | Fecha de operación |
 | 18 | FEscaneo | Fecha y hora de procesamiento |
+| 19 | NumerosAlbaran | Número(s) de albarán del proveedor (varios valores posibles, separados por `;`) |
+
+`PedidoCliente` y `NumerosAlbaran` admiten varios valores en una misma factura, concatenados con `;` (p.ej. `PEDIDO-001;PEDIDO-002`); en SQL Server ambas columnas son `NVARCHAR(MAX)` (se ha visto en producción una factura real con ~85-96 valores, muy por encima de los 1000 caracteres que tenían antes).
+
+### Líneas de factura
+
+Además de los 19 campos de cabecera de arriba, el LLM también extrae las **líneas/conceptos individuales** de la factura (descripción, cantidad, precio, importe, y "otros" para cualquier dato adicional como número de bultos/palés). No son una columna más de `EXPECTED_HEADERS`: se guardan como un **CSV aparte junto al PDF**, con el mismo nombre y el sufijo `_lineas.csv` (delimitador `;`, con BOM UTF-8 para que Excel en español lo abra bien), y viajan con el PDF cuando este se mueve entre las carpetas del flujo (`ruta_lineas_csv`/`guardar_lineas_csv` en `logic.py`).
+
+Se pueden consultar y corregir desde la vista de edición de cualquier factura:
+- Se muestran al final de los campos, editables celda a celda igual que el resto de campos (mismo estilo, mismo botón ✎).
+- Al pinchar una línea se resalta en el visor del PDF, igual que ocurre con los campos normales (`posiciones.calcular_cajas_lineas`, localiza cada línea por su Descripción+Importe).
+- Se pueden añadir líneas nuevas en blanco o eliminar una existente (por si la extracción se dejó alguna o detectó de más).
+- **Reextraer líneas por región**: si la extracción automática se equivocó en bloque (o no encontró ninguna), se puede seleccionar a mano la zona de la tabla en el PDF y pedirle a la IA que la vuelva a leer -mandando solo esa imagen recortada, no la factura entera-. Cada región seleccionada **añade** líneas a las que ya haya (no las sustituye), para poder repetirlo página a página en facturas de varias hojas; un botón "Vaciar líneas" permite empezar de cero.
 
 ---
 
@@ -241,7 +255,7 @@ AD_GRUPO_ADMINS=G-HQ-TEC-INF-SG-Admins_Escaner_Facturas
 AD_GRUPO_USUARIOS=G-SAT-TEC-INF-SG-Users_Escaner_Facturas
 ```
 
-Si la conexión a la base de datos falla o no está configurada, se registra un aviso por consola y el procesamiento de facturas continúa con normalidad (el histórico Excel no depende de ella). Ojo: si el login SQL configurado no tiene permiso de `CREATE TABLE`, la app intenta crear las tablas (incluidas `ReservasFacturas` y `ColaRevision`) al vuelo y ese fallo es silencioso — sin `ReservasFacturas` la función de reservas multiusuario deja de funcionar, y sin `ColaRevision` las pestañas "Corregir manualmente" e "Incidencias" dejan de poder listar nada, hasta que alguien con permisos ejecute a mano los scripts de `sql/`.
+Si la conexión a la base de datos falla o no está configurada, se registra un aviso por consola y el procesamiento de facturas continúa con normalidad (el histórico Excel no depende de ella). Ojo: si el login SQL configurado no tiene permiso de `CREATE TABLE`/`ALTER TABLE`, la app intenta crear y migrar las tablas (incluidas `ReservasFacturas` y `ColaRevision`, y columnas nuevas como `NumerosAlbaran`) al vuelo y ese fallo es silencioso (solo queda un aviso por consola) — sin `ReservasFacturas` la función de reservas multiusuario deja de funcionar, sin `ColaRevision` las pestañas "Corregir manualmente" e "Incidencias" dejan de poder listar nada, y si falta una columna nueva el guardado de **todas** las facturas empieza a fallar con un error `Invalid column name`, hasta que alguien con permisos de DDL ejecute a mano los scripts de `sql/` o el `ALTER TABLE` que corresponda.
 
 ---
 
@@ -519,6 +533,10 @@ python cargar_proveedores.py             # carga de verdad
 | `GET` | `/pdf-factura-paginas/{archivo}` | Todas las páginas del PDF como imagen (para el visor propio de la vista de revisión) |
 | `POST` | `/posiciones-factura` | Recuadro por campo (página + coordenadas) para pintarlo en el visor; se cachea por archivo |
 | `POST` | `/ocr-region` | Selección manual con arrastre: OCR de la región indicada, para rellenar el campo activo |
+| `GET` | `/lineas-factura/{archivo}` | Líneas de una factura (CSV junto al PDF); 404 si no tiene ninguna extraída |
+| `POST` | `/lineas-factura/{archivo}` | Sobrescribe el CSV de líneas con el contenido final del modal de edición (admite añadir/quitar líneas) |
+| `GET` | `/posiciones-lineas-factura/{archivo}` | Recuadro por línea (página + coordenadas) para resaltarla en el visor al pincharla; se cachea junto con `/posiciones-factura` |
+| `POST` | `/reextraer-lineas-region` | Vuelve a llamar a la IA (vision) solo con la región de la tabla de líneas seleccionada a mano, en vez de la factura entera |
 | `GET` | `/empresas-buscar` | Autocompletado de CIF de comprador contra `EmpresasClasificadas` |
 | `GET` | `/proveedores-buscar` | Autocompletado de CIF de proveedor contra `ProveedoresClasificados` |
 
