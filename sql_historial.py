@@ -14,6 +14,7 @@ Soporta dos motores, seleccionables con SQL_ENGINE en .env:
 """
 
 import os
+import time
 
 from dotenv import load_dotenv
 
@@ -56,6 +57,7 @@ COLUMNAS = [
     "FFactura",
     "FOperacion",
     "FEscaneo",
+    "NumerosAlbaran",
 ]
 
 
@@ -129,6 +131,8 @@ def _crear_tabla_si_no_existe(cursor):
             )
         """)
         columnas_existentes = {row[1] for row in cursor.execute(f"PRAGMA table_info({TABLA})").fetchall()}
+        if "NumerosAlbaran" not in columnas_existentes:
+            _alter_columna_si_procede(cursor, "NumerosAlbaran", f"ALTER TABLE {TABLA} ADD COLUMN NumerosAlbaran TEXT")
         if "Definitiva" not in columnas_existentes:
             _alter_columna_si_procede(cursor, "Definitiva", f"ALTER TABLE {TABLA} ADD COLUMN Definitiva INTEGER DEFAULT 0")
         if "UsuarioDefinitiva" not in columnas_existentes:
@@ -139,10 +143,12 @@ def _crear_tabla_si_no_existe(cursor):
             _alter_columna_si_procede(cursor, "Duplicado", f"ALTER TABLE {TABLA} ADD COLUMN Duplicado INTEGER DEFAULT 0")
         return
 
-    # PedidoCliente puede traer varios números de pedido concatenados con ";"
-    # (facturas que agrupan varios pedidos), así que necesita más margen que
-    # el resto de columnas.
-    ANCHOS = {"PedidoCliente": 1000}
+    # PedidoCliente y NumerosAlbaran pueden traer un número de valores
+    # concatenados inusualmente alto (se ha visto una factura real con ~85
+    # pedidos/~96 albaranes, muy por encima de 1000 caracteres), así que sin
+    # límite de tamaño en vez de un ancho fijo que tarde o temprano se vuelva
+    # a quedar corto.
+    ANCHOS = {"PedidoCliente": "MAX", "NumerosAlbaran": "MAX"}
     columnas_sql = ",\n".join(f"[{c}] NVARCHAR({ANCHOS.get(c, 255)}) NULL" for c in COLUMNAS)
 
     cursor.execute(f"""
@@ -155,9 +161,18 @@ def _crear_tabla_si_no_existe(cursor):
             CONSTRAINT UQ_{TABLA}_Archivo UNIQUE (Archivo)
         )
     """)
+    # COL_LENGTH devuelve -1 para una columna ya NVARCHAR(MAX), así que estos
+    # ALTER solo se repiten mientras la columna siga en un ancho fijo (255 por
+    # defecto, o 1000 en las bases ya migradas antes de pasar a MAX).
     _alter_columna_si_procede(cursor, "PedidoCliente", f"""
-        IF COL_LENGTH('{TABLA}', 'PedidoCliente') IS NOT NULL AND COL_LENGTH('{TABLA}', 'PedidoCliente') < 1000
-        ALTER TABLE {TABLA} ALTER COLUMN [PedidoCliente] NVARCHAR(1000) NULL
+        IF COL_LENGTH('{TABLA}', 'PedidoCliente') IS NOT NULL AND COL_LENGTH('{TABLA}', 'PedidoCliente') <> -1
+        ALTER TABLE {TABLA} ALTER COLUMN [PedidoCliente] NVARCHAR(MAX) NULL
+    """)
+    _alter_columna_si_procede(cursor, "NumerosAlbaran", f"""
+        IF COL_LENGTH('{TABLA}', 'NumerosAlbaran') IS NULL
+        ALTER TABLE {TABLA} ADD NumerosAlbaran NVARCHAR(MAX) NULL
+        ELSE IF COL_LENGTH('{TABLA}', 'NumerosAlbaran') <> -1
+        ALTER TABLE {TABLA} ALTER COLUMN [NumerosAlbaran] NVARCHAR(MAX) NULL
     """)
     _alter_columna_si_procede(cursor, "Definitiva", f"""
         IF COL_LENGTH('{TABLA}', 'Definitiva') IS NULL
@@ -1024,9 +1039,12 @@ def _crear_tabla_cola_si_no_existe(cursor):
                 UNIQUE([Archivo])
             )
         """)
+        columnas_existentes = {row[1] for row in cursor.execute(f"PRAGMA table_info({TABLA_COLA})").fetchall()}
+        if "NumerosAlbaran" not in columnas_existentes:
+            _alter_columna_si_procede(cursor, "NumerosAlbaran", f"ALTER TABLE {TABLA_COLA} ADD COLUMN NumerosAlbaran TEXT")
         return
 
-    ANCHOS = {"PedidoCliente": 1000}
+    ANCHOS = {"PedidoCliente": "MAX", "NumerosAlbaran": "MAX"}
     columnas_sql = ",\n".join(f"[{c}] NVARCHAR({ANCHOS.get(c, 255)}) NULL" for c in COLUMNAS)
     cursor.execute(f"""
         IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = '{TABLA_COLA}')
@@ -1038,55 +1056,91 @@ def _crear_tabla_cola_si_no_existe(cursor):
             CONSTRAINT UQ_{TABLA_COLA}_Archivo UNIQUE (Archivo)
         )
     """)
+    # La tabla puede ya existir de antes de añadir/ensanchar estas columnas
+    # (CREATE TABLE IF NOT EXISTS no toca una tabla ya creada), así que hace
+    # falta el ALTER aparte -- ver el mismo caso para PedidoCliente en
+    # _crear_tabla_si_no_existe, más arriba.
+    try:
+        cursor.execute(f"""
+            IF COL_LENGTH('{TABLA_COLA}', 'PedidoCliente') IS NOT NULL AND COL_LENGTH('{TABLA_COLA}', 'PedidoCliente') <> -1
+            ALTER TABLE {TABLA_COLA} ALTER COLUMN [PedidoCliente] NVARCHAR(MAX) NULL
+        """)
+    except Exception as e:
+        print(f"AVISO: no se pudo migrar el esquema de {TABLA_COLA} (PedidoCliente, {MOTOR}): {e}")
+    try:
+        cursor.execute(f"""
+            IF COL_LENGTH('{TABLA_COLA}', 'NumerosAlbaran') IS NULL
+            ALTER TABLE {TABLA_COLA} ADD NumerosAlbaran NVARCHAR(MAX) NULL
+            ELSE IF COL_LENGTH('{TABLA_COLA}', 'NumerosAlbaran') <> -1
+            ALTER TABLE {TABLA_COLA} ALTER COLUMN [NumerosAlbaran] NVARCHAR(MAX) NULL
+        """)
+    except Exception as e:
+        print(f"AVISO: no se pudo migrar el esquema de {TABLA_COLA} (NumerosAlbaran, {MOTOR}): {e}")
 
 
 _crear_tabla_cola_si_no_existe = _una_vez_por_proceso(TABLA_COLA, _crear_tabla_cola_si_no_existe)
 
 
-def guardar_en_cola_revision_sql(fila, cola):
+def guardar_en_cola_revision_sql(fila, cola, intentos=3, espera=2):
     """
     Inserta o actualiza (según 'Archivo') la fila cacheada de un PDF en
     corregir_manualmente/ (cola="pendiente") o incidencias/
     (cola="incidencia"). `fila` en el mismo orden que COLUMNAS/EXPECTED_HEADERS.
 
-    No propaga excepciones: un fallo aquí solo hace que la próxima carga
-    vuelva a depender de las carpetas para ese archivo, no rompe el
-    procesamiento de facturas.
+    El PDF ya se movió de carpeta cuando se llama a esto (ver mover_pdf /
+    _mover_pdf_a_carpeta en logic.py), y listar_pendientes_completo /
+    listar_incidencias_completo ya no leen la carpeta como respaldo: si esta
+    escritura falla, el PDF queda huérfano (visible en disco, invisible en
+    su pestaña) hasta que alguien lo repare a mano. Por eso se reintenta
+    ante un corte transitorio de conexión antes de rendirse, y si aun así
+    falla se registra como ERROR (no como aviso) para que no pase
+    desapercibido.
     """
-    try:
-        datos = dict(zip(COLUMNAS, (list(fila) + ["-"] * len(COLUMNAS))[:len(COLUMNAS)]))
+    datos = dict(zip(COLUMNAS, (list(fila) + ["-"] * len(COLUMNAS))[:len(COLUMNAS)]))
 
-        with _conectar() as conn:
-            cursor = conn.cursor()
-            _crear_tabla_cola_si_no_existe(cursor)
-            conn.commit()
+    for intento in range(1, intentos + 1):
+        try:
+            with _conectar() as conn:
+                cursor = conn.cursor()
+                _crear_tabla_cola_si_no_existe(cursor)
+                conn.commit()
 
-            columnas_sin_archivo = [c for c in COLUMNAS if c != "Archivo"]
-            set_clause = ", ".join(f"[{c}] = ?" for c in columnas_sin_archivo)
-            valores_update = [datos[c] for c in columnas_sin_archivo]
+                columnas_sin_archivo = [c for c in COLUMNAS if c != "Archivo"]
+                set_clause = ", ".join(f"[{c}] = ?" for c in columnas_sin_archivo)
+                valores_update = [datos[c] for c in columnas_sin_archivo]
 
-            cursor.execute(
-                f"UPDATE {TABLA_COLA} SET {set_clause}, Cola = ?, FechaActualizacion = {FECHA_ACTUAL_SQL} "
-                f"WHERE Archivo = ?",
-                (*valores_update, cola, datos["Archivo"]),
-            )
-
-            if cursor.rowcount == 0:
-                columnas_insert = ", ".join(f"[{c}]" for c in COLUMNAS)
-                placeholders = ", ".join("?" for _ in COLUMNAS)
                 cursor.execute(
-                    f"INSERT INTO {TABLA_COLA} ({columnas_insert}, Cola) "
-                    f"VALUES ({placeholders}, ?)",
-                    (*[datos[c] for c in COLUMNAS], cola),
+                    f"UPDATE {TABLA_COLA} SET {set_clause}, Cola = ?, FechaActualizacion = {FECHA_ACTUAL_SQL} "
+                    f"WHERE Archivo = ?",
+                    (*valores_update, cola, datos["Archivo"]),
                 )
 
-            conn.commit()
+                if cursor.rowcount == 0:
+                    columnas_insert = ", ".join(f"[{c}]" for c in COLUMNAS)
+                    placeholders = ", ".join("?" for _ in COLUMNAS)
+                    cursor.execute(
+                        f"INSERT INTO {TABLA_COLA} ({columnas_insert}, Cola) "
+                        f"VALUES ({placeholders}, ?)",
+                        (*[datos[c] for c in COLUMNAS], cola),
+                    )
 
-        return True
+                conn.commit()
 
-    except Exception as e:
-        print(f"AVISO: no se pudo guardar la fila en {TABLA_COLA} ({cola}, {MOTOR}): {e}")
-        return False
+            return True
+
+        except Exception as e:
+            if intento < intentos:
+                print(f"AVISO: fallo guardando {datos.get('Archivo')} en {TABLA_COLA} "
+                      f"({cola}, {MOTOR}), intento {intento}/{intentos}: {e}")
+                time.sleep(espera)
+            else:
+                print(f"ERROR: no se pudo guardar {datos.get('Archivo')} en {TABLA_COLA} "
+                      f"({cola}, {MOTOR}) tras {intentos} intentos: {e}. "
+                      "El PDF queda en su carpeta pero sin fila en ColaRevision "
+                      "(quedará huérfano hasta que se repare)."
+                      )
+
+    return False
 
 
 def actualizar_campos_cola_revision_sql(fila):
@@ -1448,4 +1502,121 @@ def listar_archivos_auditoria_sql(archivo=None, usuario=None, desde=None, hasta=
 
     except Exception as e:
         print(f"AVISO: no se pudo listar archivos de {TABLA_AUDITORIA} ({MOTOR}): {e}")
+        return []
+
+
+# =========================================================
+# HISTORIAL DE CORREO "OTRO MOTIVO" (envíos vía Power Automate)
+# =========================================================
+#
+# AuditLog ya deja constancia de que se solicitó el envío (acción
+# "solicitar_envio_correo"), pero no tiene sitio para el destinatario, el
+# asunto, el estado del envío ni el cuerpo completo redactado por la persona
+# (Detalle es NVARCHAR(500), pensado para un texto corto). Esta tabla es la
+# que permite consultar en el futuro, factura a factura, qué correos se han
+# mandado por este motivo y si el envío salió bien o no.
+
+TABLA_HISTORIAL_CORREO_OTRO_MOTIVO = "HistorialCorreoOtroMotivo"
+
+
+def _crear_tabla_historial_correo_otro_motivo_si_no_existe(cursor):
+    if MOTOR == "sqlite":
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS {TABLA_HISTORIAL_CORREO_OTRO_MOTIVO} (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                Fecha TEXT NOT NULL DEFAULT ({FECHA_ACTUAL_SQL}),
+                Archivo TEXT NOT NULL,
+                Destinatario TEXT,
+                Asunto TEXT,
+                Motivo TEXT NOT NULL,
+                Cuerpo TEXT NOT NULL,
+                Usuario TEXT NOT NULL,
+                Estado TEXT NOT NULL,
+                MensajeError TEXT
+            )
+        """)
+        return
+
+    cursor.execute(f"""
+        IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = '{TABLA_HISTORIAL_CORREO_OTRO_MOTIVO}')
+        CREATE TABLE {TABLA_HISTORIAL_CORREO_OTRO_MOTIVO} (
+            Id INT IDENTITY(1,1) PRIMARY KEY,
+            Fecha DATETIME NOT NULL DEFAULT GETDATE(),
+            Archivo NVARCHAR(255) NOT NULL,
+            Destinatario NVARCHAR(255) NULL,
+            Asunto NVARCHAR(500) NULL,
+            Motivo NVARCHAR(200) NOT NULL,
+            Cuerpo NVARCHAR(MAX) NOT NULL,
+            Usuario NVARCHAR(100) NOT NULL,
+            Estado NVARCHAR(20) NOT NULL,
+            MensajeError NVARCHAR(1000) NULL
+        )
+    """)
+
+
+_crear_tabla_historial_correo_otro_motivo_si_no_existe = _una_vez_por_proceso(
+    TABLA_HISTORIAL_CORREO_OTRO_MOTIVO, _crear_tabla_historial_correo_otro_motivo_si_no_existe
+)
+
+
+def registrar_historial_correo_otro_motivo_sql(archivo, destinatario, asunto, motivo, cuerpo, usuario, estado, mensaje_error=None):
+    """Deja constancia de un intento de envío de correo "otro motivo" vía
+    Power Automate (enviado o error). Igual que registrar_auditoria_sql, es
+    "best effort": si falla, se avisa por consola y no impide que el envío
+    real (o el aviso de error al usuario) siga su curso."""
+    try:
+        with _conectar() as conn:
+            cursor = conn.cursor()
+            _crear_tabla_historial_correo_otro_motivo_si_no_existe(cursor)
+            conn.commit()
+
+            cursor.execute(
+                f"INSERT INTO {TABLA_HISTORIAL_CORREO_OTRO_MOTIVO} "
+                f"(Fecha, Archivo, Destinatario, Asunto, Motivo, Cuerpo, Usuario, Estado, MensajeError) "
+                f"VALUES ({FECHA_ACTUAL_SQL}, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (archivo, destinatario, asunto, motivo, cuerpo, usuario, estado, mensaje_error),
+            )
+            conn.commit()
+
+        return True
+
+    except Exception as e:
+        print(f"AVISO: no se pudo registrar el historial de correo otro motivo ({archivo}, {MOTOR}): {e}")
+        return False
+
+
+def listar_historial_correo_otro_motivo_sql(archivo=None, limite=200):
+    """Historial de envíos de correo "otro motivo" (Power Automate), más
+    recientes primero. `archivo` filtra por coincidencia exacta si se
+    informa. Pensado para poder consultar en el futuro, desde EscanerIA, qué
+    correos se han mandado sobre una factura. Devuelve [] si la consulta
+    falla."""
+    where_sql = "WHERE Archivo = ?" if archivo else ""
+    parametros = [archivo] if archivo else []
+
+    try:
+        with _conectar() as conn:
+            cursor = conn.cursor()
+            _crear_tabla_historial_correo_otro_motivo_si_no_existe(cursor)
+            conn.commit()
+
+            columnas = "Fecha, Archivo, Destinatario, Asunto, Motivo, Cuerpo, Usuario, Estado, MensajeError"
+            if MOTOR == "sqlite":
+                cursor.execute(
+                    f"SELECT {columnas} FROM {TABLA_HISTORIAL_CORREO_OTRO_MOTIVO} "
+                    f"{where_sql} ORDER BY Id DESC LIMIT ?",
+                    (*parametros, int(limite)),
+                )
+            else:
+                cursor.execute(
+                    f"SELECT TOP (?) {columnas} FROM {TABLA_HISTORIAL_CORREO_OTRO_MOTIVO} "
+                    f"{where_sql} ORDER BY Id DESC",
+                    (int(limite), *parametros),
+                )
+            filas = cursor.fetchall()
+
+        return [list(fila) for fila in filas]
+
+    except Exception as e:
+        print(f"AVISO: no se pudo listar {TABLA_HISTORIAL_CORREO_OTRO_MOTIVO} ({MOTOR}): {e}")
         return []

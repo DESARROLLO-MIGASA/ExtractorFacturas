@@ -30,7 +30,7 @@ Sistema que extrae automáticamente los datos estructurados de facturas en PDF u
 - **Detección de facturas duplicadas**: al completar una factura se comprueba si ya existe otra con el mismo número de factura, proveedor, comprador, base imponible y total (con tolerancia de redondeo); si coincide, ambas quedan marcadas como duplicado en SQL y aparecen en la pestaña "Duplicados" para que una persona decida cuál conservar (`/resolver-duplicado` descarta las demás sin borrar los PDFs, los mueve a `no_es_factura`)
 - **Solicitud de reenvío por correo** con tres motivos posibles, seleccionables desde casi cualquier pestaña (Corregir manualmente, Incidencias, Esperando alta, Revisar facturas, Errores):
   - *Falta el número de pedido de cliente* y *Hay dos o más facturas en la misma página/PDF* — el PDF se traslada a una cola dedicada que vigila un flujo de Power Automate, que compone y envía el correo automáticamente al remitente original
-  - *Otro motivo* (texto libre) — se abre un borrador en Outlook de escritorio, en el propio PC de la persona (mediante `facturahelper`, ver [FacturaHelper](#facturahelper-correo-con-outlook-en-el-pc-del-usuario)), con el destinatario y el PDF ya adjuntos para que lo redacte y envíe ella misma (nunca se envía automáticamente); en cuanto Outlook se abre, el PDF se mueve directamente a `reenviadas_otro_motivo` (no hay flujo de Power Automate detrás de este motivo)
+  - *Otro motivo* (texto libre) — se abre un modal propio de EscanerIA donde la persona escribe el motivo y redacta el cuerpo del correo; el destinatario, el PDF y el asunto los resuelve el backend (no el navegador) y el envío se hace vía un flujo de Power Automate (`POWER_AUTOMATE_CORREO_URL`, ver más abajo), con el PDF adjunto en Base64. Si el envío se confirma, el PDF se mueve a `reenviadas_otro_motivo` y queda constancia en `HistorialCorreoOtroMotivo`; si falla, el PDF no se mueve y el modal se queda abierto sin perder lo escrito
 - **Errores de extracción**: los PDFs que fallan al procesarse caen en la carpeta `error`; desde la pestaña "Errores" se pueden reprocesar (uno o todos a la vez) o clasificar con un motivo ("el fichero pesa demasiado" / "otro"), que los traslada a su propia cola de reenvío
 - **Cola "Esperando alta"**: cualquier factura de Corregir manualmente, Incidencias o Revisar facturas cuyo comprador o proveedor todavía no esté dado de alta en `EmpresasClasificadas`/`ProveedoresClasificados` se puede apartar manualmente a esta cola independiente; cuando se da de alta el CIF que faltaba, el botón "Reprocesar" la reintegra al flujo normal (completadas o corregir manualmente)
 - **Caché de pendientes/incidencias** (`ColaRevision`): "Corregir manualmente" e "Incidencias" leen de esta tabla en vez de releer cada PDF y volver a resolver Buyer/Proveedor en cada carga de página, que con una cola larga tardaba varios minutos; la caché se mantiene sola en el momento en que cada PDF entra, sale o se corrige en una de las dos colas. La reclasificación automática de incidencias (por si el CIF que faltaba se acaba de dar de alta) ya no recorre toda la cola en cada recarga: se dispara una sola vez, solo para las incidencias afectadas, justo cuando `cargar_empresas.py`/`cargar_proveedores.py` activan ese CIF concreto
@@ -56,7 +56,8 @@ Sistema que extrae automáticamente los datos estructurados de facturas en PDF u
 - **Alertas grandes** en "Visualización automática" cuando hay facturas pendientes de revisión manual, incidencias, errores u otras colas con elementos esperando
 - **Filtro de fecha por pestaña**: las tablas de Corregir manualmente, Incidencias, Esperando alta, Errores, Revisar facturas, Duplicados y No es factura se pueden acotar por fecha de procesamiento, cada una sobre su propia cola (no existe una tabla única con todo el histórico)
 - **Corrección manual**: vista web para completar los campos que faltan en `corregir_manualmente`, confirmar y mover la factura a `completadas`
-- **Revisión en pantalla dividida**: al editar una factura (pendiente, incidencia, esperando alta o completada) se abre un visor propio del PDF junto al formulario, con un recuadro pastel que salta automáticamente sobre la posición de cada dato; con ↓/Enter se pasa al siguiente campo y con ↑ al anterior. Si el recuadro no acierta o el dato no se detectó, se puede arrastrar un recuadro a mano sobre el PDF (funciona igual en facturas con texto que en escaneadas, vía OCR) para rellenar el campo con lo que haya ahí
+- **Revisión en pantalla dividida**: al editar una factura (pendiente, incidencia, esperando alta o completada) se abre un visor propio del PDF junto al formulario, con un recuadro pastel que salta automáticamente sobre la posición de cada dato; con ↓/Enter se pasa al siguiente campo y con ↑ al anterior — la navegación no se para en el último campo: si la factura tiene líneas, sigue por ellas y solo vuelve al principio al pasar la última. Si el recuadro no acierta o el dato no se detectó, se puede arrastrar un recuadro a mano sobre el PDF (funciona igual en facturas con texto que en escaneadas, vía OCR) para rellenar el campo con lo que haya ahí
+- **Líneas de factura editables y localizables en el PDF**: ver la sección [Líneas de factura](#líneas-de-factura) más abajo — añadir/quitar líneas a mano, corregirlas celda a celda con recuadro en el visor, o reextraer con IA la región de la tabla que se seleccione (sin tener que reextraer la factura entera)
 - **Papelera de corrección manual**: si un PDF de la cola de `corregir_manualmente` resulta no ser una factura, se puede apartar a `no_es_factura` con un clic, sin borrarlo
 - **Ver el PDF sin salir de la app**: cada pendiente de corrección se puede abrir directamente en el navegador, sin ir a buscarlo a la carpeta
 - **Exportar cualquier listado a Excel**: las tablas de las distintas pestañas se pueden descargar tal cual se están viendo (filtradas), además de la descarga específica de "facturas definitivas"
@@ -90,6 +91,19 @@ Orden real de `EXPECTED_HEADERS` en `logic.py` (es también el orden de las colu
 | 16 | FFactura | Fecha de la factura |
 | 17 | FOperacion | Fecha de operación |
 | 18 | FEscaneo | Fecha y hora de procesamiento |
+| 19 | NumerosAlbaran | Número(s) de albarán del proveedor (varios valores posibles, separados por `;`) |
+
+`PedidoCliente` y `NumerosAlbaran` admiten varios valores en una misma factura, concatenados con `;` (p.ej. `PEDIDO-001;PEDIDO-002`); en SQL Server ambas columnas son `NVARCHAR(MAX)` (se ha visto en producción una factura real con ~85-96 valores, muy por encima de los 1000 caracteres que tenían antes).
+
+### Líneas de factura
+
+Además de los 19 campos de cabecera de arriba, el LLM también extrae las **líneas/conceptos individuales** de la factura (descripción, cantidad, precio, importe, y "otros" para cualquier dato adicional como número de bultos/palés). No son una columna más de `EXPECTED_HEADERS`: se guardan como un **CSV aparte junto al PDF**, con el mismo nombre y el sufijo `_lineas.csv` (delimitador `;`, con BOM UTF-8 para que Excel en español lo abra bien), y viajan con el PDF cuando este se mueve entre las carpetas del flujo (`ruta_lineas_csv`/`guardar_lineas_csv` en `logic.py`).
+
+Se pueden consultar y corregir desde la vista de edición de cualquier factura:
+- Se muestran al final de los campos, editables celda a celda igual que el resto de campos (mismo estilo, mismo botón ✎).
+- Al pinchar una línea se resalta en el visor del PDF, igual que ocurre con los campos normales (`posiciones.calcular_cajas_lineas`, localiza cada línea por su Descripción+Importe).
+- Se pueden añadir líneas nuevas en blanco o eliminar una existente (por si la extracción se dejó alguna o detectó de más).
+- **Reextraer líneas por región**: si la extracción automática se equivocó en bloque (o no encontró ninguna), se puede seleccionar a mano la zona de la tabla en el PDF y pedirle a la IA que la vuelva a leer -mandando solo esa imagen recortada, no la factura entera-. Cada región seleccionada **añade** líneas a las que ya haya (no las sustituye), para poder repetirlo página a página en facturas de varias hojas; un botón "Vaciar líneas" permite empezar de cero.
 
 ---
 
@@ -224,15 +238,35 @@ SQL_DRIVER=ODBC Driver 18 for SQL Server
 # de la app a un único buzón con una Application Access Policy en Exchange
 # Online (New-ApplicationAccessPolicy), en vez de dejarla con acceso a todos
 # los buzones del tenant. Mientras estas tres variables no estén rellenas,
-# el botón "Otro" del modal de envío de correo responde con un aviso de
-# "Microsoft Graph no está configurado todavía" en vez de fallar en silencio.
+# el endpoint /crear-borrador-outlook responde con un aviso de "Microsoft
+# Graph no está configurado todavía" en vez de fallar en silencio. El botón
+# "Otro" del modal de envío de correo ya no lo usa (ver POWER_AUTOMATE_CORREO_URL
+# más abajo); se deja disponible por compatibilidad, sin romperlo.
 GRAPH_TENANT_ID=
 GRAPH_CLIENT_ID=
 GRAPH_CLIENT_SECRET=
 GRAPH_BUZON_ENVIO=escanerIA@migasa.com
+
+# --- Envío de correo "Otro motivo" vía Power Automate: al elegir "Otro" en
+# el modal de envío de correo, EscanerIA abre su propio modal (motivo +
+# cuerpo) y el backend hace un POST a esta URL con el PDF en Base64 y el
+# resto de datos ya resueltos (destinatario, asunto, usuario...). La URL del
+# flujo solo vive aquí -nunca se expone al navegador ni se escribe en los
+# logs-. Mientras esté vacía, esa acción responde con un aviso de "no
+# configurado todavía" en vez de fallar en silencio.
+POWER_AUTOMATE_CORREO_URL=
+
+# --- Login con Windows Authentication (IIS por delante de uvicorn, ver
+# "Despliegue en producción" más abajo) — el rol se calcula por pertenencia
+# a estos dos grupos de Active Directory (los gestiona IT: alta/baja de
+# gente es cosa suya, no de este .env). Quien no esté en ninguno de los dos
+# se queda sin acceso (403).
+AD_DOMINIO=DOMINT
+AD_GRUPO_ADMINS=G-HQ-TEC-INF-SG-Admins_Escaner_Facturas
+AD_GRUPO_USUARIOS=G-SAT-TEC-INF-SG-Users_Escaner_Facturas
 ```
 
-Si la conexión a la base de datos falla o no está configurada, se registra un aviso por consola y el procesamiento de facturas continúa con normalidad (el histórico Excel no depende de ella). Ojo: si el login SQL configurado no tiene permiso de `CREATE TABLE`, la app intenta crear las tablas (incluidas `ReservasFacturas` y `ColaRevision`) al vuelo y ese fallo es silencioso — sin `ReservasFacturas` la función de reservas multiusuario deja de funcionar, y sin `ColaRevision` las pestañas "Corregir manualmente" e "Incidencias" dejan de poder listar nada, hasta que alguien con permisos ejecute a mano los scripts de `sql/`.
+Si la conexión a la base de datos falla o no está configurada, se registra un aviso por consola y el procesamiento de facturas continúa con normalidad (el histórico Excel no depende de ella). Ojo: si el login SQL configurado no tiene permiso de `CREATE TABLE`/`ALTER TABLE`, la app intenta crear y migrar las tablas (incluidas `ReservasFacturas` y `ColaRevision`, y columnas nuevas como `NumerosAlbaran`) al vuelo y ese fallo es silencioso (solo queda un aviso por consola) — sin `ReservasFacturas` la función de reservas multiusuario deja de funcionar, sin `ColaRevision` las pestañas "Corregir manualmente" e "Incidencias" dejan de poder listar nada, y si falta una columna nueva el guardado de **todas** las facturas empieza a fallar con un error `Invalid column name`, hasta que alguien con permisos de DDL ejecute a mano los scripts de `sql/` o el `ALTER TABLE` que corresponda.
 
 ---
 
@@ -253,6 +287,96 @@ python vigilante.py
 | http://localhost:8000 | Interfaz web con las ocho pestañas |
 | http://localhost:8000/docs | Documentación interactiva (Swagger) de todos los endpoints |
 | http://localhost:8000/upload-pdf | Endpoint que debe apuntar el flujo de Power Automate |
+
+### Despliegue en producción (IIS + proxy .NET/YARP delante de uvicorn)
+
+En el VM de producción, uvicorn **no** se expone directamente a la red: escucha
+solo en `127.0.0.1:8800` y delante hay un sitio IIS llamado **`EscanerIA`**
+(`C:\sites\EscanerIAProxy\publish`) que ejecuta una app ASP.NET Core aparte,
+**`EscanerIA.AuthProxy`**, vía `AspNetCoreModuleV2`. Esa app es la que atiende
+a los usuarios, se apoya en Windows Authentication de IIS para autenticar
+contra el dominio MIGASA y usa `Yarp.ReverseProxy` para reenviar cada petición
+a FastAPI, añadiendo la cabecera `X-Forwarded-User` con el usuario de Windows
+ya autenticado (y quitando primero cualquier valor de esa cabecera que viniera
+del cliente, para que no se pueda suplantar). Es la app que lee `auth.py`.
+
+> El código fuente de `EscanerIA.AuthProxy` **no vive en este repositorio**:
+> está en `C:\sites\EscanerIAProxy\EscanerIA.AuthProxy\` en el propio VM
+> (`Program.cs` + `appsettings.json`, este último con la URL de destino
+> `http://127.0.0.1:8800/`). El script `deploy/iis_setup/configurar_iis_windows_auth.ps1`
+> de esta carpeta describe un montaje distinto y **más antiguo** (IIS +
+> Application Request Routing + URL Rewrite haciendo el proxy inverso
+> directamente, sin esta app .NET intermedia); quedó desactualizado cuando se
+> migró a `EscanerIA.AuthProxy` y no refleja lo que hay desplegado hoy. Antes
+> de volver a ejecutarlo en el VM, confirmar primero si sigue siendo el
+> método vigente o si hay que actualizarlo para que arranque este proxy.
+
+`GET /proxy-health` (servido por el propio `EscanerIA.AuthProxy`, sin pasar a
+FastAPI) devuelve si la petición llegó autenticada y con qué usuario; útil
+para comprobar la parte de IIS/Windows Auth sin depender de que uvicorn esté
+levantado. `GET /whoami` (ya dentro de FastAPI) comprueba el mismo dato una
+vez atravesado el proxy.
+
+`get_current_user`/`requerir_admin` (`auth.py`) leen la cabecera
+`X-Forwarded-User` y devuelven `{"username", "usuario_dominio", "role"}`;
+`role` se calcula consultando por LDAP (vía ADSI/`pywin32`, con la identidad
+de Windows del propio proceso, sin contraseña de ninguna cuenta de servicio)
+si el usuario es miembro directo de `AD_GRUPO_ADMINS` (`.env`) -> `"admin"`,
+de `AD_GRUPO_USUARIOS` -> `"usuario"`, o ninguno de los dos -> 403.
+
+Nota de threading: `_es_miembro_de_grupo` llama a `pythoncom.CoInitialize()`
+antes de usar ADSI porque FastAPI ejecuta esta dependencia (síncrona) en un
+hilo del thread pool, no en el principal -sin esa llamada falla con "No se ha
+llamado a CoInitialize" en cada request-.
+
+### Arranque y parada en producción
+
+En el VM, uvicorn no lo arranca nadie a mano: lo hace la **tarea programada de
+Windows `EscanerIA-FastAPI`**, configurada directamente en el servidor (no
+forma parte de este repositorio, no hay ningún script que la cree ni la
+reproduzca). Sus características:
+
+- **Disparador**: al iniciar el sistema (`MSFT_TaskBootTrigger`) — se lanza
+  sola en cada arranque del VM, sin necesidad de que nadie inicie sesión.
+- **Cuenta**: `SYSTEM`, con privilegio "Highest".
+- **Acción**: `...\.venv\Scripts\python.exe -m uvicorn main:app --host 127.0.0.1 --port 8800`
+- **Reintentos**: hasta 10 veces, cada 1 minuto, dentro de una ventana de 72h,
+  si el proceso muere.
+
+Comandos útiles (PowerShell, como Administrador, en el propio VM):
+
+```powershell
+# Ver estado, última ejecución y resultado
+Get-ScheduledTask -TaskName "EscanerIA-FastAPI" | Get-ScheduledTaskInfo
+
+# Parar (mata el proceso de uvicorn en marcha)
+Stop-ScheduledTask -TaskName "EscanerIA-FastAPI"
+
+# Arrancar (o relanzar tras un cambio de código)
+Start-ScheduledTask -TaskName "EscanerIA-FastAPI"
+```
+
+El sitio IIS `EscanerIA` (el proxy `EscanerIA.AuthProxy`) es independiente de
+esta tarea y normalmente no hace falta tocarlo; si hiciera falta, se gestiona
+como cualquier sitio de IIS (`Start-Website`/`Stop-Website -Name "EscanerIA"`,
+o desde el Administrador de IIS).
+
+`vigilante.py` **no** tiene ninguna tarea programada equivalente: hoy en el VM
+depende de que alguien lo deje corriendo a mano (`python vigilante.py`, en su
+propia ventana/sesión) y se para en cuanto esa sesión se cierra. Sin él
+corriendo, `entrada`/`imagenes` no se vigilan solas — solo se procesa lo que
+llegue directamente vía `/upload-pdf` o lo que se dispare a mano desde
+"Procesar carpeta entrada" en la interfaz. Antes de dar por sentado que el
+vigilante está activo en el VM, conviene comprobarlo (por ejemplo, si
+`vigilante_out.log`/`vigilante_err.log` en la raíz del proyecto se están
+actualizando).
+
+`deploy/iis_setup/` contiene el script `configurar_iis_windows_auth.ps1`
+(instala IIS + Windows Authentication, ARR y URL Rewrite, y configuraba la
+regla de proxy inverso hacia `127.0.0.1:8000` directamente) junto con los dos
+instaladores MSI oficiales de Microsoft que necesita, ya descargados. Ver el
+aviso más arriba: describe el montaje anterior a `EscanerIA.AuthProxy`, no el
+actual.
 
 ### Pestañas de la interfaz
 
@@ -292,7 +416,11 @@ python cargar_empresas.py             # carga de verdad
 
 ### Proveedores clasificados (Granel / Envasado)
 
-Utilidad puntual, independiente del circuito de facturas, para volcar a SQL el listado de proveedores exportado desde Business Central (`ProveedoresGranel.xlsx`, `ProveedoresEnvasado.xlsx`) a la tabla `ProveedoresClasificados` (CIF, nombre, dirección, población, clasificación y si está bloqueado). La dirección y población solo vienen informadas en el export de Envasado; Business Central no las trae en la vista de Granel. Si un mismo CIF aparece en ambos ficheros, se guarda una fila por cada clasificación. Es seguro repetir la carga: hace upsert por CIF + Clasificación.
+Utilidad puntual, independiente del circuito de facturas, para volcar a SQL el listado de proveedores de Business Central a la tabla `ProveedoresClasificados` (CIF, nombre, dirección, población, clasificación y si está bloqueado). Ya no hace falta descargar y colocar a mano ningún Excel: ambas clasificaciones se leen en caliente por OData de Business Central (NTLM, credenciales en `BC_ODATA_USER`/`BC_ODATA_PASSWORD` del `.env`).
+- **Envasado** — un único servicio (`ProveedoresBloq`, instancia "oleico"; URL opcional en `BC_ODATA_URL`). No trae dirección, solo población.
+- **Granel** — dos servicios de la instancia "olivar" (empresa Migasa Aceites, S.L.U.): `EscanerIAListaProveedores` (`BC_ODATA_GRANEL_LISTA_URL`, lista base con dirección/población y un bloqueo "genérico") y `EscanerIAConsultaBloProv` (`BC_ODATA_GRANEL_BLOQUEO_URL`, bloqueo específico de esa empresa por proveedor, que manda sobre el genérico cuando existe).
+
+Si un mismo CIF aparece en ambas clasificaciones, se guarda una fila por cada una. Es seguro repetir la carga: hace upsert por CIF + Clasificación.
 
 ```bash
 python cargar_proveedores.py --dry-run   # solo cuenta y lista, no escribe nada
@@ -328,7 +456,7 @@ python cargar_proveedores.py             # carga de verdad
 ├── migrar_orden_columnas.py   # Migración puntual e histórica del orden de columnas en los Excel ya escritos
 ├── migrar_cola_revision.py    # Migración puntual: puebla ColaRevision con lo ya acumulado en corregir_manualmente/incidencias
 ├── cargar_empresas.py         # Carga puntual de Empresas granel.xlsx / envasado.xlsb a EmpresasClasificadas
-├── cargar_proveedores.py      # Carga puntual de ProveedoresGranel/Envasado.xlsx a ProveedoresClasificados
+├── cargar_proveedores.py      # Carga Granel + Envasado (OData BC) a ProveedoresClasificados
 ├── sql/
 │   ├── crear_tabla_empresas_clasificadas.sql     # DDL opcional de la tabla EmpresasClasificadas
 │   ├── crear_tabla_facturas_examinadas.sql       # DDL opcional de la tabla FacturasExaminadas (SQL Server)
@@ -364,6 +492,8 @@ python cargar_proveedores.py             # carga de verdad
 | `POST` | `/solicitar-envio-correo` | Traslada/aparta un PDF a la cola del motivo elegido |
 | `GET` | `/solicitudes-envio-correo-lista` | Lista las solicitudes que no son "falta pedido cliente" |
 | `GET` | `/datos-correo-outlook/{archivo}` | Destinatario y nombre de adjunto para que `facturahelper` (en el PC del usuario) componga el correo del motivo "otros"; ya no abre Outlook desde el servidor |
+| `GET` | `/datos-correo-otro-motivo/{archivo}` | Destinatario, nombre de PDF y asunto (solo lectura) para pintar el modal de "Otro motivo" antes de enviar |
+| `POST` | `/enviar-correo-otro-motivo` | Envía el correo del motivo "otros" vía Power Automate (destinatario/PDF/asunto resueltos en el backend) y, si tiene éxito, archiva el PDF |
 | `GET` | `/motivos-error-extraccion` | Motivos disponibles para clasificar un PDF en `error` |
 | `GET` | `/errores-completo-json` | Lista los PDFs en `error` |
 | `GET` | `/no-factura-completo-json` | Lista los PDFs en `no_es_factura` |
@@ -420,6 +550,10 @@ python cargar_proveedores.py             # carga de verdad
 | `GET` | `/pdf-factura-paginas/{archivo}` | Todas las páginas del PDF como imagen (para el visor propio de la vista de revisión) |
 | `POST` | `/posiciones-factura` | Recuadro por campo (página + coordenadas) para pintarlo en el visor; se cachea por archivo |
 | `POST` | `/ocr-region` | Selección manual con arrastre: OCR de la región indicada, para rellenar el campo activo |
+| `GET` | `/lineas-factura/{archivo}` | Líneas de una factura (CSV junto al PDF); 404 si no tiene ninguna extraída |
+| `POST` | `/lineas-factura/{archivo}` | Sobrescribe el CSV de líneas con el contenido final del modal de edición (admite añadir/quitar líneas) |
+| `GET` | `/posiciones-lineas-factura/{archivo}` | Recuadro por línea (página + coordenadas) para resaltarla en el visor al pincharla; se cachea junto con `/posiciones-factura` |
+| `POST` | `/reextraer-lineas-region` | Vuelve a llamar a la IA (vision) solo con la región de la tabla de líneas seleccionada a mano, en vez de la factura entera |
 | `GET` | `/empresas-buscar` | Autocompletado de CIF de comprador contra `EmpresasClasificadas` |
 | `GET` | `/proveedores-buscar` | Autocompletado de CIF de proveedor contra `ProveedoresClasificados` |
 

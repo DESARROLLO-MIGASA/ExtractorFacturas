@@ -286,6 +286,83 @@ def cargar_cajas_de_cache(archivo):
         return None
 
 
+def calcular_cajas_lineas(pdf_path, lineas):
+    """`lineas`: lista de dicts {Descripcion, Cantidad, Precio, Importe, Otros}
+    (ver guardar_lineas_csv en logic.py). Devuelve una lista del mismo largo
+    y orden que `lineas`, con la caja de cada una o None si no se localizó.
+
+    Cada línea se localiza por su Descripción (el texto más distintivo de la
+    fila); si además se encuentra el Importe en la misma página, el recuadro
+    se amplía para cubrir hasta ahí, de modo que abarque toda la fila de la
+    tabla (descripción a la izquierda, importe a la derecha) y no solo la
+    descripción. Nunca lanza excepción: cualquier fallo se traduce en "sin
+    caja" para esa línea, igual que calcular_cajas_campos."""
+    try:
+        mapa_paginas = _mapa_paginas(pdf_path)
+    except Exception as e:
+        print(f"AVISO: no se pudieron calcular posiciones de líneas para {pdf_path}: {e}")
+        return [None] * len(lineas or [])
+
+    cajas = []
+    for linea in lineas or []:
+        descripcion = str((linea or {}).get("Descripcion", "-") or "-").strip()
+
+        caja = None
+        if descripcion not in ("", "-"):
+            try:
+                caja = _mejor_caja_para_valor(descripcion, mapa_paginas)
+            except Exception as e:
+                print(f"AVISO: fallo al localizar la línea '{descripcion}' de {pdf_path}: {e}")
+
+        importe = str((linea or {}).get("Importe", "-") or "-").strip()
+        if caja and importe not in ("", "-"):
+            try:
+                caja_importe = _mejor_caja_para_valor(importe, mapa_paginas)
+            except Exception:
+                caja_importe = None
+
+            if caja_importe and caja_importe["pagina"] == caja["pagina"]:
+                caja = {
+                    "pagina": caja["pagina"],
+                    "x0": min(caja["x0"], caja_importe["x0"]),
+                    "y0": min(caja["y0"], caja_importe["y0"]),
+                    "x1": max(caja["x1"], caja_importe["x1"]),
+                    "y1": max(caja["y1"], caja_importe["y1"]),
+                }
+
+        cajas.append(caja)
+
+    return cajas
+
+
+def calcular_y_cachear_lineas(archivo, lineas, pdf_path=None):
+    """Igual que calcular_y_cachear, pero para las líneas de factura. Se
+    guarda bajo la clave "lineas" del mismo fichero de caché que usan las
+    cajas por campo (ver _ruta_cache), para no tener que duplicar
+    paginas_render ni gestionar un segundo fichero por factura."""
+    ruta = pdf_path or auto_logic.buscar_pdf_por_nombre(archivo)
+    if not ruta:
+        return [None] * len(lineas or [])
+
+    cajas_lineas = calcular_cajas_lineas(ruta, lineas)
+
+    cache = cargar_cajas_de_cache(archivo) or {"paginas_render": {}, "campos": {}}
+    cache["lineas"] = cajas_lineas
+    guardar_cajas_en_cache(archivo, cache)
+
+    return cajas_lineas
+
+
+def obtener_o_calcular_cajas_lineas(archivo, lineas):
+    """Sirve la caché si ya tiene calculadas las cajas de líneas para esta
+    factura; si no (primera vez, o caché de antes de que existiera esta
+    función), las calcula."""
+    cache = cargar_cajas_de_cache(archivo)
+    if cache is not None and "lineas" in cache:
+        return cache["lineas"]
+    return calcular_y_cachear_lineas(archivo, lineas)
+
+
 def calcular_y_cachear(archivo, datos_fila, pdf_path=None):
     """Calcula las cajas y las deja en caché. Si se conoce ya `pdf_path`
     (como en la extracción, donde ya se tiene la ruta a mano) se evita
@@ -312,6 +389,27 @@ def obtener_o_calcular_cajas(archivo, datos_fila):
 # SELECCIÓN MANUAL: OCR DE UNA REGIÓN ARRASTRADA A MANO
 # =========================================================
 
+def recortar_region_png(pdf_path, pagina, x0, y0, x1, y1, dpi=DPI_CACHE):
+    """Bytes PNG de esa región de esa página (en píxeles a `dpi`, el mismo
+    sistema de coordenadas que ve el visor), o None si la página no existe.
+    Comparte el recorte con recortar_y_ocr_region, pero sin pasar por
+    Tesseract: para usos que necesiten la imagen en sí, no texto plano (ver
+    logic.extraer_lineas_de_region)."""
+    zoom = dpi / 72
+    doc = fitz.open(pdf_path)
+    try:
+        if pagina < 0 or pagina >= doc.page_count:
+            return None
+        page = doc[pagina]
+        # clip va en el sistema de coordenadas de la página (puntos), no en
+        # los píxeles ya escalados que llegan del visor.
+        recorte = fitz.Rect(x0 / zoom, y0 / zoom, x1 / zoom, y1 / zoom)
+        pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), clip=recorte)
+        return pix.tobytes("png")
+    finally:
+        doc.close()
+
+
 def recortar_y_ocr_region(archivo, pagina, x0, y0, x1, y1, dpi=DPI_CACHE):
     """Recorta esa región (en píxeles a `dpi`, el mismo sistema de
     coordenadas que ve el visor) y le pasa Tesseract. Funciona igual para
@@ -327,19 +425,9 @@ def recortar_y_ocr_region(archivo, pagina, x0, y0, x1, y1, dpi=DPI_CACHE):
     if not ruta:
         return ""
 
-    zoom = dpi / 72
-    doc = fitz.open(ruta)
-    try:
-        if pagina < 0 or pagina >= doc.page_count:
-            return ""
-        page = doc[pagina]
-        # clip va en el sistema de coordenadas de la página (puntos), no en
-        # los píxeles ya escalados que llegan del visor.
-        recorte = fitz.Rect(x0 / zoom, y0 / zoom, x1 / zoom, y1 / zoom)
-        pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), clip=recorte)
-        png_bytes = pix.tobytes("png")
-    finally:
-        doc.close()
+    png_bytes = recortar_region_png(ruta, pagina, x0, y0, x1, y1, dpi)
+    if png_bytes is None:
+        return ""
 
     try:
         imagen = Image.open(io.BytesIO(png_bytes))

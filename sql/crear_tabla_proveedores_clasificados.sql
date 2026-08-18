@@ -18,8 +18,9 @@ CREATE TABLE ProveedoresClasificados (
     [Clasificacion]     NVARCHAR(20) NOT NULL,   -- 'Granel' o 'Envasado'
     [CIF]               NVARCHAR(30) NOT NULL,
     [NombreEmpresa]     NVARCHAR(200) NOT NULL,
-    [Direccion]         NVARCHAR(200) NULL,      -- solo disponible en ProveedoresEnvasado.xlsx
-    [Poblacion]         NVARCHAR(100) NULL,       -- solo disponible en ProveedoresEnvasado.xlsx
+    [Direccion]         NVARCHAR(200) NULL,
+    [Poblacion]         NVARCHAR(100) NULL,
+    [CodigoPostal]      NVARCHAR(10) NULL,
     [Bloqueado]         BIT NOT NULL DEFAULT 0,
     FechaCarga          DATETIME NOT NULL DEFAULT GETDATE(),
     CONSTRAINT UQ_ProveedoresClasificados_CIF_Clasificacion UNIQUE (CIF, Clasificacion)
@@ -30,3 +31,6 @@ ALTER TABLE ProveedoresClasificados ADD Direccion NVARCHAR(200) NULL;
 
 IF COL_LENGTH('ProveedoresClasificados', 'Poblacion') IS NULL
 ALTER TABLE ProveedoresClasificados ADD Poblacion NVARCHAR(100) NULL;
+
+IF COL_LENGTH('ProveedoresClasificados', 'CodigoPostal') IS NULL
+ALTER TABLE ProveedoresClasificados ADD CodigoPostal NVARCHAR(10) NULL;

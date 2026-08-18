@@ -1,17 +1,20 @@
 import os
+import csv
 import base64
 import tempfile
 from datetime import datetime
 from typing import List
 
 import fitz  # PyMuPDF
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 import posiciones
+from auth import get_current_user, requerir_admin
 from logic import (
     CORREGIR_DIR,
+    COLUMNAS_RESUMEN_AUDITORIA,
     EXPECTED_HEADERS,
     EXCEL_DEFINITIVO_PATH,
     read_pdf_text,
@@ -39,6 +42,10 @@ from logic import (
     listar_vista_global_completo,
     facturas_definitivas_tabla,
     buscar_pdf_por_nombre,
+    buscar_lineas_csv_por_nombre,
+    guardar_lineas_csv,
+    ruta_lineas_csv,
+    extraer_lineas_de_region,
     tabla_a_pipe_csv,
     export_to_excel,
     buscar_empresas_por_prefijo,
@@ -54,6 +61,23 @@ from logic import (
 )
 
 router = APIRouter()
+
+_ETIQUETAS_AUDITORIA_POR_FILA = {etiqueta for _clave, etiqueta in COLUMNAS_RESUMEN_AUDITORIA}
+
+
+def _quitar_columnas_auditoria(tabla):
+    """Quita del listado las columnas "Editado por"/"Confirmada por"/etc.
+    (quién hizo cada acción): son de solo administrador, el resto de la fila
+    sigue disponible para cualquier usuario."""
+    headers, *filas = tabla
+    indices_a_quitar = [i for i, h in enumerate(headers) if h in _ETIQUETAS_AUDITORIA_POR_FILA]
+    if not indices_a_quitar:
+        return tabla
+
+    def _sin_columnas(fila):
+        return [v for i, v in enumerate(fila) if i not in indices_a_quitar]
+
+    return [_sin_columnas(headers)] + [_sin_columnas(fila) for fila in filas]
 
 
 class ConfirmacionFactura(BaseModel):
@@ -72,6 +96,18 @@ class ActualizacionFacturaCompletada(BaseModel):
 class PosicionesFactura(BaseModel):
     archivo: str
     fila_completa: list
+
+
+class LineaFacturaPayload(BaseModel):
+    Descripcion: str = "-"
+    Cantidad: str = "-"
+    Precio: str = "-"
+    Importe: str = "-"
+    Otros: str = "-"
+
+
+class LineasFacturaPayload(BaseModel):
+    lineas: List[LineaFacturaPayload]
 
 
 class OcrRegion(BaseModel):
@@ -93,8 +129,11 @@ def pendientes_lista():
 
 
 @router.get("/pendientes-completo-json")
-def pendientes_completo_json():
-    return {"tabla": listar_pendientes_completo()}
+def pendientes_completo_json(usuario: dict = Depends(get_current_user)):
+    tabla = listar_pendientes_completo()
+    if usuario["role"] != "admin":
+        tabla = _quitar_columnas_auditoria(tabla)
+    return {"tabla": tabla}
 
 
 # =========================================================
@@ -102,8 +141,11 @@ def pendientes_completo_json():
 # =========================================================
 
 @router.get("/incidencias-completo-json")
-def incidencias_completo_json():
-    return {"tabla": listar_incidencias_completo()}
+def incidencias_completo_json(usuario: dict = Depends(get_current_user)):
+    tabla = listar_incidencias_completo()
+    if usuario["role"] != "admin":
+        tabla = _quitar_columnas_auditoria(tabla)
+    return {"tabla": tabla}
 
 
 @router.post("/marcar-revisada")
@@ -238,6 +280,53 @@ def ver_pdf_factura(archivo: str):
     return FileResponse(ruta, media_type="application/pdf")
 
 
+@router.get("/lineas-factura/{archivo}")
+def ver_lineas_factura(archivo: str):
+    """Líneas de una factura (descripción/cantidad/precio/importe/otros),
+    extraídas por el LLM y guardadas como CSV junto al PDF (ver
+    guardar_lineas_csv en logic.py). No todas las facturas tienen: si no
+    desglosaban líneas, o el CSV se perdió al mover el PDF, se devuelve 404
+    en vez de una lista vacía, para que la UI pueda distinguir ambos casos."""
+    if os.path.basename(archivo) != archivo:
+        raise HTTPException(status_code=400, detail="Nombre de archivo no válido.")
+
+    ruta_csv = buscar_lineas_csv_por_nombre(archivo)
+    if ruta_csv is None:
+        raise HTTPException(status_code=404, detail=f"Esta factura no tiene líneas extraídas: {archivo}")
+
+    with open(ruta_csv, "r", newline="", encoding="utf-8-sig") as f:
+        lineas = list(csv.DictReader(f, delimiter=";"))
+
+    return {"lineas": lineas}
+
+
+@router.post("/lineas-factura/{archivo}")
+def guardar_lineas_factura(archivo: str, payload: LineasFacturaPayload):
+    """Sobrescribe el CSV de líneas de una factura con el contenido final del
+    modal de edición (ver cargarLineasEnEdicion / registrarEditLinea /
+    anadirLineaEdicion / eliminarLineaEdicion en el frontend): admite
+    corregir valores, añadir líneas nuevas y quitar líneas existentes, sea
+    cual sea el número de líneas resultante. Una lista vacía borra el CSV en
+    vez de dejar un archivo vacío."""
+    if os.path.basename(archivo) != archivo:
+        raise HTTPException(status_code=400, detail="Nombre de archivo no válido.")
+
+    ruta_pdf = buscar_pdf_por_nombre(archivo)
+    if ruta_pdf is None:
+        raise HTTPException(status_code=404, detail=f"No se encontró el PDF: {archivo}")
+
+    lineas = [linea.dict() for linea in payload.lineas]
+
+    if not lineas:
+        ruta_csv = ruta_lineas_csv(ruta_pdf)
+        if os.path.exists(ruta_csv):
+            os.remove(ruta_csv)
+    else:
+        guardar_lineas_csv(ruta_pdf, lineas)
+
+    return {"ok": True}
+
+
 @router.get("/pdf-factura-paginas/{archivo}")
 def pdf_factura_paginas(archivo: str):
     """Todas las páginas del PDF como imagen (PNG en base64), para el visor
@@ -292,6 +381,31 @@ def posiciones_factura(body: PosicionesFactura):
     return cajas
 
 
+@router.get("/posiciones-lineas-factura/{archivo}")
+def posiciones_lineas_factura(archivo: str):
+    """Igual que /posiciones-factura, pero una caja por cada línea de la
+    factura (ver /lineas-factura), para resaltarla en el visor al pinchar
+    sobre ella. Si la factura no tiene líneas extraídas, devuelve una lista
+    vacía en vez de 404 (no es un error, simplemente no hay nada que
+    resaltar)."""
+    if os.path.basename(archivo) != archivo:
+        raise HTTPException(status_code=400, detail="Nombre de archivo no válido.")
+
+    ruta_csv = buscar_lineas_csv_por_nombre(archivo)
+    if ruta_csv is None:
+        return {"cajas": []}
+
+    with open(ruta_csv, "r", newline="", encoding="utf-8-sig") as f:
+        lineas = list(csv.DictReader(f, delimiter=";"))
+
+    try:
+        cajas = posiciones.obtener_o_calcular_cajas_lineas(archivo, lineas)
+    except Exception:
+        cajas = [None] * len(lineas)
+
+    return {"cajas": cajas}
+
+
 @router.post("/ocr-region")
 def ocr_region(body: OcrRegion):
     """Selección manual con arrastre: recorta esa región de esa página y le
@@ -307,6 +421,25 @@ def ocr_region(body: OcrRegion):
         raise HTTPException(status_code=503, detail=str(e))
 
     return {"texto": texto}
+
+
+@router.post("/reextraer-lineas-region")
+def reextraer_lineas_region(body: OcrRegion):
+    """Vuelve a llamar a la IA (vision), pero solo con la región de la tabla
+    de líneas que se ha seleccionado a mano en el visor -no con la factura
+    entera-, para poder corregir de golpe muchas líneas mal extraídas (o
+    ninguna) sin arrastrar campo a campo. No guarda nada por sí solo: el
+    resultado sustituye a edicionLineas.lineas en el frontend, y se guarda
+    junto con el resto de la factura al pulsar "Guardar"."""
+    if os.path.basename(body.archivo) != body.archivo:
+        raise HTTPException(status_code=400, detail="Nombre de archivo no válido.")
+
+    ruta_pdf = buscar_pdf_por_nombre(body.archivo)
+    if ruta_pdf is None:
+        raise HTTPException(status_code=404, detail=f"No se encontró el PDF: {body.archivo}")
+
+    lineas = extraer_lineas_de_region(ruta_pdf, body.pagina, body.x0, body.y0, body.x1, body.y1)
+    return {"lineas": lineas}
 
 
 # =========================================================
@@ -356,8 +489,17 @@ async def extraer(facturas: List[UploadFile] = File(...)):
 # =========================================================
 
 @router.get("/facturas-completadas-json")
-def facturas_completadas_json():
-    return {"tabla": listar_facturas_completadas()}
+def facturas_completadas_json(usuario: dict = Depends(get_current_user)):
+    """Pendientes de verificación (Definitiva = No) para todos; las ya
+    marcadas como definitivas ("facturas revisadas") solo para admin."""
+    tabla = listar_facturas_completadas()
+    if usuario["role"] == "admin":
+        return {"tabla": tabla}
+
+    headers, *filas = tabla
+    idx_definitiva = headers.index("Definitiva")
+    filas_pendientes = [fila for fila in filas if fila[idx_definitiva] != "Sí"]
+    return {"tabla": [headers] + filas_pendientes}
 
 
 @router.post("/marcar-factura-definitiva")
@@ -438,7 +580,7 @@ class ExportarExcelBody(BaseModel):
 
 
 @router.post("/exportar-excel-listado")
-def exportar_excel_listado(body: ExportarExcelBody):
+def exportar_excel_listado(body: ExportarExcelBody, usuario: dict = Depends(requerir_admin)):
     if len(body.tabla) < 2:
         raise HTTPException(status_code=400, detail="No hay filas para exportar.")
 
@@ -459,12 +601,12 @@ def exportar_excel_listado(body: ExportarExcelBody):
 # =========================================================
 
 @router.get("/vista-global-json")
-def vista_global_json():
+def vista_global_json(usuario: dict = Depends(requerir_admin)):
     return {"tabla": listar_vista_global_completo()}
 
 
 @router.get("/auditoria-json")
-def auditoria_json(archivo: str = "", usuario: str = "", desde: str = "", hasta: str = "", limite: int = 500):
+def auditoria_json(archivo: str = "", usuario: str = "", desde: str = "", hasta: str = "", limite: int = 500, admin: dict = Depends(requerir_admin)):
     filas = listar_auditoria_sql(
         archivo=archivo.strip() or None,
         usuario=usuario.strip() or None,
@@ -477,7 +619,7 @@ def auditoria_json(archivo: str = "", usuario: str = "", desde: str = "", hasta:
 
 
 @router.get("/auditoria-por-archivo-json")
-def auditoria_por_archivo_json(archivo: str = "", usuario: str = "", desde: str = "", hasta: str = "", limite: int = 200):
+def auditoria_por_archivo_json(archivo: str = "", usuario: str = "", desde: str = "", hasta: str = "", limite: int = 200, admin: dict = Depends(requerir_admin)):
     return {
         "tabla": resumen_auditoria_por_archivo(
             archivo=archivo.strip() or None,
@@ -490,7 +632,7 @@ def auditoria_por_archivo_json(archivo: str = "", usuario: str = "", desde: str 
 
 
 @router.get("/descargar-facturas-definitivas")
-def descargar_facturas_definitivas():
+def descargar_facturas_definitivas(usuario: dict = Depends(requerir_admin)):
     if not os.path.exists(EXCEL_DEFINITIVO_PATH):
         raise HTTPException(status_code=404, detail="Todavía no hay ninguna factura marcada como definitiva.")
 
@@ -566,10 +708,11 @@ def reservas_mias_endpoint(usuario: str = ""):
 
 
 @router.post("/reservas-liberar-todas")
-def reservas_liberar_todas_endpoint():
+def reservas_liberar_todas_endpoint(usuario: dict = Depends(requerir_admin)):
     """Vía de escape: vacía TODA la tabla de reservas (de cualquier
     usuario). Pensada para desatascar reservas que se hayan quedado
-    "colgadas" en vez de esperar a que caduquen solas."""
+    "colgadas" en vez de esperar a que caduquen solas. Solo admins: es una
+    acción que afecta al trabajo de todo el mundo revisando a la vez."""
     ok = liberar_todas_las_reservas_sql()
     if not ok:
         raise HTTPException(status_code=500, detail="No se pudieron liberar las reservas.")

@@ -17,4 +17,11 @@ app_auto/
 
 # Estado local, no forma parte del proyecto
 .claude/
+.vscode/
 .lock_procesamiento_automatico
+
+# Entorno virtual y artefactos locales
+.venv/
+*.log
+*.bak
+*.bak_usuario

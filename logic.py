@@ -2,6 +2,7 @@ import os
 import re
 import sys
 import csv
+import html
 import json
 import time
 import base64
@@ -25,6 +26,7 @@ load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.abspath(__file__)),
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from sql_historial import (
+    COLUMNAS,
     guardar_factura_examinada_sql,
     listar_facturas_examinadas_sql,
     obtener_factura_examinada_sql,
@@ -52,6 +54,7 @@ from sql_historial import (
     listar_auditoria_sql,
     resumen_auditoria_por_archivo_sql,
     listar_archivos_auditoria_sql,
+    registrar_historial_correo_otro_motivo_sql,
 )
 
 _fallback = os.path.join(os.path.dirname(os.path.abspath(__file__)), "facturas")
@@ -176,6 +179,7 @@ EXPECTED_HEADERS = [
     "FFactura",
     "FOperacion",
     "FEscaneo",
+    "NumerosAlbaran",
 ]
 
 # Columna (en AuditLog, ver resumen_auditoria_por_archivo_sql) -> etiqueta de
@@ -211,7 +215,44 @@ def _enriquecer_con_auditoria(headers, filas, archivos_lookup=None):
     return headers + [etiqueta for _clave, etiqueta in COLUMNAS_RESUMEN_AUDITORIA]
 
 
-DEFAULT_PROMPT = """Eres un extractor estricto de datos de facturas de proveedor.
+# Bloque de definición de LineasFactura, aparte de DEFAULT_PROMPT (que lo
+# interpola más abajo) para poder reutilizarlo tal cual en un prompt más
+# corto y centrado cuando se reextraen líneas a partir de una región
+# recortada en vez de la factura entera (ver extraer_lineas_de_region): así
+# el criterio de qué es cada campo no se puede desincronizar entre los dos
+# usos con solo tocar uno de ellos.
+PROMPT_LINEAS_FACTURA = """LineasFactura:
+- Lista de las líneas/conceptos individuales que componen la factura (la
+  tabla de artículos/servicios facturados), NO las líneas de IVA ni de
+  totales.
+- Para cada línea, rellena:
+  Descripcion: descripción del producto o servicio de esa línea.
+  Cantidad: cantidad/peso TOTAL facturado en esa línea, solo el número.
+    - Si la línea desglosa la cantidad en dos columnas -por ejemplo "5 PAL"
+      (número de bultos/palés/cajas) y "165.000" (la cantidad o peso total)-,
+      devuelve ÚNICAMENTE la cantidad/peso total ("165.000" en ese ejemplo),
+      nunca el número de bultos/palés.
+    - No antepongas ni mezcles unidades de embalaje (PAL, CAJAS, BULTOS,
+      UDS...) junto al número de Cantidad.
+    - Si el número de bultos/palés es un dato que merece la pena conservar,
+      va en el campo Otros (p.ej. "5 PAL"), nunca dentro de Cantidad.
+  Precio: precio unitario de esa línea.
+  Importe: importe total de esa línea (cantidad × precio, o el importe que
+    indique la propia línea).
+  Otros: cualquier otro dato que traiga la línea y no encaje en los
+    anteriores (número de bultos/palés, referencia/código de producto, lote,
+    descuento, IVA de la línea...), como texto libre. Si no hay ningún dato
+    adicional, "-".
+- Si alguno de estos datos no aparece para una línea concreta, devuelve "-"
+  en ese campo, pero no omitas la línea.
+- Devuelve una línea por cada línea real de la factura, en el mismo orden en
+  que aparecen en el documento. No agrupes ni resumas varias líneas en una.
+- No inventes líneas ni datos: si la factura no desglosa líneas (por
+  ejemplo, solo indica un importe global) o el desglose no es legible,
+  devuelve una lista vacía."""
+
+
+DEFAULT_PROMPT = f"""Eres un extractor estricto de datos de facturas de proveedor.
 
 Debes devolver los datos como un objeto JSON con un valor de texto por cada
 campo indicado más abajo (el formato exacto del JSON ya viene forzado por el
@@ -363,6 +404,28 @@ PedidoCliente:
   realmente un pedido del cliente, devuelve "-": es preferible dejarlo vacío
   a devolver un dato que no corresponde a un pedido.
 
+NumerosAlbaran:
+- Número(s) de albarán indicados por el PROVEEDOR/emisor de la factura (el
+  documento de entrega de la mercancía), nunca un pedido ni el número de
+  factura.
+- Puede aparecer como:
+  Albarán
+  Nº Albarán
+  Num. Albarán
+  Delivery Note
+  Delivery Note Number
+  Packing List
+  Bon de Livraison
+  Lieferschein
+  Documento di Trasporto
+  DDT
+  Guia de Remessa
+- Si hay varios albaranes en la factura (por ejemplo una línea por albarán),
+  devuelve todos separados por punto y coma (;), sin repetir el mismo
+  albarán más de una vez.
+- NO devolver el número de factura ni el número de pedido.
+- Si no aparece claramente ningún albarán, devuelve "-".
+
 Proveedor:
 - CIF/NIF/VAT del proveedor/vendedor que emite la factura (nunca del comprador/cliente).
 - Puede aparecer bajo etiquetas como:
@@ -408,6 +471,8 @@ TotalFact:
 - Importe total final de la factura, impuestos incluidos.
 - Es un importe en dinero, nunca un porcentaje de IVA.
 
+{PROMPT_LINEAS_FACTURA}
+
 
 IMPORTANTE:
 
@@ -419,6 +484,7 @@ Debes reconocer automáticamente los campos aunque aparezcan en:
 - portugués
 - francés
 - italiano
+- arabe
 - alemán
 - neerlandés
 - chino
@@ -1115,8 +1181,8 @@ def combinar_csvs(lista_csv):
 # =========================================================
 
 # Esquema JSON estricto para la respuesta del modelo: con "strict": true la
-# API garantiza que el objeto devuelto tiene EXACTAMENTE estas 18 claves (ni
-# de menos ni de más), así que a diferencia del antiguo formato de texto
+# API garantiza que el objeto devuelto tiene EXACTAMENTE estas claves (ni de
+# menos ni de más), así que a diferencia del antiguo formato de texto
 # separado por "|" es imposible que el modelo se salte un campo a mitad de
 # la fila y desplace los siguientes.
 FACTURA_JSON_SCHEMA = {
@@ -1130,10 +1196,170 @@ FACTURA_JSON_SCHEMA = {
         # la página en esta misma llamada, así que preguntarle esto no
         # cuesta una llamada aparte.
         "MultiplesFacturas": {"type": "string", "enum": ["si", "no"]},
+        # Tampoco es una columna del CSV/Excel de cabecera: se guarda aparte,
+        # en un CSV propio junto al PDF (ver ruta_lineas_csv), porque una
+        # factura puede tener muchas líneas y aquí solo hay una fila por
+        # factura.
+        "LineasFactura": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "Descripcion": {"type": "string"},
+                    "Cantidad": {"type": "string"},
+                    "Precio": {"type": "string"},
+                    "Importe": {"type": "string"},
+                    "Otros": {"type": "string"},
+                },
+                "required": ["Descripcion", "Cantidad", "Precio", "Importe", "Otros"],
+                "additionalProperties": False,
+            },
+        },
     },
-    "required": EXPECTED_HEADERS + ["MultiplesFacturas"],
+    "required": EXPECTED_HEADERS + ["MultiplesFacturas", "LineasFactura"],
     "additionalProperties": False,
 }
+
+# Mismo esquema de LineasFactura que FACTURA_JSON_SCHEMA, pero como único
+# campo del objeto: para cuando solo interesa reextraer las líneas (ver
+# extraer_lineas_de_imagen), sin pedirle al modelo el resto de la factura.
+LINEAS_JSON_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "LineasFactura": FACTURA_JSON_SCHEMA["properties"]["LineasFactura"],
+    },
+    "required": ["LineasFactura"],
+    "additionalProperties": False,
+}
+
+
+def ruta_lineas_csv(pdf_path):
+    """Ruta del CSV de líneas que acompaña a `pdf_path`: mismo directorio y
+    mismo nombre base que el PDF, con el sufijo "_lineas.csv" (ver
+    guardar_lineas_csv). Así viaja junto al PDF cuando este se mueve entre
+    las carpetas del flujo, sin necesitar una tabla ni un identificador
+    aparte."""
+    base, _ext = os.path.splitext(pdf_path)
+    return base + "_lineas.csv"
+
+
+_LINEAS_CSV_CAMPOS = ["Descripcion", "Cantidad", "Precio", "Importe", "Otros"]
+
+
+def guardar_lineas_csv(pdf_path, lineas):
+    """Escribe las líneas de una factura (lista de dicts con las claves de
+    _LINEAS_CSV_CAMPOS, tal como las devuelve el modelo en "LineasFactura")
+    en un CSV junto al PDF, para poder consultarlas desde la UI igual que el
+    propio PDF (ver buscar_lineas_csv_por_nombre y el endpoint
+    /lineas-factura en routers/manual.py).
+
+    Delimitador ";" y codificación con BOM (utf-8-sig): así Excel en español
+    lo abre bien con acentos/ñ y sin confundir la coma decimal de los
+    importes con el separador de columnas.
+
+    Si `lineas` está vacía no se crea ningún archivo, para no dejar sueltos
+    CSV vacíos por cada factura que no desglosa líneas."""
+    if not lineas or not pdf_path:
+        return
+
+    ruta = ruta_lineas_csv(pdf_path)
+    with open(ruta, "w", newline="", encoding="utf-8-sig") as f:
+        writer = csv.DictWriter(f, fieldnames=_LINEAS_CSV_CAMPOS, delimiter=";")
+        writer.writeheader()
+        for linea in lineas:
+            writer.writerow({campo: normalizar_valor(linea.get(campo, "-")) for campo in _LINEAS_CSV_CAMPOS})
+
+
+# =========================================================
+# REEXTRACCIÓN DE LÍNEAS DESDE UNA REGIÓN (vision)
+# =========================================================
+#
+# Cuando la extracción automática se deja líneas o las lee mal, corregirlas
+# arrastrando el recuadro campo a campo no escala si son muchas (p.ej. 30
+# líneas x 5 columnas). En vez de eso, la persona que revisa selecciona a
+# mano en el visor la región donde está la tabla de líneas (puede ser toda
+# la tabla de golpe) y se le pide al modelo -mirando solo esa imagen
+# recortada, no la factura entera, para gastar menos por llamada- que
+# devuelva las líneas que reconozca ahí. El resultado sustituye por
+# completo a las líneas que hubiera (ver /reextraer-lineas-region en
+# routers/manual.py).
+
+def extraer_lineas_de_imagen(png_bytes):
+    """Le pide al modelo (vision) las líneas de factura que reconozca en esa
+    imagen ya recortada (ver posiciones.recortar_region_png). Devuelve la
+    lista de líneas (puede ser vacía); nunca lanza excepción -un fallo aquí
+    se traduce en "no se reconoció nada", no en romper la edición-."""
+    try:
+        client = build_client()
+        model = get_model()
+        img_b64 = base64.b64encode(png_bytes).decode("utf-8")
+
+        response = client.chat.completions.create(
+            model=model,
+            temperature=0,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Eres un extractor documental muy estricto. Devuelve "
+                        "los datos en el objeto JSON solicitado, sin "
+                        "explicaciones ni texto adicional."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": (
+                                "Esta imagen es un recorte de la tabla de líneas/"
+                                "conceptos de una factura (puede contener una o "
+                                "varias líneas). Sigue estas reglas para rellenar "
+                                f"LineasFactura:\n\n{PROMPT_LINEAS_FACTURA}"
+                            ),
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/png;base64,{img_b64}"},
+                        },
+                    ],
+                },
+            ],
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "lineas_factura",
+                    "schema": LINEAS_JSON_SCHEMA,
+                    "strict": True,
+                },
+            },
+        )
+
+        datos = json.loads(response.choices[0].message.content or "{}")
+        return datos.get("LineasFactura", [])
+    except Exception as e:
+        print(f"AVISO: fallo reextrayendo líneas por visión: {e}")
+        return []
+
+
+def extraer_lineas_de_region(pdf_path, pagina, x0, y0, x1, y1):
+    """Recorta esa región de esa página del PDF (mismo sistema de
+    coordenadas que usa el visor: píxeles a posiciones.DPI_CACHE) y le pide
+    al modelo las líneas que reconozca ahí. Import de posiciones aplazado
+    (no al principio del módulo) porque posiciones.py ya importa logic.py;
+    hacerlo arriba crearía un import circular."""
+    import posiciones as _posiciones
+
+    try:
+        png_bytes = _posiciones.recortar_region_png(pdf_path, pagina, x0, y0, x1, y1)
+    except Exception as e:
+        print(f"AVISO: no se pudo recortar la región para reextraer líneas: {e}")
+        return []
+
+    if png_bytes is None:
+        return []
+
+    return extraer_lineas_de_imagen(png_bytes)
 
 
 def extract_invoice_with_agent(file_name, invoice_text, agent_prompt=DEFAULT_PROMPT, pdf_path=None):
@@ -1335,6 +1561,15 @@ FACTURA:
             _posiciones.calcular_y_cachear(file_name, datos, pdf_path=pdf_path)
         except Exception as e:
             print(f"AVISO: no se pudieron calcular posiciones para {file_name}: {e}")
+
+    # No se guarda el desglose de líneas cuando la página mezcla varias
+    # facturas: no hay forma fiable de saber a cuál de ellas pertenece cada
+    # línea, así que es mejor no guardar nada que guardarlo mal asociado.
+    if pdf_path and not multiples_facturas:
+        try:
+            guardar_lineas_csv(pdf_path, datos_json.get("LineasFactura", []))
+        except Exception as e:
+            print(f"AVISO: no se pudo guardar el CSV de líneas para {file_name}: {e}")
 
     output = StringIO()
     writer = csv.writer(output, delimiter="|", lineterminator="\n")
@@ -1761,6 +1996,35 @@ def _liberar_del_disco_local(ruta):
         pass
 
 
+# El CSV de líneas (ver ruta_lineas_csv/guardar_lineas_csv en la sección de
+# extracción) no tiene tabla ni identificador propio: vive junto al PDF, así
+# que cada función que mueve/copia un PDF entre las carpetas del flujo debe
+# replicar la misma operación sobre su companion si existe. Una factura sin
+# líneas extraídas simplemente no tiene companion, y estas dos funciones no
+# hacen nada en ese caso.
+#
+# Son "best effort" a propósito (igual que _liberar_del_disco_local): el
+# companion es un añadido informativo, así que un fallo puntual al mover/
+# copiarlo (p.ej. el CSV bloqueado por otro proceso) no debe impedir que el
+# PDF -el dato que de verdad importa- termine de moverse.
+def _mover_companion_lineas(origen_pdf, destino_pdf):
+    try:
+        origen_csv = ruta_lineas_csv(origen_pdf)
+        if os.path.exists(origen_csv):
+            shutil.move(origen_csv, ruta_lineas_csv(destino_pdf))
+    except Exception as e:
+        print(f"AVISO: no se pudo mover el CSV de líneas de {origen_pdf}: {e}")
+
+
+def _copiar_companion_lineas(origen_pdf, destino_pdf):
+    try:
+        origen_csv = ruta_lineas_csv(origen_pdf)
+        if os.path.exists(origen_csv):
+            shutil.copy2(origen_csv, ruta_lineas_csv(destino_pdf))
+    except Exception as e:
+        print(f"AVISO: no se pudo copiar el CSV de líneas de {origen_pdf}: {e}")
+
+
 def _mover_pdf_a_carpeta(archivo, carpeta_destino, fila=None):
     """Mueve el PDF de `archivo` a `carpeta_destino` (buscándolo en cualquiera
     de las carpetas del flujo), evitando colisiones de nombre.
@@ -1786,6 +2050,7 @@ def _mover_pdf_a_carpeta(archivo, carpeta_destino, fila=None):
         dest = os.path.join(carpeta_destino, f"{base}_{datetime.now().strftime('%Y%m%d%H%M%S')}{ext}")
 
     shutil.move(src, dest)
+    _mover_companion_lineas(src, dest)
 
     destino_normalizado = os.path.normpath(carpeta_destino)
     if destino_normalizado == os.path.normpath(CORREGIR_DIR):
@@ -1860,6 +2125,7 @@ def descartar_factura_completada(archivo, usuario):
         dest = os.path.join(NO_FACTURA_DIR, f"{base}_{datetime.now().strftime('%Y%m%d%H%M%S')}{ext}")
 
     shutil.move(src, dest)
+    _mover_companion_lineas(src, dest)
     _liberar_del_disco_local(dest)
 
     registrar_auditoria_sql(usuario, "descartar_completada", archivo)
@@ -2119,12 +2385,14 @@ def mover_pdf(pdf_path, tipo, fila=None):
     os.makedirs(carpeta_procesadas, exist_ok=True)
     dest_procesadas = os.path.join(carpeta_procesadas, os.path.basename(pdf_path))
     _copiar_con_reintentos(pdf_path, dest_procesadas)
+    _copiar_companion_lineas(pdf_path, dest_procesadas)
     print("PDF COPIADO A PROCESADAS:", dest_procesadas)
 
     # Carpeta específica según categoría
     os.makedirs(carpeta_destino, exist_ok=True)
     destino = os.path.join(carpeta_destino, os.path.basename(pdf_path))
     _copiar_con_reintentos(pdf_path, destino)
+    _copiar_companion_lineas(pdf_path, destino)
     print("PDF COPIADO A", tipo.upper() + ":", destino)
 
     for _ in range(10):
@@ -2142,6 +2410,13 @@ def mover_pdf(pdf_path, tipo, fila=None):
         except Exception:
 
             time.sleep(1)
+
+    try:
+        origen_csv = ruta_lineas_csv(pdf_path)
+        if os.path.exists(origen_csv):
+            os.remove(origen_csv)
+    except Exception:
+        pass
 
     cola = _TIPO_A_COLA.get(tipo)
     if cola is not None:
@@ -2876,6 +3151,8 @@ def _mover_via_copia(origen, destino, intentos=10, espera=1):
                 raise
             time.sleep(espera)
 
+    _mover_companion_lineas(origen, destino)
+
     for intento in range(intentos):
         try:
             os.remove(origen)
@@ -2934,6 +3211,18 @@ def buscar_pdf_por_nombre(archivo):
                 return os.path.join(raiz, archivo)
 
     return None
+
+
+def buscar_lineas_csv_por_nombre(archivo):
+    """Igual que buscar_pdf_por_nombre, pero devuelve la ruta del CSV de
+    líneas asociado a `archivo` (ver ruta_lineas_csv), o None si el PDF no
+    tiene líneas extraídas o no se encuentra."""
+    ruta_pdf = buscar_pdf_por_nombre(archivo)
+    if ruta_pdf is None:
+        return None
+
+    ruta_csv = ruta_lineas_csv(ruta_pdf)
+    return ruta_csv if os.path.exists(ruta_csv) else None
 
 
 _CARPETA_POR_MOTIVO_CORREO = {
@@ -3104,6 +3393,173 @@ def datos_correo_outlook(archivo, asunto=None):
         "nombre_adjunto": nombre_adjunto,
         "asunto": asunto or f"Factura {nombre_adjunto}",
     }
+
+
+def _numero_factura_de_archivo(archivo):
+    """Número de factura real (el que conoce el proveedor, p.ej. "26/1224"),
+    no el nombre del PDF en disco: se busca primero en FacturasExaminadas (si
+    ya se marcó examinada/definitiva) y si no en la caché de ColaRevision
+    (pendientes o incidencias, que es de donde sale el motivo "otros" la
+    mayoría de las veces). Devuelve None si no se encuentra en ninguna -esto
+    puede pasar con facturas muy antiguas o ya archivadas-, para que el
+    asunto pueda caer de vuelta al nombre de archivo."""
+    fila = obtener_factura_examinada_sql(archivo)
+    if fila and fila.get("NumeroFactura"):
+        return fila["NumeroFactura"]
+
+    idx_archivo = COLUMNAS.index("Archivo")
+    idx_numero = COLUMNAS.index("NumeroFactura")
+    for cola in ("pendiente", "incidencia"):
+        for fila_cola in listar_cola_revision_sql(cola):
+            if fila_cola[idx_archivo] == archivo and fila_cola[idx_numero]:
+                return fila_cola[idx_numero]
+
+    return None
+
+
+def asunto_base_correo_otro_motivo(archivo, datos=None):
+    """Asunto base "Factura {número real}" para el motivo "otros": usa
+    _numero_factura_de_archivo (no el nombre del PDF) siempre que se pueda.
+    `datos` es el resultado ya calculado de datos_correo_outlook(archivo), por
+    si el llamador ya lo tiene (evita repetir la búsqueda del PDF); si no se
+    pasa, se calcula aquí. Se usa tanto para la vista previa del modal como
+    para el asunto real que se manda, así que ambos coinciden siempre."""
+    datos = datos or datos_correo_outlook(archivo)
+    numero_factura = _numero_factura_de_archivo(archivo) or datos["nombre_adjunto"]
+    return f"Factura {numero_factura}"
+
+
+def _texto_a_html_seguro(texto):
+    """Escapa el texto libre que escribe la persona (motivo "otros" vía Power
+    Automate) antes de mandarlo como cuerpo_html: sin esto, cualquier HTML
+    que alguien teclee (a propósito o sin querer) se interpretaría tal cual
+    en el correo del destinatario. html.escape() neutraliza < > & " ', y los
+    saltos de línea se reconstruyen como párrafos/<br> porque, una vez
+    escapado, el texto pierde su maquetación original en texto plano."""
+    texto = (texto or "").strip()
+    parrafos = re.split(r"\n\s*\n", texto)
+    html_parrafos = [
+        "<p>" + html.escape(p).replace("\n", "<br>") + "</p>"
+        for p in parrafos if p.strip()
+    ]
+    return "".join(html_parrafos)
+
+
+# El correo del motivo "otros" se enviaba antes como borrador vía Microsoft
+# Graph (crear_borrador_outlook_graph, más abajo), que sigue disponible y sin
+# tocar. Desde que existe este flujo de Power Automate, "otros" pasa por aquí:
+# la persona redacta motivo+cuerpo en un modal propio de EscanerIA y el
+# backend hace el envío real llamando a un flujo de Power Automate por HTTP,
+# adjuntando el PDF en Base64. La URL del flujo NUNCA se expone al navegador
+# ni se escribe en los logs -solo vive en POWER_AUTOMATE_CORREO_URL (.env)-.
+
+def _power_automate_correo_configurado():
+    return bool(os.getenv("POWER_AUTOMATE_CORREO_URL", "").strip())
+
+
+def enviar_correo_power_automate(destinatario, asunto, cuerpo_html, motivo, nombre_archivo, ruta_pdf, usuario, archivo):
+    """Envía el correo del motivo "otros" llamando al flujo de Power Automate
+    configurado en POWER_AUTOMATE_CORREO_URL: adjunta el PDF en Base64 y
+    manda un POST JSON con el resto de datos ya resueltos por el backend.
+    Lanza RuntimeError (con un mensaje genérico, sin URL ni detalle interno)
+    ante cualquier fallo -no configurado, PDF ilegible, timeout, error HTTP,
+    error de conexión o cualquier excepción inesperada-."""
+    url = os.getenv("POWER_AUTOMATE_CORREO_URL", "").strip()
+    if not url:
+        raise RuntimeError(
+            "El envío de correo por Power Automate no está configurado todavía "
+            "(falta POWER_AUTOMATE_CORREO_URL en .env)."
+        )
+
+    try:
+        with open(ruta_pdf, "rb") as f:
+            pdf_base64 = base64.b64encode(f.read()).decode("ascii")
+    except OSError as e:
+        print(f"AVISO: no se pudo leer el PDF para enviarlo por Power Automate ({archivo}): {e}")
+        raise RuntimeError("No se pudo leer el PDF de la factura para adjuntarlo al correo.") from e
+
+    payload = {
+        "destinatario": destinatario,
+        "asunto": asunto,
+        "cuerpo_html": cuerpo_html,
+        "motivo": motivo,
+        "nombre_archivo": nombre_archivo,
+        "pdf_base64": pdf_base64,
+        "usuario": usuario,
+        "archivo": archivo,
+    }
+
+    try:
+        resp = httpx.post(url, json=payload, timeout=30)
+        resp.raise_for_status()
+    except httpx.TimeoutException as e:
+        print(f"AVISO: timeout llamando a Power Automate (correo otro motivo, archivo={archivo}): {e}")
+        raise RuntimeError("Power Automate no respondió a tiempo. Inténtalo de nuevo en unos minutos.") from e
+    except httpx.HTTPStatusError as e:
+        print(f"AVISO: Power Automate devolvió un error (correo otro motivo, archivo={archivo}): {e.response.status_code}")
+        raise RuntimeError("Power Automate rechazó el envío del correo.") from e
+    except httpx.RequestError as e:
+        print(f"AVISO: error de conexión con Power Automate (correo otro motivo, archivo={archivo}): {e}")
+        raise RuntimeError("No se pudo conectar con Power Automate.") from e
+    except Exception as e:
+        print(f"AVISO: error inesperado enviando correo por Power Automate (archivo={archivo}): {e}")
+        raise RuntimeError("No se pudo enviar el correo por un error inesperado.") from e
+
+    return True
+
+
+def solicitar_correo_otro_motivo_pa(archivo, motivo, cuerpo, usuario):
+    """Orquesta el envío del correo del motivo "otros" vía Power Automate:
+    resuelve en el propio backend (nunca confiando en lo que mande el
+    navegador) el destinatario, el PDF y el asunto -reutilizando
+    datos_correo_outlook()-, valida motivo/cuerpo, escapa el cuerpo a HTML
+    seguro, llama a Power Automate y deja constancia en el histórico
+    (HistorialCorreoOtroMotivo) tanto si se envía como si falla. Si el envío
+    tiene éxito, archiva el PDF igual que el resto de motivos (reutilizando
+    solicitar_envio_correo); si falla, la factura se queda donde estaba para
+    que se pueda reintentar."""
+    motivo = (motivo or "").strip()
+    cuerpo = (cuerpo or "").strip()
+
+    if not motivo:
+        raise ValueError("El motivo no puede estar vacío.")
+    if not cuerpo:
+        raise ValueError("El cuerpo del correo no puede estar vacío.")
+
+    datos = datos_correo_outlook(archivo)
+    if not datos["email"]:
+        raise ValueError("No se pudo determinar el destinatario de esta factura.")
+
+    ruta_pdf = buscar_pdf_por_nombre(archivo)
+    if ruta_pdf is None:
+        raise FileNotFoundError(archivo)
+
+    asunto = f"{asunto_base_correo_otro_motivo(archivo, datos)} — {motivo}"
+    cuerpo_html = _texto_a_html_seguro(cuerpo)
+
+    try:
+        enviar_correo_power_automate(
+            destinatario=datos["email"],
+            asunto=asunto,
+            cuerpo_html=cuerpo_html,
+            motivo=motivo,
+            nombre_archivo=datos["nombre_adjunto"],
+            ruta_pdf=ruta_pdf,
+            usuario=usuario,
+            archivo=archivo,
+        )
+    except RuntimeError as e:
+        registrar_historial_correo_otro_motivo_sql(
+            archivo, datos["email"], asunto, motivo, cuerpo, usuario,
+            "error", mensaje_error=str(e),
+        )
+        raise
+
+    registrar_historial_correo_otro_motivo_sql(
+        archivo, datos["email"], asunto, motivo, cuerpo, usuario, "enviado",
+    )
+    solicitar_envio_correo(archivo, "otros", usuario, motivo_otro=motivo)
+    return True
 
 
 # El correo del motivo "otros" se crea como borrador vía Microsoft Graph

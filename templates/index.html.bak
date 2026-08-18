@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -589,8 +589,7 @@ table.tabla-historial th.th-acciones {
     pointer-events: none;
 }
 
-#btnSeleccionarEnPdf.activo,
-#btnReextraerLineas.activo {
+#btnSeleccionarEnPdf.activo {
     background: #1F6F43;
     color: white;
 }
@@ -599,8 +598,7 @@ table.tabla-campos tr.campo-activo td {
     background: #FFF6D5;
 }
 
-table.tabla-campos tr[data-campo],
-table.tabla-campos tr.fila-linea-factura {
+table.tabla-campos tr[data-campo] {
     cursor: pointer;
 }
 
@@ -624,9 +622,7 @@ table.tabla-campos tr.fila-linea-factura {
     margin: 12px 0 6px;
 }
 
-.modal-label select,
-.modal-label input[type="text"],
-.modal-label textarea {
+.modal-label select {
     display: block;
     width: 100%;
     margin-top: 6px;
@@ -648,11 +644,6 @@ table.tabla-campos tr.fila-linea-factura {
     border-radius: 6px;
     font-size: 13px;
     font-family: inherit;
-    resize: vertical;
-}
-
-#otroMotivoCuerpo {
-    min-height: 220px;
     resize: vertical;
 }
 
@@ -1012,12 +1003,12 @@ table.tabla-historial tr.fila-reservada-mia td {
         <button class="tab-btn" data-tab="errores" onclick="cambiarTab('errores')" style="display:none;">Errores <span id="badgeErroresTab" class="badge vacio">0</span></button>
         <button class="tab-btn" data-tab="revisar" onclick="cambiarTab('revisar')" style="display:none;">Revisar facturas</button>
         <button class="tab-btn" data-tab="duplicados" onclick="cambiarTab('duplicados')" style="display:none;">Duplicados <span id="badgeDuplicadosTab" class="badge vacio">0</span></button>
-        <button class="tab-btn" data-tab="no_factura" onclick="cambiarTab('no_factura')" style="display:none;" data-admin-only>No es factura <span id="badgeNoFacturaTab" class="badge vacio">0</span></button>
-        <button class="tab-btn" data-tab="vista_global" onclick="cambiarTab('vista_global')" data-admin-only>Vista global</button>
-        <button class="tab-btn" data-tab="auditoria" onclick="cambiarTab('auditoria')" data-admin-only>Historial de registro</button>
+        <button class="tab-btn" data-tab="no_factura" onclick="cambiarTab('no_factura')" style="display:none;">No es factura <span id="badgeNoFacturaTab" class="badge vacio">0</span></button>
+        <button class="tab-btn" data-tab="vista_global" onclick="cambiarTab('vista_global')">Vista global</button>
+        <button class="tab-btn" data-tab="auditoria" onclick="cambiarTab('auditoria')">Historial de registro</button>
     </div>
     <span id="usuarioActualWidget" class="usuario-actual" onclick="cambiarUsuarioActual()" title="Cambiar usuario"></span>
-    <span class="usuario-actual" onclick="liberarTodasLasReservas()" title="Si alguna factura aparece bloqueada por error, esto la libera" data-admin-only>🔓 Liberar todas las reservas</span>
+    <span class="usuario-actual" onclick="liberarTodasLasReservas()" title="Si alguna factura aparece bloqueada por error, esto la libera">🔓 Liberar todas las reservas</span>
 </div>
 
 <!-- ========================================================= -->
@@ -1033,7 +1024,7 @@ table.tabla-historial tr.fila-reservada-mia td {
             <button class="btn-primary" id="btnProcesar" onclick="procesar()">
                 Procesar carpeta entrada
             </button>
-            <button class="btn-secondary" id="btnVerReenviadas" style="margin-left:auto" onclick="abrirModalReenviadas()" data-admin-only>
+            <button class="btn-secondary" id="btnVerReenviadas" style="margin-left:auto" onclick="abrirModalReenviadas()">
                 Ver facturas reenviadas
             </button>
         </div>
@@ -1070,17 +1061,17 @@ table.tabla-historial tr.fila-reservada-mia td {
                 <div class="kpi-text">Pendientes de verificación</div>
             </div>
 
-            <div class="kpi kpi-clickable" onclick="irARevisarDesdeKpi(true)" title="Ir a Revisar facturas (definitivas)" data-admin-only>
+            <div class="kpi kpi-clickable" onclick="irARevisarDesdeKpi(true)" title="Ir a Revisar facturas (definitivas)">
                 <div id="revisadas" class="kpi-num">0</div>
                 <div class="kpi-text">Revisadas</div>
             </div>
 
-            <div class="kpi kpi-clickable" onclick="cambiarTab('no_factura')" title="Ir a No es factura" data-admin-only>
+            <div class="kpi kpi-clickable" onclick="cambiarTab('no_factura')" title="Ir a No es factura">
                 <div id="no_es_factura" class="kpi-num">0</div>
                 <div class="kpi-text">No es factura</div>
             </div>
 
-            <div class="kpi kpi-clickable" onclick="abrirModalReenviadas()" title="Ver facturas reenviadas" data-admin-only>
+            <div class="kpi kpi-clickable" onclick="abrirModalReenviadas()" title="Ver facturas reenviadas">
                 <div id="reenviadas" class="kpi-num">0</div>
                 <div class="kpi-text">Reenviadas</div>
             </div>
@@ -1101,7 +1092,7 @@ table.tabla-historial tr.fila-reservada-mia td {
             Facturas pendientes de corrección
             <span id="badgePendientes" class="badge vacio">0</span>
             <button class="btn-secondary" style="margin-left:auto" onclick="cargarPendientesCompleto()">Actualizar lista</button>
-            <button class="btn-secondary" onclick="exportarExcelTabla('tablaPendientes', 'facturas_pendientes')" data-admin-only>Exportar a Excel</button>
+            <button class="btn-secondary" onclick="exportarExcelTabla('tablaPendientes', 'facturas_pendientes')">Exportar a Excel</button>
         </div>
 
         <div class="filtro-fecha">
@@ -1111,7 +1102,6 @@ table.tabla-historial tr.fila-reservada-mia td {
             <label>Empresa <input type="text" id="pendFiltroEmpresa" oninput="filtrarPendientes()" placeholder="Empresa"></label>
             <label>Nombre proveedor <input type="text" id="pendFiltroNombreProveedor" oninput="filtrarPendientes()" placeholder="Nombre proveedor"></label>
             <label>Nº factura <input type="text" id="pendFiltroNumeroFactura" oninput="filtrarPendientes()" placeholder="Nº factura"></label>
-            <label>Nº albarán <input type="text" id="pendFiltroNumerosAlbaran" oninput="filtrarPendientes()" placeholder="Nº albarán"></label>
             <label>Pedido cliente <input type="text" id="pendFiltroPedidoCliente" oninput="filtrarPendientes()" placeholder="Pedido cliente"></label>
             <label>Proveedor <input type="text" id="pendFiltroProveedor" oninput="filtrarPendientes()" placeholder="CIF/NIF proveedor"></label>
             <button class="btn-secondary" onclick="limpiarFiltroPendientes()">Limpiar filtro</button>
@@ -1142,7 +1132,7 @@ table.tabla-historial tr.fila-reservada-mia td {
             Facturas con incidencia
             <span id="badgeIncidencias" class="badge vacio">0</span>
             <button class="btn-secondary" style="margin-left:auto" onclick="cargarIncidenciasCompleto()">Actualizar lista</button>
-            <button class="btn-secondary" onclick="exportarExcelTabla('tablaIncidencias', 'facturas_incidencias')" data-admin-only>Exportar a Excel</button>
+            <button class="btn-secondary" onclick="exportarExcelTabla('tablaIncidencias', 'facturas_incidencias')">Exportar a Excel</button>
         </div>
         <p class="help">
             El comprador (Buyer) o el proveedor no se han podido resolver contra la base de datos de empresas/proveedores
@@ -1157,7 +1147,6 @@ table.tabla-historial tr.fila-reservada-mia td {
             <label>Empresa <input type="text" id="incFiltroEmpresa" oninput="filtrarIncidencias()" placeholder="Empresa"></label>
             <label>Nombre proveedor <input type="text" id="incFiltroNombreProveedor" oninput="filtrarIncidencias()" placeholder="Nombre proveedor"></label>
             <label>Nº factura <input type="text" id="incFiltroNumeroFactura" oninput="filtrarIncidencias()" placeholder="Nº factura"></label>
-            <label>Nº albarán <input type="text" id="incFiltroNumerosAlbaran" oninput="filtrarIncidencias()" placeholder="Nº albarán"></label>
             <label>Pedido cliente <input type="text" id="incFiltroPedidoCliente" oninput="filtrarIncidencias()" placeholder="Pedido cliente"></label>
             <label>Proveedor <input type="text" id="incFiltroProveedor" oninput="filtrarIncidencias()" placeholder="CIF/NIF proveedor"></label>
             <button class="btn-secondary" onclick="limpiarFiltroIncidencias()">Limpiar filtro</button>
@@ -1188,7 +1177,7 @@ table.tabla-historial tr.fila-reservada-mia td {
             Facturas esperando alta en la base de datos
             <span id="badgeEsperandoAlta" class="badge vacio">0</span>
             <button class="btn-secondary" style="margin-left:auto" onclick="cargarEsperandoAltaCompleto()">Actualizar lista</button>
-            <button class="btn-secondary" onclick="exportarExcelTabla('tablaEsperandoAlta', 'facturas_esperando_alta')" data-admin-only>Exportar a Excel</button>
+            <button class="btn-secondary" onclick="exportarExcelTabla('tablaEsperandoAlta', 'facturas_esperando_alta')">Exportar a Excel</button>
         </div>
         <p class="help">
             Facturas apartadas a mano (desde Corregir manualmente, Incidencias o Revisar facturas) porque el comprador o
@@ -1203,7 +1192,6 @@ table.tabla-historial tr.fila-reservada-mia td {
             <label>Empresa <input type="text" id="eaFiltroEmpresa" oninput="filtrarEsperandoAlta()" placeholder="Empresa"></label>
             <label>Nombre proveedor <input type="text" id="eaFiltroNombreProveedor" oninput="filtrarEsperandoAlta()" placeholder="Nombre proveedor"></label>
             <label>Nº factura <input type="text" id="eaFiltroNumeroFactura" oninput="filtrarEsperandoAlta()" placeholder="Nº factura"></label>
-            <label>Nº albarán <input type="text" id="eaFiltroNumerosAlbaran" oninput="filtrarEsperandoAlta()" placeholder="Nº albarán"></label>
             <label>Pedido cliente <input type="text" id="eaFiltroPedidoCliente" oninput="filtrarEsperandoAlta()" placeholder="Pedido cliente"></label>
             <label>Proveedor <input type="text" id="eaFiltroProveedor" oninput="filtrarEsperandoAlta()" placeholder="CIF/NIF proveedor"></label>
             <button class="btn-secondary" onclick="limpiarFiltroEsperandoAlta()">Limpiar filtro</button>
@@ -1235,7 +1223,7 @@ table.tabla-historial tr.fila-reservada-mia td {
             <span id="badgeErrores" class="badge vacio">0</span>
             <button class="btn-secondary" style="margin-left:auto" onclick="cargarErroresCompleto()">Actualizar lista</button>
             <button class="btn-secondary" id="btnReprocesarTodosErrores" onclick="reprocesarTodosLosErrores()">Reprocesar todos</button>
-            <button class="btn-secondary" onclick="exportarExcelTabla('tablaErrores', 'facturas_error')" data-admin-only>Exportar a Excel</button>
+            <button class="btn-secondary" onclick="exportarExcelTabla('tablaErrores', 'facturas_error')">Exportar a Excel</button>
         </div>
         <p class="help">
             La extracción automática ha fallado en estas facturas (fallo puntual de la API, PDF ilegible...) y no
@@ -1266,13 +1254,13 @@ table.tabla-historial tr.fila-reservada-mia td {
         <div class="section-title">
             Facturas completadas
             <span id="badgeCompletadas" class="badge vacio">0</span>
-            <label style="margin-left:auto; font-weight:normal;" data-admin-only>
+            <label style="margin-left:auto; font-weight:normal;">
                 <input type="checkbox" id="revMostrarDefinitivas" onchange="filtrarCompletadas()">
                 Mostrar definitivas
             </label>
             <button class="btn-secondary" onclick="cargarFacturasCompletadas()">Actualizar lista</button>
-            <button class="btn-secondary" onclick="descargarFacturasDefinitivas()" data-admin-only>Descargar Excel definitivo</button>
-            <button class="btn-secondary" onclick="exportarExcelTabla('tablaCompletadas', 'facturas_completadas')" data-admin-only>Exportar a Excel</button>
+            <button class="btn-secondary" onclick="descargarFacturasDefinitivas()">Descargar Excel definitivo</button>
+            <button class="btn-secondary" onclick="exportarExcelTabla('tablaCompletadas', 'facturas_completadas')">Exportar a Excel</button>
         </div>
         <p class="help">
             Revisión final de las facturas ya completadas (extraídas automáticamente sin problemas o corregidas a mano).
@@ -1287,7 +1275,6 @@ table.tabla-historial tr.fila-reservada-mia td {
             <label>Empresa <input type="text" id="revFiltroEmpresa" oninput="filtrarCompletadas()" placeholder="Empresa"></label>
             <label>Nombre proveedor <input type="text" id="revFiltroNombreProveedor" oninput="filtrarCompletadas()" placeholder="Nombre proveedor"></label>
             <label>Nº factura <input type="text" id="revFiltroNumeroFactura" oninput="filtrarCompletadas()" placeholder="Nº factura"></label>
-            <label>Nº albarán <input type="text" id="revFiltroNumerosAlbaran" oninput="filtrarCompletadas()" placeholder="Nº albarán"></label>
             <label>Pedido cliente <input type="text" id="revFiltroPedidoCliente" oninput="filtrarCompletadas()" placeholder="Pedido cliente"></label>
             <label>Proveedor <input type="text" id="revFiltroProveedor" oninput="filtrarCompletadas()" placeholder="CIF/NIF proveedor"></label>
             <label>Email proveedor <input type="text" id="revFiltroEmail" oninput="filtrarCompletadas()" placeholder="Email proveedor"></label>
@@ -1319,7 +1306,7 @@ table.tabla-historial tr.fila-reservada-mia td {
             Facturas duplicadas
             <span id="badgeDuplicados" class="badge vacio">0</span>
             <button class="btn-secondary" style="margin-left:auto" onclick="cargarDuplicadosCompleto()">Actualizar lista</button>
-            <button class="btn-secondary" onclick="exportarExcelTabla('tablaDuplicados', 'facturas_duplicadas')" data-admin-only>Exportar a Excel</button>
+            <button class="btn-secondary" onclick="exportarExcelTabla('tablaDuplicados', 'facturas_duplicadas')">Exportar a Excel</button>
         </div>
         <p class="help">
             Estas facturas comparten Nº factura, proveedor y cliente con otra ya guardada: es la misma factura
@@ -1334,7 +1321,6 @@ table.tabla-historial tr.fila-reservada-mia td {
             <label>Empresa <input type="text" id="dupFiltroEmpresa" oninput="filtrarDuplicados()" placeholder="Empresa"></label>
             <label>Nombre proveedor <input type="text" id="dupFiltroNombreProveedor" oninput="filtrarDuplicados()" placeholder="Nombre proveedor"></label>
             <label>Nº factura <input type="text" id="dupFiltroNumeroFactura" oninput="filtrarDuplicados()" placeholder="Nº factura"></label>
-            <label>Nº albarán <input type="text" id="dupFiltroNumerosAlbaran" oninput="filtrarDuplicados()" placeholder="Nº albarán"></label>
             <label>Pedido cliente <input type="text" id="dupFiltroPedidoCliente" oninput="filtrarDuplicados()" placeholder="Pedido cliente"></label>
             <label>Proveedor <input type="text" id="dupFiltroProveedor" oninput="filtrarDuplicados()" placeholder="CIF/NIF proveedor"></label>
             <button class="btn-secondary" onclick="limpiarFiltroDuplicados()">Limpiar filtro</button>
@@ -1359,7 +1345,7 @@ table.tabla-historial tr.fila-reservada-mia td {
             <span id="badgeNoFactura" class="badge vacio">0</span>
             <button class="btn-secondary" style="margin-left:auto" onclick="cargarNoFacturaCompleto()">Actualizar lista</button>
             <button class="btn-secondary" onclick="abrirCarpetaNoFactura()">Abrir carpeta</button>
-            <button class="btn-secondary" onclick="exportarExcelTabla('tablaNoFactura', 'documentos_no_factura')" data-admin-only>Exportar a Excel</button>
+            <button class="btn-secondary" onclick="exportarExcelTabla('tablaNoFactura', 'documentos_no_factura')">Exportar a Excel</button>
         </div>
         <p class="help">
             Documentos descartados por no ser una factura (proveedores no dados de alta, duplicados resueltos,
@@ -1391,7 +1377,7 @@ table.tabla-historial tr.fila-reservada-mia td {
             Vista global de facturas
             <span id="badgeVistaGlobal" class="badge vacio">0</span>
             <button class="btn-secondary" style="margin-left:auto" onclick="cargarVistaGlobal()">Actualizar lista</button>
-            <button class="btn-secondary" onclick="exportarExcelTabla('tablaVistaGlobal', 'vista_global_facturas')" data-admin-only>Exportar a Excel</button>
+            <button class="btn-secondary" onclick="exportarExcelTabla('tablaVistaGlobal', 'vista_global_facturas')">Exportar a Excel</button>
         </div>
         <p class="help">
             Junta en una sola tabla, de solo lectura, las facturas de Corregir manualmente, Incidencias, Pendientes de
@@ -1417,7 +1403,6 @@ table.tabla-historial tr.fila-reservada-mia td {
             <label>Empresa <input type="text" id="vgFiltroEmpresa" oninput="filtrarVistaGlobal()" placeholder="Empresa"></label>
             <label>Nombre proveedor <input type="text" id="vgFiltroNombreProveedor" oninput="filtrarVistaGlobal()" placeholder="Nombre proveedor"></label>
             <label>Nº factura <input type="text" id="vgFiltroNumeroFactura" oninput="filtrarVistaGlobal()" placeholder="Nº factura"></label>
-            <label>Nº albarán <input type="text" id="vgFiltroNumerosAlbaran" oninput="filtrarVistaGlobal()" placeholder="Nº albarán"></label>
             <label>Pedido cliente <input type="text" id="vgFiltroPedidoCliente" oninput="filtrarVistaGlobal()" placeholder="Pedido cliente"></label>
             <label>Proveedor <input type="text" id="vgFiltroProveedor" oninput="filtrarVistaGlobal()" placeholder="CIF/NIF proveedor"></label>
             <button class="btn-secondary" onclick="limpiarFiltroVistaGlobal()">Limpiar filtro</button>
@@ -1437,7 +1422,7 @@ table.tabla-historial tr.fila-reservada-mia td {
         <div class="section-title">
             Historial de registro
             <button class="btn-secondary" style="margin-left:auto" onclick="cargarVistaAuditoriaActual()">Buscar</button>
-            <button class="btn-secondary" onclick="exportarExcelAuditoria()" data-admin-only>Exportar a Excel</button>
+            <button class="btn-secondary" onclick="exportarExcelAuditoria()">Exportar a Excel</button>
         </div>
         <p class="help">
             Quién hizo cada acción (editar, confirmar, marcar revisada/definitiva, descartar, resolver duplicados,
@@ -1486,26 +1471,11 @@ table.tabla-historial tr.fila-reservada-mia td {
     <div class="panel-pdf-header">
         <span id="panelPdfNombre"></span>
         <div class="panel-pdf-acciones">
-            <button class="btn-secondary" style="padding:4px 10px;font-size:12px" onclick="abrirModalLineasFactura(panelPdfArchivoActual)">📋 Líneas</button>
             <a id="panelPdfAbrirNueva" class="btn-secondary" style="padding:4px 10px;font-size:12px" target="_blank" rel="noopener">↗ Nueva pestaña</a>
             <button class="btn-secondary" style="padding:4px 10px;font-size:12px" onclick="cerrarPanelPdf()">✕ Cerrar</button>
         </div>
     </div>
     <iframe id="panelPdfIframe" src="about:blank"></iframe>
-</div>
-
-<!-- ========================================================= -->
-<!-- MODAL: LÍNEAS DE FACTURA                                    -->
-<!-- ========================================================= -->
-<div id="overlayLineasFactura" class="modal-overlay" style="display:none">
-    <div class="modal-box modal-box-ancho">
-        <div class="modal-titulo">Líneas de factura</div>
-        <p class="help" id="lineasFacturaAviso" style="display:none"></p>
-        <div class="scroll-x" id="lineasFacturaTabla"></div>
-        <div class="modal-acciones">
-            <button class="btn-secondary" onclick="cerrarModalLineasFactura()">Cerrar</button>
-        </div>
-    </div>
 </div>
 
 </div>
@@ -1532,33 +1502,6 @@ table.tabla-historial tr.fila-reservada-mia td {
         <div class="modal-acciones">
             <button class="btn-secondary" onclick="cerrarModalEnviarCorreo()">Cancelar</button>
             <button class="btn-primary" id="btnModalCorreoEnviar" onclick="confirmarEnvioCorreo()">Enviar</button>
-        </div>
-    </div>
-</div>
-
-<!-- ========================================================= -->
-<!-- MODAL: ENVIAR CORREO "OTRO MOTIVO" (redactado, vía Power Automate) -->
-<!-- ========================================================= -->
-<div id="overlayCorreoOtroMotivo" class="modal-overlay" style="display:none">
-    <div class="modal-box">
-        <div class="modal-titulo">Enviar correo — Otro motivo</div>
-        <p class="help">Factura: <strong id="otroMotivoArchivoNombre"></strong></p>
-        <p class="help">Destinatario: <strong id="otroMotivoDestinatario"></strong></p>
-        <p class="help">Asunto: <strong id="otroMotivoAsunto"></strong></p>
-
-        <label class="modal-label">Motivo
-            <input type="text" id="otroMotivoMotivo" maxlength="200" placeholder="Motivo breve del contacto" oninput="actualizarAsuntoOtroMotivo()">
-        </label>
-
-        <label class="modal-label">Correo a redactar
-            <textarea id="otroMotivoCuerpo" placeholder="Escribe aquí el cuerpo del correo..."></textarea>
-        </label>
-
-        <p class="help" id="otroMotivoError" style="display:none;color:#B3261E"></p>
-
-        <div class="modal-acciones">
-            <button class="btn-secondary" onclick="cerrarModalCorreoOtroMotivo()">Cancelar</button>
-            <button class="btn-primary" id="btnOtroMotivoEnviar" onclick="confirmarEnvioCorreoOtroMotivo()">Enviar correo</button>
         </div>
     </div>
 </div>
@@ -1595,7 +1538,6 @@ table.tabla-historial tr.fila-reservada-mia td {
 
             <div id="editarFacturaContenido">
                 <div id="editarFacturaCampos"></div>
-                <div id="editarFacturaLineas"></div>
             </div>
         </div>
 
@@ -1682,59 +1624,35 @@ function irARevisarDesdeKpi(mostrarDefinitivas) {
 // =========================================================
 
 function obtenerUsuarioActual() {
-    const usuario = window.USUARIO_AUTENTICADO?.username;
-
-    if (!usuario) {
-        console.error("No se ha podido obtener el usuario autenticado.");
-        return "";
-    }
-
-    return usuario.trim().toLowerCase();
+    const guardado = localStorage.getItem("usuarioActual");
+    return guardado || pedirUsuarioActual();
 }
 
 function pedirUsuarioActual() {
-    return obtenerUsuarioActual();
-}
-
-function esAdmin() {
-    return window.USUARIO_AUTENTICADO?.role === "admin";
-}
-
-// Oculta a los usuarios sin rol admin todo lo marcado con
-// data-admin-only en el HTML (los endpoints correspondientes ya están
-// protegidos en el backend con requerir_admin; esto es solo para no
-// mostrar botones/pestañas que darían un 403 al usarlos).
-function aplicarPermisosPorRol() {
-    if (esAdmin()) return;
-    document.querySelectorAll("[data-admin-only]").forEach(el => {
-        el.style.display = "none";
-    });
+    let usuario = "";
+    while (!usuario) {
+        usuario = (window.prompt("¿Cuál es tu usuario de dominio?") || "").trim().toLowerCase();
+    }
+    localStorage.setItem("usuarioActual", usuario);
+    actualizarWidgetUsuario();
+    return usuario;
 }
 
 function cambiarUsuarioActual() {
-    const usuarioDominio =
-        window.USUARIO_AUTENTICADO?.usuario_dominio ||
-    actualizarWidgetUsuario();
-    mostrarToast(
-        `Usuario identificado por Windows: ${usuarioDominio}`,
-        "ok"
-    );
+    const actual = localStorage.getItem("usuarioActual") || "";
+    const nuevo = (window.prompt("¿Cuál es tu usuario de dominio?", actual) || "").trim().toLowerCase();
+    if (nuevo && nuevo !== actual) {
+        localStorage.setItem("usuarioActual", nuevo);
+        actualizarWidgetUsuario();
+        mostrarToast(`Ahora eres "${nuevo}".`, "ok");
+    }
 }
 
 function actualizarWidgetUsuario() {
     const el = document.getElementById("usuarioActualWidget");
-
-    if (!el) return;
-
-    const datos = window.USUARIO_AUTENTICADO;
-
-    if (datos) {
-        el.textContent = "👤 " + (datos.usuario_dominio || datos.username);
-        el.title = `Usuario autenticado por Windows · Rol: ${datos.role || "sin rol"}`;
-    } else {
-        el.textContent = "👤 Usuario no identificado";
-    }
+    if (el) el.textContent = "👤 " + (localStorage.getItem("usuarioActual") || "¿quién eres?");
 }
+
 // =========================================================
 // TOAST
 // =========================================================
@@ -1940,68 +1858,13 @@ function marcarFilaSeleccionada(archivo) {
     );
 }
 
-let panelPdfArchivoActual = null;
-
 function abrirPanelPdf(archivo, nombreMostrar) {
     const url = "/pdf-factura/" + encodeURIComponent(archivo);
-    panelPdfArchivoActual = archivo;
     document.getElementById("panelPdfNombre").textContent = nombreMostrar || archivo;
     document.getElementById("panelPdfIframe").src = url;
     document.getElementById("panelPdfAbrirNueva").href = url;
     document.getElementById("panelPdf").style.display = "flex";
     marcarFilaSeleccionada(archivo);
-}
-
-async function abrirModalLineasFactura(archivo) {
-    if (!archivo) return;
-
-    const aviso = document.getElementById("lineasFacturaAviso");
-    const cont = document.getElementById("lineasFacturaTabla");
-    aviso.style.display = "none";
-    cont.innerHTML = "<span class='help'>Cargando...</span>";
-    document.getElementById("overlayLineasFactura").style.display = "flex";
-
-    try {
-        const res = await fetch("/lineas-factura/" + encodeURIComponent(archivo));
-
-        if (res.status === 404) {
-            cont.innerHTML = "";
-            aviso.textContent = "Esta factura no tiene líneas extraídas.";
-            aviso.style.display = "block";
-            return;
-        }
-        if (!res.ok) throw new Error("Error al cargar las líneas.");
-
-        const data = await res.json();
-        cont.innerHTML = renderTablaLineasFactura(data.lineas);
-    } catch (e) {
-        cont.innerHTML = "";
-        aviso.textContent = "No se pudieron cargar las líneas de esta factura.";
-        aviso.style.display = "block";
-    }
-}
-
-function renderTablaLineasFactura(lineas) {
-    if (!lineas || lineas.length === 0) {
-        return "<span class='help'>Esta factura no tiene líneas extraídas.</span>";
-    }
-
-    let html = "<table><thead><tr><th>Descripción</th><th>Cantidad</th><th>Precio</th><th>Importe</th><th>Otros</th></tr></thead><tbody>";
-    lineas.forEach(l => {
-        html += "<tr>"
-            + `<td>${escaparAttr(l.Descripcion ?? "")}</td>`
-            + `<td>${escaparAttr(l.Cantidad ?? "")}</td>`
-            + `<td>${escaparAttr(l.Precio ?? "")}</td>`
-            + `<td>${escaparAttr(l.Importe ?? "")}</td>`
-            + `<td>${escaparAttr(l.Otros ?? "")}</td>`
-            + "</tr>";
-    });
-    html += "</tbody></table>";
-    return html;
-}
-
-function cerrarModalLineasFactura() {
-    document.getElementById("overlayLineasFactura").style.display = "none";
 }
 
 function cerrarPanelPdf() {
@@ -2051,7 +1914,6 @@ const FILTROS_TEXTO_FACTURA = [
     { id: null, columna: "Empresa" },
     { id: null, columna: "NombreProveedor" },
     { id: null, columna: "NumeroFactura" },
-    { id: null, columna: "NumerosAlbaran" },
     { id: null, columna: "PedidoCliente" },
     { id: null, columna: "Proveedor" },
 ];
@@ -2356,7 +2218,11 @@ function abrirPrimeraReservada(containerId, tipo) {
     const fila = cache.slice(1).find(r => r[idxArchivo] === archivo);
     if (!fila) return;
 
-    abrirModalEditarFactura(fila, headers, tipo);
+    if (tipo === "esperando_alta") {
+        abrirPanelPdf(archivo); // no tiene formulario de edición propio
+    } else {
+        abrirModalEditarFactura(fila, headers, tipo);
+    }
 }
 
 async function liberarMiSeleccion(containerId, tipo) {
@@ -2367,7 +2233,7 @@ async function liberarMiSeleccion(containerId, tipo) {
     }
     await liberarReservas(archivos);
     mostrarToast(`Liberadas ${archivos.length} factura${archivos.length === 1 ? "" : "s"}.`, "ok");
-    setTimeout(() => location.reload(), 800);
+    volverAPintarTab(tipo);
 }
 
 // Refresca los candados (🔒 usuario) de la tabla ya pintada en pantalla SIN
@@ -2667,11 +2533,11 @@ async function abrirModalEnviarCorreo(archivo, motivoPreseleccionado) {
 }
 
 function onCambioMotivoCorreo() {
-    // El texto libre y el aviso de Outlook eran del antiguo flujo con Graph
-    // para "otros"; ese motivo ahora abre su propio modal (ver
-    // abrirModalCorreoOtroMotivo), así que aquí ya no se muestran nunca.
-    document.getElementById("modalCorreoTextoLibre").style.display = "none";
-    document.getElementById("modalCorreoAvisoOtro").style.display = "none";
+    const select = document.getElementById("modalCorreoMotivo");
+    const esOtro = select.value === "otros";
+
+    document.getElementById("modalCorreoTextoLibre").style.display = esOtro ? "block" : "none";
+    document.getElementById("modalCorreoAvisoOtro").style.display = esOtro ? "block" : "none";
 }
 
 function cerrarModalEnviarCorreo() {
@@ -2683,29 +2549,14 @@ async function confirmarEnvioCorreo() {
     if (!archivoModalCorreo) return;
 
     const motivo = document.getElementById("modalCorreoMotivo").value;
+    const motivoOtro = document.getElementById("modalCorreoTextoLibre").value.trim();
 
-    // "otros" ya no se envía desde aquí: abre su propio modal, donde la
-    // persona redacta motivo + cuerpo y el backend hace el envío real vía
-    // Power Automate (ver abrirModalCorreoOtroMotivo). El PDF solo se mueve
-    // de cola si ese envío llega a confirmarse correctamente.
-    if (motivo === "otros") {
-        const archivo = archivoModalCorreo;
-        // Este modal también se abre desde dentro del modal de edición
-        // (revisión de lote reservado): si es el caso, hay que recordar que
-        // hay que avanzar a la siguiente factura del lote cuando el nuevo
-        // modal confirme el envío -igual que el resto de acciones del modal
-        // de edición-, calculado ahora que la fila todavía está en su tabla.
-        otroMotivoEdicionAAvanzar = (edicionFactura && edicionFactura.archivo === archivo) ? edicionFactura : null;
-        otroMotivoContenedorEdicion = otroMotivoEdicionAAvanzar ? containerIdDeTipo(otroMotivoEdicionAAvanzar.tipo) : null;
-        otroMotivoSiguienteEnEdicion = otroMotivoEdicionAAvanzar
-            ? obtenerSiguienteArchivoDeTabla(otroMotivoContenedorEdicion, archivo) : null;
-
-        cerrarModalEnviarCorreo();
-        abrirModalCorreoOtroMotivo(archivo);
+    if (motivo === "otros" && !motivoOtro) {
+        mostrarToast("Redacta el motivo antes de enviar.", "error");
         return;
     }
 
-    const mueveElPdf = motivo === "falta_pedido_cliente" || motivo === "dos_facturas_una_pagina";
+    const mueveElPdf = motivo === "falta_pedido_cliente" || motivo === "dos_facturas_una_pagina" || motivo === "otros";
 
     // Este modal también se abre desde dentro del modal de edición (revisión
     // de lote reservado). Si el motivo mueve el PDF fuera de su cola, hay
@@ -2724,12 +2575,23 @@ async function confirmarEnvioCorreo() {
     btn.textContent = "Enviando...";
 
     try {
+        // Para "otros" el correo se redacta y envía a mano desde Outlook, no
+        // hay flujo automático detrás: hay que abrir Outlook ANTES de mover
+        // el PDF, para que si Outlook no llega a abrirse (no instalado/mal
+        // configurado) la factura se quede donde estaba en vez de darse por
+        // reenviada sin que nadie haya llegado a redactar el correo.
+        if (motivo === "otros") {
+            const abierto = await abrirCorreoYPdf(archivoModalCorreo, `Factura ${archivoModalCorreo} — ${motivoOtro}`);
+            if (!abierto) return;
+        }
+
         const res = await fetch("/solicitar-envio-correo", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 archivo: archivoModalCorreo,
                 motivo,
+                motivo_otro: motivoOtro,
                 usuario: obtenerUsuarioActual(),
             })
         });
@@ -2742,17 +2604,24 @@ async function confirmarEnvioCorreo() {
 
         const data = await res.json();
 
-        mostrarToast(`✓ ${archivoModalCorreo} añadida a la cola de envío de correo.`, "ok");
+        mostrarToast(
+            motivo === "otros"
+                ? `✓ ${archivoModalCorreo} reenviada.`
+                : `✓ ${archivoModalCorreo} añadida a la cola de envío de correo.`,
+            "ok"
+        );
         if (data.aviso) {
             mostrarToast(data.aviso, "error");
         }
 
-        // Los dos motivos mueven el PDF fuera de su cola actual (los asume
-        // Power Automate), así que desaparece al instante sin recargar la
-        // página. Este modal se abre desde varias pestañas (Pendientes,
-        // Incidencias, Esperando alta, Completadas, Errores) sin decirnos de
-        // cuál venía, así que se limpia de todas: quitarDeXCache es un no-op
-        // si el archivo no estaba en esa caché.
+        // Los tres motivos mueven el PDF fuera de su cola actual (los dos
+        // primeros los asume Power Automate; "otros" ya se dio por
+        // reenviado en cuanto se abrió Outlook, justo arriba), así que
+        // desaparece al instante sin recargar la página. Este modal se abre
+        // desde varias pestañas (Pendientes, Incidencias, Esperando alta,
+        // Completadas, Errores) sin decirnos de cuál venía, así que se
+        // limpia de todas: quitarDeXCache es un no-op si el archivo no
+        // estaba en esa caché.
         if (mueveElPdf) {
             quitarDePendientesCache(archivoModalCorreo);
             quitarDeIncidenciasCache(archivoModalCorreo);
@@ -2779,147 +2648,6 @@ async function confirmarEnvioCorreo() {
     } finally {
         btn.disabled = false;
         btn.textContent = "Enviar";
-    }
-}
-
-// =========================================================
-// ENVIAR CORREO "OTRO MOTIVO" VÍA POWER AUTOMATE (modal propio)
-// =========================================================
-
-let archivoModalCorreoOtroMotivo = null;
-// Contexto del modal de edición en lote (revisión de facturas reservadas),
-// calculado en confirmarEnvioCorreo() justo antes de abrir este modal (ver
-// arriba): si no venía de ahí, los tres quedan a null y no se avanza nada.
-let otroMotivoEdicionAAvanzar = null;
-let otroMotivoContenedorEdicion = null;
-let otroMotivoSiguienteEnEdicion = null;
-// Asunto base tal cual lo devuelve datos_correo_outlook (antes de añadirle
-// el motivo): se guarda aparte para poder recalcular el texto mostrado en
-// vivo según la persona va escribiendo el motivo, con el mismo formato
-// "asunto — motivo" que usa de verdad el backend al enviar (ver
-// solicitar_correo_otro_motivo_pa en logic.py).
-let otroMotivoAsuntoBase = "";
-
-async function abrirModalCorreoOtroMotivo(archivo) {
-    archivoModalCorreoOtroMotivo = archivo;
-    otroMotivoAsuntoBase = "";
-
-    document.getElementById("otroMotivoArchivoNombre").textContent = archivo;
-    document.getElementById("otroMotivoDestinatario").textContent = "Cargando...";
-    document.getElementById("otroMotivoAsunto").textContent = "";
-    document.getElementById("otroMotivoMotivo").value = "";
-    document.getElementById("otroMotivoCuerpo").value = "";
-    document.getElementById("otroMotivoError").style.display = "none";
-
-    document.getElementById("overlayCorreoOtroMotivo").style.display = "flex";
-
-    // El destinatario, el PDF y el asunto los resuelve siempre el backend
-    // (nunca el navegador): esto es solo para que la persona vea a quién y
-    // con qué factura va a enviar antes de confirmar.
-    try {
-        const res = await fetch(`/datos-correo-otro-motivo/${encodeURIComponent(archivo)}`);
-        if (!res.ok) {
-            const err = await res.json();
-            document.getElementById("otroMotivoDestinatario").textContent = "—";
-            mostrarToast(err.detail || "No se pudieron obtener los datos de la factura.", "error");
-            return;
-        }
-        const datos = await res.json();
-        document.getElementById("otroMotivoDestinatario").textContent = datos.email || "(sin email disponible)";
-        otroMotivoAsuntoBase = datos.asunto || "";
-        actualizarAsuntoOtroMotivo();
-    } catch (e) {
-        document.getElementById("otroMotivoDestinatario").textContent = "—";
-        mostrarToast("Error de conexión al cargar los datos de la factura.", "error");
-    }
-}
-
-function actualizarAsuntoOtroMotivo() {
-    const motivo = document.getElementById("otroMotivoMotivo").value.trim();
-    document.getElementById("otroMotivoAsunto").textContent = motivo
-        ? `${otroMotivoAsuntoBase} — ${motivo}`
-        : otroMotivoAsuntoBase;
-}
-
-function cerrarModalCorreoOtroMotivo() {
-    document.getElementById("overlayCorreoOtroMotivo").style.display = "none";
-    archivoModalCorreoOtroMotivo = null;
-    otroMotivoEdicionAAvanzar = null;
-    otroMotivoContenedorEdicion = null;
-    otroMotivoSiguienteEnEdicion = null;
-}
-
-async function confirmarEnvioCorreoOtroMotivo() {
-    if (!archivoModalCorreoOtroMotivo) return;
-
-    const motivo = document.getElementById("otroMotivoMotivo").value.trim();
-    const cuerpo = document.getElementById("otroMotivoCuerpo").value.trim();
-    const avisoError = document.getElementById("otroMotivoError");
-    avisoError.style.display = "none";
-
-    if (!motivo) {
-        mostrarToast("Escribe el motivo antes de enviar.", "error");
-        return;
-    }
-    if (!cuerpo) {
-        mostrarToast("Redacta el correo antes de enviar.", "error");
-        return;
-    }
-
-    // Evita doble clic/doble envío: el botón se deshabilita antes de la
-    // petición y solo se rehabilita si el envío falla (si tiene éxito, el
-    // modal se cierra y no hace falta).
-    const btn = document.getElementById("btnOtroMotivoEnviar");
-    btn.disabled = true;
-    btn.textContent = "Enviando...";
-
-    try {
-        const res = await fetch("/enviar-correo-otro-motivo", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ archivo: archivoModalCorreoOtroMotivo, motivo, cuerpo })
-        });
-
-        if (!res.ok) {
-            const err = await res.json();
-            avisoError.textContent = err.detail || "No se ha podido enviar el correo.";
-            avisoError.style.display = "block";
-            return;
-        }
-
-        const archivoEnviado = archivoModalCorreoOtroMotivo;
-        mostrarToast("Correo enviado correctamente.", "ok");
-        cerrarModalCorreoOtroMotivo();
-
-        // El backend, tras confirmar el envío, archiva el PDF igual que el
-        // resto de motivos (ver solicitar_correo_otro_motivo_pa en logic.py),
-        // así que desaparece de sus colas igual que en confirmarEnvioCorreo().
-        quitarDePendientesCache(archivoEnviado);
-        quitarDeIncidenciasCache(archivoEnviado);
-        quitarDeEsperandoAltaCache(archivoEnviado);
-        cargarFacturasCompletadas();
-        liberarReservas([archivoEnviado]);
-        cargarErroresCompleto();
-        cargarEstadisticas();
-
-        if (otroMotivoEdicionAAvanzar) {
-            const edicionAAvanzar = otroMotivoEdicionAAvanzar;
-            const contenedorEdicion = otroMotivoContenedorEdicion;
-            const siguienteEnEdicion = otroMotivoSiguienteEnEdicion;
-            otroMotivoEdicionAAvanzar = null;
-            otroMotivoContenedorEdicion = null;
-            otroMotivoSiguienteEnEdicion = null;
-            await abrirSiguienteEnListaOTerminar(
-                contenedorEdicion, cacheDeTipoReservable(edicionAAvanzar.tipo), edicionAAvanzar.tipo,
-                siguienteEnEdicion, async () => {}
-            );
-        }
-    } catch (e) {
-        avisoError.textContent = "Error de conexión al enviar el correo.";
-        avisoError.style.display = "block";
-    } finally {
-        btn.disabled = false;
-        btn.textContent = "Enviar correo";
     }
 }
 
@@ -3653,20 +3381,6 @@ function quitarDeEsperandoAltaCache(archivo) {
     filtrarEsperandoAlta();
 }
 
-// Tras editar (p.ej. corregir el CIF del proveedor) la factura sigue en la
-// cola -no se mueve ni se completa-, así que solo hace falta refrescar su
-// fila en la caché para que la tabla muestre el dato ya corregido.
-function actualizarFilaEnCacheEsperandoAlta(archivo, filaCompleta) {
-    if (!esperandoAltaCompletoCache) return;
-    const headers = esperandoAltaCompletoCache[0];
-    const idxArchivo = headers.indexOf("Archivo");
-    esperandoAltaCompletoCache = [
-        headers,
-        ...esperandoAltaCompletoCache.slice(1).map(row => row[idxArchivo] === archivo ? filaCompleta : row),
-    ];
-    filtrarEsperandoAlta();
-}
-
 function actualizarBadgeEsperandoAlta() {
     const n = esperandoAltaCompletoCache ? Math.max(esperandoAltaCompletoCache.length - 1, 0) : 0;
     [document.getElementById("badgeEsperandoAlta"), document.getElementById("badgeEsperandoAltaTab")].forEach(b => {
@@ -3688,13 +3402,12 @@ function filtrarEsperandoAlta() {
     renderTablaGenerica(tabla, "tablaEsperandoAlta", "No hay facturas esperando alta que coincidan con el filtro.", {
         archivoClickable: true,
         seleccionable: true,
-        onClickArchivo: (row, headers) => abrirModalEditarFactura(row, headers, "esperando_alta"),
+        onClickArchivo: (row, headers) => {
+            const archivo = row[headers.indexOf("Archivo")];
+            intentarReservarUnaFactura(archivo);
+            abrirPanelPdf(archivo);
+        },
         acciones: [
-            {
-                titulo: "Editar (p.ej. corregir el CIF del proveedor)",
-                icono: () => "✏️",
-                onClick: (row, headers) => abrirModalEditarFactura(row, headers, "esperando_alta"),
-            },
             {
                 titulo: "Reprocesar (ya se dio de alta)",
                 icono: () => "🔄",
@@ -3718,7 +3431,7 @@ async function descartarEsperandoAlta(archivo) {
     const confirmado = confirm(
         `¿Mover "${archivo}" a la carpeta "No es factura"?\n\nNo se elimina el PDF, solo se aparta de la cola de "Esperando alta".`
     );
-    if (!confirmado) return false;
+    if (!confirmado) return;
 
     try {
         const res = await fetch("/descartar-pendiente", {
@@ -3730,18 +3443,16 @@ async function descartarEsperandoAlta(archivo) {
         if (!res.ok) {
             const err = await res.json();
             mostrarToast(err.detail || "Error al mover el PDF.", "error");
-            return false;
+            return;
         }
 
         mostrarToast(`✓ ${archivo} movido a "No es factura".`, "ok");
         quitarDeEsperandoAltaCache(archivo);
         cargarEstadisticas();
         liberarReservas([archivo]);
-        return true;
 
     } catch (e) {
         mostrarToast("Error de conexión.", "error");
-        return false;
     }
 }
 
@@ -3771,7 +3482,7 @@ async function reprocesarEsperandoAlta(archivo) {
         if (!res.ok) {
             const err = await res.json();
             mostrarToast(err.detail || "Error al reprocesar la factura.", "error");
-            return false;
+            return;
         }
 
         const data = await res.json();
@@ -3783,15 +3494,12 @@ async function reprocesarEsperandoAlta(archivo) {
             else await cargarPendientesCompleto();
             cargarEstadisticas();
             liberarReservas([archivo]);
-            return true;
+        } else {
+            mostrarToast(`${archivo} sigue sin resolverse: comprueba que el CIF ya está dado de alta.`, "error");
         }
-
-        mostrarToast(`${archivo} sigue sin resolverse: comprueba que el CIF ya está dado de alta.`, "error");
-        return false;
 
     } catch (e) {
         mostrarToast("Error de conexión.", "error");
-        return false;
     } finally {
         botones.forEach(b => b.disabled = false);
     }
@@ -4244,16 +3952,11 @@ function abrirModalEditarFactura(rowCompleta, headersCompletos, tipo) {
         rotacion: 0,
     };
 
-    seleccionActivaCaja = "campo";
-    lineaActivaIdx = null;
-    campoLineaActivo = null;
-
     intentarReservarUnaFactura(archivo);
 
     document.getElementById("editarFacturaTitulo").textContent =
         tipo === "pendiente" ? "Completar factura pendiente" :
         tipo === "incidencia" ? "Completar factura con incidencia" :
-        tipo === "esperando_alta" ? "Editar datos (esperando alta)" :
         "Editar factura completada";
     document.getElementById("editarFacturaArchivoNombre").textContent = archivo;
     document.getElementById("estadoEdicionFactura").textContent = "";
@@ -4274,7 +3977,6 @@ function abrirModalEditarFactura(rowCompleta, headersCompletos, tipo) {
 
     construirAccionesExtraEdicion(tipo, rowCompleta, headersCompletos);
     pintarCamposEdicion(headers, fila);
-    cargarLineasEnEdicion(archivo);
     document.getElementById("overlayEditarFactura").style.display = "flex";
 
     document.addEventListener("keydown", manejarTecladoEdicion);
@@ -4552,36 +4254,6 @@ function construirAccionesExtraEdicion(tipo, rowCompleta, headersCompletos) {
     const cont = document.getElementById("editarFacturaAccionesExtra");
     const botones = [];
 
-    if (tipo === "esperando_alta") {
-        botones.push({
-            titulo: "Ya se ha dado de alta el proveedor/empresa: reprocesar la factura",
-            texto: "🔄 Reprocesar",
-            onClick: () => ejecutarYAvanzar(tipo, archivo, () => reprocesarEsperandoAlta(archivo)),
-        });
-        botones.push({
-            titulo: "Enviar correo",
-            texto: "✉️ Enviar correo",
-            onClick: () => abrirModalEnviarCorreo(archivo),
-        });
-        botones.push({
-            titulo: "No es factura",
-            texto: "🗑️ No es factura",
-            onClick: () => ejecutarYAvanzar(tipo, archivo, () => descartarEsperandoAlta(archivo)),
-        });
-
-        cont.innerHTML = "";
-        botones.forEach(b => {
-            const btn = document.createElement("button");
-            btn.type = "button";
-            btn.className = "btn-secondary";
-            btn.title = b.titulo;
-            btn.textContent = b.texto;
-            btn.onclick = b.onClick;
-            cont.appendChild(btn);
-        });
-        return;
-    }
-
     if (tipo === "completada") {
         const definitiva = rowCompleta[headersCompletos.indexOf("Definitiva")] === "Sí";
         botones.push({
@@ -4733,194 +4405,6 @@ function pintarCamposEdicion(headers, fila) {
     document.getElementById("editarFacturaCampos").innerHTML = html;
 }
 
-// Estado de las líneas de la factura que se está editando ahora mismo (ver
-// abrirModalEditarFactura). Paralelo a edicionFactura, pero aparte: las
-// líneas viven en su propio CSV (no en la fila de EXPECTED_HEADERS), así que
-// se cargan/guardan con su propio endpoint (ver /lineas-factura en
-// routers/manual.py), no como una columna más de edicionFactura.edits.
-let edicionLineas = { archivo: null, lineas: [], cajas: [], hubolineas: false };
-
-const CAMPOS_LINEA_FACTURA = ["Descripcion", "Cantidad", "Precio", "Importe", "Otros"];
-const ETIQUETAS_LINEA_FACTURA = { Descripcion: "Descripción", Cantidad: "Cantidad", Precio: "Precio", Importe: "Importe", Otros: "Otros" };
-
-// Muestra, al final de los campos de edición, las líneas ya extraídas de la
-// factura, editables igual que el resto de campos (mismo estilo tabla-campos
-// y mismo botón ✎ de edición inline), más los botones para añadir una línea
-// nueva o eliminar una existente -- por si la extracción se ha dejado
-// alguna, o ha detectado de más. Si la factura no tiene líneas (o falla la
-// consulta), se muestra igualmente la sección, vacía, para poder añadir
-// líneas a mano.
-async function cargarLineasEnEdicion(archivo) {
-    edicionLineas = { archivo, lineas: [], cajas: [], hubolineas: false };
-
-    try {
-        const res = await fetch("/lineas-factura/" + encodeURIComponent(archivo));
-        if (res.ok) {
-            const data = await res.json();
-            edicionLineas.lineas = (data.lineas || []).map(linea => ({ ...linea }));
-        }
-        // Un 404 (factura sin líneas extraídas) no es un error: se deja la
-        // lista vacía, para que el usuario pueda añadir líneas a mano si la
-        // extracción no encontró ninguna.
-    } catch (e) {
-        // Silencioso: si falla la consulta, se empieza con la lista vacía en
-        // vez de bloquear la edición del resto de la factura.
-    }
-
-    edicionLineas.hubolineas = edicionLineas.lineas.length > 0;
-    renderizarSeccionLineas();
-
-    if (edicionLineas.lineas.length) {
-        cargarPosicionesLineas(archivo);
-    }
-}
-
-function renderizarSeccionLineas() {
-    document.getElementById("editarFacturaLineas").innerHTML =
-        "<div class='modal-titulo' style='font-size:14px;margin:16px 0 8px'>Líneas de factura</div>" +
-        "<div style='max-height:280px;overflow:auto;padding-right:4px'>" +
-        renderTablaLineasEditable(edicionLineas.lineas) +
-        "</div>" +
-        "<div style='margin-top:8px;display:flex;gap:8px;flex-wrap:wrap'>" +
-        "<button type='button' class='btn-secondary' onclick='anadirLineaEdicion()'>➕ Añadir línea</button>" +
-        "<button type='button' class='btn-secondary' id='btnReextraerLineas' onclick='alternarModoReextraerLineas()' " +
-        "title='Arrastra sobre una tabla de líneas en el PDF para que la IA la lea; se añaden a las que ya haya, así que en facturas de varias páginas puedes repetirlo en cada una'>🔄 Reextraer líneas (seleccionar región)</button>" +
-        "<button type='button' class='btn-secondary' onclick='vaciarLineasEdicion()' title='Borra todas las líneas para volver a reextraerlas desde cero'>🗑 Vaciar líneas</button>" +
-        "</div>";
-}
-
-// Cajas (página + coordenadas) para resaltar cada línea en el PDF al
-// pincharla, igual que cargarPosicionesEdicion hace por campo. Aparte de esa
-// llamada (no en la misma) porque unas y otras se sirven de endpoints
-// distintos: las líneas no son parte de EXPECTED_HEADERS/fila_completa.
-async function cargarPosicionesLineas(archivo) {
-    try {
-        const res = await fetch("/posiciones-lineas-factura/" + encodeURIComponent(archivo));
-        const data = await res.json();
-        if (edicionLineas.archivo !== archivo) return; // se cambió de factura mientras llegaba
-        edicionLineas.cajas = data.cajas || [];
-    } catch (e) {
-        if (edicionLineas.archivo === archivo) edicionLineas.cajas = [];
-    }
-
-    if (edicionLineas.archivo === archivo && seleccionActivaCaja === "linea" && lineaActivaIdx !== null) {
-        pintarCajaLineaActiva(lineaActivaIdx);
-    }
-}
-
-function renderTablaLineasEditable(lineas) {
-    if (!lineas.length) {
-        return "<p class='help' style='margin:4px 0'>Sin líneas registradas.</p>";
-    }
-
-    let html = "<table class='tabla-campos'><tr>";
-    CAMPOS_LINEA_FACTURA.forEach(campo => html += `<th>${ETIQUETAS_LINEA_FACTURA[campo]}</th>`);
-    html += "<th></th></tr>";
-
-    lineas.forEach((linea, rowIdx) => {
-        html += `<tr class="fila-linea-factura" data-linea-idx="${rowIdx}" onclick="activarLineaEdicion(${rowIdx})">`;
-        CAMPOS_LINEA_FACTURA.forEach(campo => {
-            const val = String(linea[campo] ?? "-").trim() || "-";
-            html += `<td class="campo-valor" data-linea-idx="${rowIdx}" data-campo="${campo}">
-                        <span class="valor-ok">${val}</span>
-                        <input
-                            type="text"
-                            value="${escaparAttr(val)}"
-                            style="display:none;width:100%;box-sizing:border-box;border:1px solid #1F6F43;border-radius:4px;padding:4px 7px;font-size:13px"
-                            oninput="registrarEditLinea(${rowIdx}, '${campo}', this.value)"
-                            onblur="cerrarEditInline(this)"
-                            onclick="event.stopPropagation(); activarCeldaLinea(${rowIdx}, '${campo}')"
-                        >
-                        <button
-                            class="btn-secondary"
-                            style="padding:2px 7px;font-size:11px;margin-left:6px"
-                            onclick="event.stopPropagation(); activarCeldaLinea(${rowIdx}, '${campo}'); abrirEditInline(this)"
-                            title="Editar">✎</button>
-                     </td>`;
-        });
-        html += `<td class="campo-valor">
-                    <button
-                        class="btn-secondary"
-                        style="padding:2px 7px;font-size:11px;color:#C62828"
-                        onclick="event.stopPropagation(); eliminarLineaEdicion(${rowIdx})"
-                        title="Eliminar esta línea">🗑</button>
-                 </td>`;
-        html += "</tr>";
-    });
-
-    html += "</table>";
-    return html;
-}
-
-// Línea nueva en blanco, para cuando la extracción se ha dejado alguna: no
-// tiene caja en el PDF todavía (no viene del LLM ni se ha vuelto a calcular
-// su posición), así que se activa igual pero sin recuadro hasta guardar y
-// reabrir la factura.
-function anadirLineaEdicion() {
-    edicionLineas.lineas.push({ Descripcion: "-", Cantidad: "-", Precio: "-", Importe: "-", Otros: "-" });
-    edicionLineas.cajas.push(null);
-
-    renderizarSeccionLineas();
-    activarLineaEdicion(edicionLineas.lineas.length - 1);
-}
-
-// Al eliminar, se reindexan `lineas` y `cajas` a la vez (van siempre
-// alineadas por posición) y se recalcula qué línea queda activa, si había
-// alguna.
-function eliminarLineaEdicion(rowIdx) {
-    edicionLineas.lineas.splice(rowIdx, 1);
-    edicionLineas.cajas.splice(rowIdx, 1);
-
-    if (!edicionLineas.lineas.length) {
-        lineaActivaIdx = null;
-        campoLineaActivo = null;
-        seleccionActivaCaja = "campo";
-        document.getElementById("editarFacturaCaja").style.display = "none";
-    } else if (lineaActivaIdx !== null) {
-        if (rowIdx < lineaActivaIdx) {
-            lineaActivaIdx -= 1;
-        } else if (rowIdx === lineaActivaIdx) {
-            lineaActivaIdx = Math.min(lineaActivaIdx, edicionLineas.lineas.length - 1);
-        }
-    }
-
-    renderizarSeccionLineas();
-    if (seleccionActivaCaja === "linea" && lineaActivaIdx !== null) {
-        activarLineaEdicion(lineaActivaIdx);
-    }
-}
-
-function registrarEditLinea(rowIdx, campo, valor) {
-    if (!edicionLineas.lineas[rowIdx]) return;
-    edicionLineas.lineas[rowIdx][campo] = valor.trim() || "-";
-}
-
-// Envía al servidor las líneas de `archivo` si se cargaron para esta misma
-// factura (ver cargarLineasEnEdicion). Se envía también cuando ya no queda
-// ninguna (edicionLineas.hubolineas), para que borrar a mano todas las
-// líneas se refleje de verdad en el CSV -si nunca hubo líneas y tampoco se
-// añadió ninguna, no hay nada que sincronizar-. Se llama tras guardar bien
-// los campos principales (tanto en guardarEdicionFactura como en
-// guardarBorradorFactura); un fallo aquí no debe hacer parecer que el
-// guardado principal (que ya tuvo éxito) falló.
-async function guardarLineasSiHayCambios(archivo) {
-    if (edicionLineas.archivo !== archivo) return;
-    if (!edicionLineas.lineas.length && !edicionLineas.hubolineas) return;
-
-    try {
-        const res = await fetch("/lineas-factura/" + encodeURIComponent(archivo), {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ lineas: edicionLineas.lineas }),
-        });
-        if (!res.ok) {
-            mostrarToast("Aviso: no se pudieron guardar los cambios en las líneas de factura.", "error");
-        }
-    } catch (e) {
-        mostrarToast("Aviso: no se pudieron guardar los cambios en las líneas de factura.", "error");
-    }
-}
-
 // =========================================================
 // PANTALLA DIVIDIDA: VISOR DE PDF PROPIO, NAVEGACIÓN POR TECLADO,
 // RECUADRO AUTOMÁTICO Y SELECCIÓN MANUAL CON ARRASTRE
@@ -4970,27 +4454,6 @@ async function cargarPdfEnEdicion(archivo) {
     }
 }
 
-// Los campos normales y las líneas de factura pintan su recuadro en el
-// MISMO div (#editarFacturaCaja), pero se cargan con dos llamadas
-// independientes (cargarPosicionesEdicion / cargarPosicionesLineas) que
-// pueden tardar cada una lo suyo. Sin esta variable, la que tarde más en
-// responder repintaría por encima el recuadro de la otra aunque el usuario
-// ya hubiera hecho clic en un campo/línea distinto mientras tanto -por
-// ejemplo, si el usuario pincha una línea y justo después llega la
-// respuesta (más lenta) de los campos, el recuadro volvería a saltar al
-// campo activo, dando la sensación de que pinchar la línea "no hace nada".
-// Solo se repinta al llegar los datos si lo último que activó el usuario
-// sigue siendo del mismo tipo que acaba de cargar.
-let seleccionActivaCaja = "campo";
-let lineaActivaIdx = null;
-// Cuál de las 5 columnas de la línea activa (Descripcion/Cantidad/Precio/
-// Importe/Otros) es el destino de "Seleccionar en el PDF": una línea tiene
-// varias celdas, a diferencia de un campo normal (una sola), así que hace
-// falta saber cuál en concreto. Se fija al activar una línea entera (por
-// defecto Descripcion) y se afina al abrir la edición de una celda concreta
-// (ver activarCeldaLinea).
-let campoLineaActivo = null;
-
 async function cargarPosicionesEdicion() {
     const archivo = edicionFactura.archivo;
 
@@ -5007,7 +4470,7 @@ async function cargarPosicionesEdicion() {
         if (edicionFactura && edicionFactura.archivo === archivo) edicionFactura.cajasCampos = {};
     }
 
-    if (edicionFactura && edicionFactura.camposNavegables.length && seleccionActivaCaja === "campo") {
+    if (edicionFactura && edicionFactura.camposNavegables.length) {
         pintarCajaCampoActivo(edicionFactura.camposNavegables[edicionFactura.campoActivoIdx]);
     }
 }
@@ -5024,29 +4487,10 @@ function manejarTecladoEdicion(ev) {
     }
 }
 
-// La navegación con ↓/↑ recorre primero los campos y, al llegar al último,
-// sigue por las líneas de factura (si las hay) antes de volver a dar la
-// vuelta al primer campo -- un único recorrido circular en vez de dos
-// independientes, para poder revisar la factura entera sin soltar el
-// teclado.
 function moverCampoActivo(delta) {
     if (!edicionFactura || !edicionFactura.camposNavegables.length) return;
-
-    const nCampos = edicionFactura.camposNavegables.length;
-    const nLineas = edicionLineas.lineas.length;
-    const total = nCampos + nLineas;
-
-    const actual = (seleccionActivaCaja === "linea" && lineaActivaIdx !== null)
-        ? nCampos + lineaActivaIdx
-        : edicionFactura.campoActivoIdx;
-
-    const siguiente = ((actual + delta) % total + total) % total;
-
-    if (siguiente < nCampos) {
-        activarCampoEdicion(siguiente);
-    } else {
-        activarLineaEdicion(siguiente - nCampos);
-    }
+    const n = edicionFactura.camposNavegables.length;
+    activarCampoEdicion(((edicionFactura.campoActivoIdx + delta) % n + n) % n);
 }
 
 function activarCampoEdicion(idx) {
@@ -5057,11 +4501,6 @@ function activarCampoEdicion(idx) {
 
     document.querySelectorAll("#editarFacturaCampos tr[data-campo]").forEach(tr =>
         tr.classList.toggle("campo-activo", tr.dataset.campo === campo)
-    );
-    // Quita el resaltado de líneas: solo puede haber un campo/línea activo a
-    // la vez (ver también activarLineaEdicion, que hace lo simétrico).
-    document.querySelectorAll("#editarFacturaLineas tr.fila-linea-factura").forEach(tr =>
-        tr.classList.remove("campo-activo")
     );
 
     const fila = document.querySelector(`#editarFacturaCampos tr[data-campo="${CSS.escape(campo)}"]`);
@@ -5079,7 +4518,6 @@ function activarCampoEdicion(idx) {
         }
     }
 
-    seleccionActivaCaja = "campo";
     pintarCajaCampoActivo(campo);
 }
 
@@ -5096,9 +4534,7 @@ function girarPdfEdicion(delta) {
     });
 
     document.getElementById("editarFacturaCajaManual").style.display = "none";
-    if (seleccionActivaCaja === "linea" && lineaActivaIdx !== null) {
-        pintarCajaLineaActiva(lineaActivaIdx);
-    } else if (edicionFactura.camposNavegables.length) {
+    if (edicionFactura.camposNavegables.length) {
         pintarCajaCampoActivo(edicionFactura.camposNavegables[edicionFactura.campoActivoIdx]);
     }
 }
@@ -5174,14 +4610,11 @@ function coordDisplayANatural(img, xd, yd) {
     return { x: xd / s, y: yd / s };
 }
 
-// Compartida por pintarCajaCampoActivo (campos normales) y
-// pintarCajaLineaActiva (líneas de factura): ambas resuelven qué caja les
-// toca pintar (de una fuente de datos distinta cada una) y delegan aquí el
-// cálculo de coordenadas y el recuadro en sí.
-function _pintarCajaEnPdf(caja) {
+function pintarCajaCampoActivo(campo) {
     const cajaDiv = document.getElementById("editarFacturaCaja");
     document.getElementById("editarFacturaCajaManual").style.display = "none";
 
+    const caja = edicionFactura && edicionFactura.cajasCampos && edicionFactura.cajasCampos[campo];
     const wrap = caja
         ? document.querySelector(`#editarFacturaPdfPaginas .pagina-pdf-wrap[data-pagina="${caja.pagina}"]`)
         : null;
@@ -5210,74 +4643,11 @@ function _pintarCajaEnPdf(caja) {
     });
 }
 
-function pintarCajaCampoActivo(campo) {
-    _pintarCajaEnPdf(edicionFactura && edicionFactura.cajasCampos && edicionFactura.cajasCampos[campo]);
-}
-
-function pintarCajaLineaActiva(rowIdx) {
-    _pintarCajaEnPdf(edicionLineas.cajas && edicionLineas.cajas[rowIdx]);
-}
-
-// Al pinchar una línea (fuera de sus botones/inputs de edición, ver
-// event.stopPropagation() en renderTablaLineasEditable): la marca como
-// activa (mismo estilo campo-activo que usan los campos normales) y pinta
-// su recuadro en el PDF, igual que al navegar entre campos con el teclado.
-function activarLineaEdicion(rowIdx) {
-    document.querySelectorAll("#editarFacturaLineas tr.fila-linea-factura").forEach(tr =>
-        tr.classList.toggle("campo-activo", parseInt(tr.dataset.lineaIdx, 10) === rowIdx)
-    );
-    // Quita el resaltado de campos: solo puede haber un campo/línea activo a
-    // la vez (ver también activarCampoEdicion, que hace lo simétrico).
-    document.querySelectorAll("#editarFacturaCampos tr[data-campo]").forEach(tr =>
-        tr.classList.remove("campo-activo")
-    );
-
-    const fila = document.querySelector(`#editarFacturaLineas tr.fila-linea-factura[data-linea-idx="${rowIdx}"]`);
-    if (fila) fila.scrollIntoView({ block: "nearest" });
-
-    seleccionActivaCaja = "linea";
-    lineaActivaIdx = rowIdx;
-    // Al activar la fila entera (clic en la fila / navegación con teclado,
-    // no en una celda concreta) se asume Descripcion como destino de
-    // "Seleccionar en el PDF" -es la columna más identificativa-; si el
-    // usuario abre la edición de otra celda, activarCeldaLinea la sustituye.
-    campoLineaActivo = "Descripcion";
-    pintarCajaLineaActiva(rowIdx);
-}
-
-// Se llama al abrir la edición de una celda CONCRETA de una línea (ver el
-// botón ✎ y el propio <input> en renderTablaLineasEditable): además de
-// activar la fila (resaltado, recuadro en el PDF), deja esa celda en
-// concreto como destino de "Seleccionar en el PDF", en vez del valor por
-// defecto (Descripcion) que pone activarLineaEdicion.
-function activarCeldaLinea(rowIdx, campo) {
-    activarLineaEdicion(rowIdx);
-    campoLineaActivo = campo;
-}
-
 function alternarSeleccionManual() {
     if (!edicionFactura) return;
     edicionFactura.seleccionManualActiva = !edicionFactura.seleccionManualActiva;
-    // Comparten el mismo mecanismo de arrastre (ver iniciarArrastreManual):
-    // no pueden estar los dos modos activos a la vez.
-    modoReextraerLineas = false;
-    document.getElementById("btnReextraerLineas")?.classList.remove("activo");
     document.getElementById("btnSeleccionarEnPdf").classList.toggle("activo", edicionFactura.seleccionManualActiva);
     document.getElementById("editarFacturaPdfScroll").style.cursor = edicionFactura.seleccionManualActiva ? "crosshair" : "";
-}
-
-// Modo "Reextraer líneas": arrastrar una región llama a la IA con esa
-// imagen recortada (ver reextraerLineasDeRegion) en vez de rellenar un
-// campo/celda como hace el modo normal de arriba.
-let modoReextraerLineas = false;
-
-function alternarModoReextraerLineas() {
-    if (!edicionFactura) return;
-    modoReextraerLineas = !modoReextraerLineas;
-    edicionFactura.seleccionManualActiva = modoReextraerLineas;
-    document.getElementById("btnSeleccionarEnPdf").classList.remove("activo");
-    document.getElementById("btnReextraerLineas").classList.toggle("activo", modoReextraerLineas);
-    document.getElementById("editarFacturaPdfScroll").style.cursor = modoReextraerLineas ? "crosshair" : "";
 }
 
 let _arrastreManual = null;
@@ -5348,34 +4718,9 @@ async function terminarArrastreManual(ev) {
     const x1 = Math.max(d0.x, d1.x);
     const y1 = Math.max(d0.y, d1.y);
 
-    if (modoReextraerLineas) {
-        await reextraerLineasDeRegion(pagina, x0, y0, x1, y1);
-        return;
-    }
-
-    // Si lo último activo es una línea (no un campo), el texto reconocido va
-    // a la celda concreta de esa línea (ver activarCeldaLinea), no al último
-    // campo normal que se hubiera activado antes.
-    const escribirEnLinea = seleccionActivaCaja === "linea" && lineaActivaIdx !== null && campoLineaActivo;
-
-    let campo = null;
-    if (!escribirEnLinea) {
-        campo = edicionFactura.camposNavegables[edicionFactura.campoActivoIdx];
-        edicionFactura.cajasCampos[campo] = { pagina, x0, y0, x1, y1 };
-        pintarCajaCampoActivo(campo);
-    }
-    // Si es una línea que YA tenía caja (calculada en el servidor a partir
-    // de Descripcion+Importe, ver calcular_cajas_lineas), no se toca: es la
-    // de la fila entera, y una celda suelta sería peor que esa. Pero si
-    // todavía no tenía ninguna -típicamente una línea añadida a mano, que
-    // nunca ha pasado por esa localización automática- se usa el propio
-    // arrastre como su caja: ya sabemos justo dónde está (es el usuario
-    // quien lo acaba de señalar), así el recuadro aparece la próxima vez que
-    // se active en vez de quedarse sin ninguno.
-    if (escribirEnLinea && !edicionLineas.cajas[lineaActivaIdx]) {
-        edicionLineas.cajas[lineaActivaIdx] = { pagina, x0, y0, x1, y1 };
-        pintarCajaLineaActiva(lineaActivaIdx);
-    }
+    const campo = edicionFactura.camposNavegables[edicionFactura.campoActivoIdx];
+    edicionFactura.cajasCampos[campo] = { pagina, x0, y0, x1, y1 };
+    pintarCajaCampoActivo(campo);
 
     try {
         const res = await fetch("/ocr-region", {
@@ -5388,83 +4733,16 @@ async function terminarArrastreManual(ev) {
         if (res.status === 503) {
             mostrarToast(data.detail || "Tesseract OCR no está disponible en el servidor.", "error");
         } else if (data.texto) {
-            if (escribirEnLinea) {
-                establecerValorCeldaLinea(lineaActivaIdx, campoLineaActivo, data.texto);
-            } else {
-                establecerValorCampoEdicion(campo, data.texto);
-                const fila = document.querySelector(`#editarFacturaCampos tr[data-campo="${CSS.escape(campo)}"]`);
-                const input = fila && fila.querySelector("input");
-                if (input) { input.focus(); input.select(); }
-            }
+            establecerValorCampoEdicion(campo, data.texto);
+            const fila = document.querySelector(`#editarFacturaCampos tr[data-campo="${CSS.escape(campo)}"]`);
+            const input = fila && fila.querySelector("input");
+            if (input) { input.focus(); input.select(); }
         } else {
             mostrarToast("No se ha podido leer texto ahí; escribe el valor a mano.", "error");
         }
     } catch (e) {
         mostrarToast("Error de conexión al leer la selección.", "error");
     }
-}
-
-// Reextrae con la IA (vision) las líneas de la región seleccionada y las
-// AÑADE a las que ya hubiera (no las sustituye): así una factura de varias
-// páginas se puede reextraer página a página -o tabla a tabla- sin perder
-// lo ya reconocido antes; para empezar de cero, usar "Vaciar líneas" (ver
-// vaciarLineasEdicion). El modo NO se desactiva solo, para poder seguir
-// seleccionando otra región (p.ej. la página siguiente) sin volver a pulsar
-// el botón cada vez -se sale de él pulsándolo de nuevo (alternarModoReextraerLineas)-.
-// Solo se manda la imagen recortada de esa región, no la factura entera,
-// para gastar menos por llamada.
-async function reextraerLineasDeRegion(pagina, x0, y0, x1, y1) {
-    const archivo = edicionFactura.archivo;
-    mostrarToast("Leyendo líneas de la región seleccionada...", "ok");
-
-    try {
-        const res = await fetch("/reextraer-lineas-region", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ archivo, pagina, x0, y0, x1, y1 }),
-        });
-        const data = await res.json();
-
-        if (!res.ok) {
-            mostrarToast(data.detail || "No se pudieron reextraer las líneas.", "error");
-            return;
-        }
-        if (!data.lineas || !data.lineas.length) {
-            mostrarToast("No se ha reconocido ninguna línea en esa región.", "error");
-            return;
-        }
-
-        const nuevasLineas = data.lineas.map(linea => ({ ...linea }));
-        edicionLineas.lineas.push(...nuevasLineas);
-        // No se conoce todavía la caja individual de estas líneas nuevas (no
-        // ha pasado por calcular_cajas_lineas en el servidor, solo por esta
-        // llamada de vision).
-        edicionLineas.cajas.push(...nuevasLineas.map(() => null));
-        edicionLineas.hubolineas = true;
-        renderizarSeccionLineas();
-        mostrarToast(`✓ ${nuevasLineas.length} línea(s) añadida(s) (total: ${edicionLineas.lineas.length}).`, "ok");
-    } catch (e) {
-        mostrarToast("Error de conexión al reextraer las líneas.", "error");
-    }
-}
-
-// Vacía todas las líneas de la factura en edición, para volver a
-// reextraerlas desde cero (p.ej. si el resultado acumulado con
-// reextraerLineasDeRegion ha quedado mal y se prefiere empezar de nuevo).
-function vaciarLineasEdicion() {
-    if (edicionLineas.lineas.length && !confirm("¿Vaciar todas las líneas de esta factura?")) return;
-
-    edicionLineas.lineas = [];
-    edicionLineas.cajas = [];
-
-    if (seleccionActivaCaja === "linea") {
-        seleccionActivaCaja = "campo";
-        document.getElementById("editarFacturaCaja").style.display = "none";
-    }
-    lineaActivaIdx = null;
-    campoLineaActivo = null;
-
-    renderizarSeccionLineas();
 }
 
 document.getElementById("editarFacturaPdfScroll").addEventListener("mousedown", iniciarArrastreManual);
@@ -5493,26 +4771,6 @@ function establecerValorCampoEdicion(nombreCampo, valor) {
     input.value = valor;
 
     const span = input.closest("td")?.querySelector("span.valor-ok");
-    if (span) span.textContent = valor.trim() || "-";
-}
-
-// Equivalente a establecerValorCampoEdicion, pero para una celda de línea
-// (rowIdx + nombre de columna en vez de un único índice de campo): la usa
-// terminarArrastreManual cuando lo activo es una línea (ver
-// activarCeldaLinea/campoLineaActivo).
-function establecerValorCeldaLinea(rowIdx, campo, valor) {
-    if (!edicionLineas.lineas[rowIdx]) return;
-    registrarEditLinea(rowIdx, campo, valor);
-
-    const celda = document.querySelector(
-        `#editarFacturaLineas td[data-linea-idx="${rowIdx}"][data-campo="${CSS.escape(campo)}"]`
-    );
-    if (!celda) return;
-
-    const input = celda.querySelector("input");
-    if (input) input.value = valor;
-
-    const span = celda.querySelector("span.valor-ok");
     if (span) span.textContent = valor.trim() || "-";
 }
 
@@ -5642,10 +4900,6 @@ function cerrarModalEditarFactura() {
     document.getElementById("editarFacturaCajaManual").style.display = "none";
     _arrastreManual = null;
     edicionFactura = null;
-    edicionLineas = { archivo: null, lineas: [], cajas: [], hubolineas: false };
-    seleccionActivaCaja = "campo";
-    lineaActivaIdx = null;
-    campoLineaActivo = null;
 }
 
 function construirFilaFinalEdicion() {
@@ -5691,8 +4945,6 @@ async function guardarBorradorFactura() {
         }
 
         mostrarToast(`✓ Cambios guardados en ${edicionFactura.archivo} (sigue pendiente de completar).`, "ok");
-
-        await guardarLineasSiHayCambios(edicionFactura.archivo);
 
         if (edicionFactura.tipo === "incidencia") {
             await cargarIncidenciasCompleto();
@@ -5753,15 +5005,6 @@ async function guardarEdicionFactura() {
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ archivo, fila_completa: filaFinal, usuario: obtenerUsuarioActual() }),
                 });
-            } else if (tipo === "esperando_alta") {
-                // Solo guarda el progreso (p.ej. el CIF corregido): no exige
-                // campos obligatorios ni mueve el PDF -sigue en "esperando
-                // alta" hasta que se pulse "Reprocesar"-.
-                res = await fetch("/guardar-cambios-pendiente", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ archivo, fila_completa: filaFinal, usuario: obtenerUsuarioActual() }),
-                });
             } else {
                 res = await fetch("/actualizar-factura-completada", {
                     method: "POST",
@@ -5794,11 +5037,8 @@ async function guardarEdicionFactura() {
                 "ok"
             );
 
-            await guardarLineasSiHayCambios(archivo);
-
             if (tipo === "pendiente") quitarDePendientesCache(archivo);
             else if (tipo === "incidencia") quitarDeIncidenciasCache(archivo);
-            else if (tipo === "esperando_alta") actualizarFilaEnCacheEsperandoAlta(archivo, filaFinal);
 
             liberarReservas([archivo]);
             return true;
@@ -5818,8 +5058,8 @@ async function guardarEdicionFactura() {
 // =========================================================
 
 async function inicializarApp() {
+    obtenerUsuarioActual();
     actualizarWidgetUsuario();
-    aplicarPermisosPorRol();
     await cargarMisReservas();
 
     cargarEstadisticas();
@@ -5827,14 +5067,11 @@ async function inicializarApp() {
     cargarIncidenciasCompleto();
     cargarEsperandoAltaCompleto();
     cargarErroresCompleto();
-    cargarDuplicadosCompleto();
     cargarFacturasCompletadas();
-
-    if (esAdmin()) {
-        cargarNoFacturaCompleto();
-        cargarVistaGlobal();
-        cargarAuditoria();
-    }
+    cargarDuplicadosCompleto();
+    cargarNoFacturaCompleto();
+    cargarVistaGlobal();
+    cargarAuditoria();
 }
 
 inicializarApp();
@@ -5842,4 +5079,3 @@ inicializarApp();
 </script>
 </body>
 </html>
-
