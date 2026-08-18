@@ -30,7 +30,7 @@ Sistema que extrae automáticamente los datos estructurados de facturas en PDF u
 - **Detección de facturas duplicadas**: al completar una factura se comprueba si ya existe otra con el mismo número de factura, proveedor, comprador, base imponible y total (con tolerancia de redondeo); si coincide, ambas quedan marcadas como duplicado en SQL y aparecen en la pestaña "Duplicados" para que una persona decida cuál conservar (`/resolver-duplicado` descarta las demás sin borrar los PDFs, los mueve a `no_es_factura`)
 - **Solicitud de reenvío por correo** con tres motivos posibles, seleccionables desde casi cualquier pestaña (Corregir manualmente, Incidencias, Esperando alta, Revisar facturas, Errores):
   - *Falta el número de pedido de cliente* y *Hay dos o más facturas en la misma página/PDF* — el PDF se traslada a una cola dedicada que vigila un flujo de Power Automate, que compone y envía el correo automáticamente al remitente original
-  - *Otro motivo* (texto libre) — se abre un borrador en Outlook de escritorio, en el propio PC de la persona (mediante `facturahelper`, ver [FacturaHelper](#facturahelper-correo-con-outlook-en-el-pc-del-usuario)), con el destinatario y el PDF ya adjuntos para que lo redacte y envíe ella misma (nunca se envía automáticamente); en cuanto Outlook se abre, el PDF se mueve directamente a `reenviadas_otro_motivo` (no hay flujo de Power Automate detrás de este motivo)
+  - *Otro motivo* (texto libre) — se abre un modal propio de EscanerIA donde la persona escribe el motivo y redacta el cuerpo del correo; el destinatario, el PDF y el asunto los resuelve el backend (no el navegador) y el envío se hace vía un flujo de Power Automate (`POWER_AUTOMATE_CORREO_URL`, ver más abajo), con el PDF adjunto en Base64. Si el envío se confirma, el PDF se mueve a `reenviadas_otro_motivo` y queda constancia en `HistorialCorreoOtroMotivo`; si falla, el PDF no se mueve y el modal se queda abierto sin perder lo escrito
 - **Errores de extracción**: los PDFs que fallan al procesarse caen en la carpeta `error`; desde la pestaña "Errores" se pueden reprocesar (uno o todos a la vez) o clasificar con un motivo ("el fichero pesa demasiado" / "otro"), que los traslada a su propia cola de reenvío
 - **Cola "Esperando alta"**: cualquier factura de Corregir manualmente, Incidencias o Revisar facturas cuyo comprador o proveedor todavía no esté dado de alta en `EmpresasClasificadas`/`ProveedoresClasificados` se puede apartar manualmente a esta cola independiente; cuando se da de alta el CIF que faltaba, el botón "Reprocesar" la reintegra al flujo normal (completadas o corregir manualmente)
 - **Caché de pendientes/incidencias** (`ColaRevision`): "Corregir manualmente" e "Incidencias" leen de esta tabla en vez de releer cada PDF y volver a resolver Buyer/Proveedor en cada carga de página, que con una cola larga tardaba varios minutos; la caché se mantiene sola en el momento en que cada PDF entra, sale o se corrige en una de las dos colas. La reclasificación automática de incidencias (por si el CIF que faltaba se acaba de dar de alta) ya no recorre toda la cola en cada recarga: se dispara una sola vez, solo para las incidencias afectadas, justo cuando `cargar_empresas.py`/`cargar_proveedores.py` activan ese CIF concreto
@@ -238,12 +238,23 @@ SQL_DRIVER=ODBC Driver 18 for SQL Server
 # de la app a un único buzón con una Application Access Policy en Exchange
 # Online (New-ApplicationAccessPolicy), en vez de dejarla con acceso a todos
 # los buzones del tenant. Mientras estas tres variables no estén rellenas,
-# el botón "Otro" del modal de envío de correo responde con un aviso de
-# "Microsoft Graph no está configurado todavía" en vez de fallar en silencio.
+# el endpoint /crear-borrador-outlook responde con un aviso de "Microsoft
+# Graph no está configurado todavía" en vez de fallar en silencio. El botón
+# "Otro" del modal de envío de correo ya no lo usa (ver POWER_AUTOMATE_CORREO_URL
+# más abajo); se deja disponible por compatibilidad, sin romperlo.
 GRAPH_TENANT_ID=
 GRAPH_CLIENT_ID=
 GRAPH_CLIENT_SECRET=
 GRAPH_BUZON_ENVIO=escanerIA@migasa.com
+
+# --- Envío de correo "Otro motivo" vía Power Automate: al elegir "Otro" en
+# el modal de envío de correo, EscanerIA abre su propio modal (motivo +
+# cuerpo) y el backend hace un POST a esta URL con el PDF en Base64 y el
+# resto de datos ya resueltos (destinatario, asunto, usuario...). La URL del
+# flujo solo vive aquí -nunca se expone al navegador ni se escribe en los
+# logs-. Mientras esté vacía, esa acción responde con un aviso de "no
+# configurado todavía" en vez de fallar en silencio.
+POWER_AUTOMATE_CORREO_URL=
 
 # --- Login con Windows Authentication (IIS por delante de uvicorn, ver
 # "Despliegue en producción" más abajo) — el rol se calcula por pertenencia
@@ -405,7 +416,11 @@ python cargar_empresas.py             # carga de verdad
 
 ### Proveedores clasificados (Granel / Envasado)
 
-Utilidad puntual, independiente del circuito de facturas, para volcar a SQL el listado de proveedores exportado desde Business Central (`ProveedoresGranel.xlsx`, `ProveedoresEnvasado.xlsx`) a la tabla `ProveedoresClasificados` (CIF, nombre, dirección, población, clasificación y si está bloqueado). La dirección y población solo vienen informadas en el export de Envasado; Business Central no las trae en la vista de Granel. Si un mismo CIF aparece en ambos ficheros, se guarda una fila por cada clasificación. Es seguro repetir la carga: hace upsert por CIF + Clasificación.
+Utilidad puntual, independiente del circuito de facturas, para volcar a SQL el listado de proveedores de Business Central a la tabla `ProveedoresClasificados` (CIF, nombre, dirección, población, clasificación y si está bloqueado). Ya no hace falta descargar y colocar a mano ningún Excel: ambas clasificaciones se leen en caliente por OData de Business Central (NTLM, credenciales en `BC_ODATA_USER`/`BC_ODATA_PASSWORD` del `.env`).
+- **Envasado** — un único servicio (`ProveedoresBloq`, instancia "oleico"; URL opcional en `BC_ODATA_URL`). No trae dirección, solo población.
+- **Granel** — dos servicios de la instancia "olivar" (empresa Migasa Aceites, S.L.U.): `EscanerIAListaProveedores` (`BC_ODATA_GRANEL_LISTA_URL`, lista base con dirección/población y un bloqueo "genérico") y `EscanerIAConsultaBloProv` (`BC_ODATA_GRANEL_BLOQUEO_URL`, bloqueo específico de esa empresa por proveedor, que manda sobre el genérico cuando existe).
+
+Si un mismo CIF aparece en ambas clasificaciones, se guarda una fila por cada una. Es seguro repetir la carga: hace upsert por CIF + Clasificación.
 
 ```bash
 python cargar_proveedores.py --dry-run   # solo cuenta y lista, no escribe nada
@@ -441,7 +456,7 @@ python cargar_proveedores.py             # carga de verdad
 ├── migrar_orden_columnas.py   # Migración puntual e histórica del orden de columnas en los Excel ya escritos
 ├── migrar_cola_revision.py    # Migración puntual: puebla ColaRevision con lo ya acumulado en corregir_manualmente/incidencias
 ├── cargar_empresas.py         # Carga puntual de Empresas granel.xlsx / envasado.xlsb a EmpresasClasificadas
-├── cargar_proveedores.py      # Carga puntual de ProveedoresGranel/Envasado.xlsx a ProveedoresClasificados
+├── cargar_proveedores.py      # Carga Granel + Envasado (OData BC) a ProveedoresClasificados
 ├── sql/
 │   ├── crear_tabla_empresas_clasificadas.sql     # DDL opcional de la tabla EmpresasClasificadas
 │   ├── crear_tabla_facturas_examinadas.sql       # DDL opcional de la tabla FacturasExaminadas (SQL Server)
@@ -477,6 +492,8 @@ python cargar_proveedores.py             # carga de verdad
 | `POST` | `/solicitar-envio-correo` | Traslada/aparta un PDF a la cola del motivo elegido |
 | `GET` | `/solicitudes-envio-correo-lista` | Lista las solicitudes que no son "falta pedido cliente" |
 | `GET` | `/datos-correo-outlook/{archivo}` | Destinatario y nombre de adjunto para que `facturahelper` (en el PC del usuario) componga el correo del motivo "otros"; ya no abre Outlook desde el servidor |
+| `GET` | `/datos-correo-otro-motivo/{archivo}` | Destinatario, nombre de PDF y asunto (solo lectura) para pintar el modal de "Otro motivo" antes de enviar |
+| `POST` | `/enviar-correo-otro-motivo` | Envía el correo del motivo "otros" vía Power Automate (destinatario/PDF/asunto resueltos en el backend) y, si tiene éxito, archiva el PDF |
 | `GET` | `/motivos-error-extraccion` | Motivos disponibles para clasificar un PDF en `error` |
 | `GET` | `/errores-completo-json` | Lista los PDFs en `error` |
 | `GET` | `/no-factura-completo-json` | Lista los PDFs en `no_es_factura` |

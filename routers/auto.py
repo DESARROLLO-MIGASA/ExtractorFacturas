@@ -5,7 +5,7 @@ from dotenv import get_key
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse
 
-from auth import requerir_admin
+from auth import requerir_admin, get_current_user
 from logic import (
     FACTURAS_DIR,
     ERROR_DIR,
@@ -49,6 +49,9 @@ from logic import (
     listar_reenviadas_detalle,
     eliminar_reenvios_de_factura_repetida,
     crear_borrador_outlook_graph,
+    datos_correo_outlook,
+    asunto_base_correo_otro_motivo,
+    solicitar_correo_otro_motivo_pa,
 )
 
 CARPETA_ENTRADA = os.path.join(FACTURAS_DIR, "entrada")
@@ -255,6 +258,54 @@ def crear_borrador_outlook_endpoint(body: dict):
         raise HTTPException(status_code=404, detail=f"No se encontró el PDF: {archivo}")
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# =========================================================
+# ENVIAR CORREO "OTRO MOTIVO" VÍA POWER AUTOMATE (modal propio de EscanerIA)
+# =========================================================
+
+@router.get("/datos-correo-otro-motivo/{archivo}")
+def datos_correo_otro_motivo_endpoint(archivo: str, usuario: dict = Depends(get_current_user)):
+    """Destinatario, nombre de adjunto y asunto para pintar (de solo lectura)
+    el modal de correo "otro motivo" antes de enviar. Los mismos datos se
+    vuelven a resolver en el servidor al confirmar el envío: esto es solo
+    para que la persona vea a quién y con qué PDF se va a enviar."""
+    if not archivo or os.path.basename(archivo) != archivo:
+        raise HTTPException(status_code=400, detail="Nombre de archivo no válido.")
+
+    try:
+        datos = datos_correo_outlook(archivo)
+        return {**datos, "asunto": asunto_base_correo_otro_motivo(archivo, datos)}
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"No se encontró el PDF: {archivo}")
+
+
+@router.post("/enviar-correo-otro-motivo")
+def enviar_correo_otro_motivo_endpoint(body: dict, usuario: dict = Depends(get_current_user)):
+    """Envía el correo del motivo "otros" vía Power Automate. El destinatario,
+    el PDF y el asunto los vuelve a resolver el backend (nunca se confía en
+    nada que no sea `archivo`, `motivo` y `cuerpo` del propio body), y el
+    usuario se identifica por la sesión de EscanerIA (X-Forwarded-User), no
+    por lo que mande el navegador."""
+    archivo = str(body.get("archivo", "")).strip()
+    motivo = str(body.get("motivo", "")).strip()
+    cuerpo = str(body.get("cuerpo", "")).strip()
+
+    if not archivo or os.path.basename(archivo) != archivo:
+        raise HTTPException(status_code=400, detail="Nombre de archivo no válido.")
+
+    try:
+        solicitar_correo_otro_motivo_pa(archivo, motivo, cuerpo, usuario["username"])
+        return {"ok": True}
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"No se encontró el PDF: {archivo}")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError:
+        raise HTTPException(
+            status_code=502,
+            detail="No se pudo enviar el correo. Inténtalo de nuevo o contacta con IT si el problema persiste.",
+        )
 
 
 # =========================================================

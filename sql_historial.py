@@ -1503,3 +1503,120 @@ def listar_archivos_auditoria_sql(archivo=None, usuario=None, desde=None, hasta=
     except Exception as e:
         print(f"AVISO: no se pudo listar archivos de {TABLA_AUDITORIA} ({MOTOR}): {e}")
         return []
+
+
+# =========================================================
+# HISTORIAL DE CORREO "OTRO MOTIVO" (envíos vía Power Automate)
+# =========================================================
+#
+# AuditLog ya deja constancia de que se solicitó el envío (acción
+# "solicitar_envio_correo"), pero no tiene sitio para el destinatario, el
+# asunto, el estado del envío ni el cuerpo completo redactado por la persona
+# (Detalle es NVARCHAR(500), pensado para un texto corto). Esta tabla es la
+# que permite consultar en el futuro, factura a factura, qué correos se han
+# mandado por este motivo y si el envío salió bien o no.
+
+TABLA_HISTORIAL_CORREO_OTRO_MOTIVO = "HistorialCorreoOtroMotivo"
+
+
+def _crear_tabla_historial_correo_otro_motivo_si_no_existe(cursor):
+    if MOTOR == "sqlite":
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS {TABLA_HISTORIAL_CORREO_OTRO_MOTIVO} (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                Fecha TEXT NOT NULL DEFAULT ({FECHA_ACTUAL_SQL}),
+                Archivo TEXT NOT NULL,
+                Destinatario TEXT,
+                Asunto TEXT,
+                Motivo TEXT NOT NULL,
+                Cuerpo TEXT NOT NULL,
+                Usuario TEXT NOT NULL,
+                Estado TEXT NOT NULL,
+                MensajeError TEXT
+            )
+        """)
+        return
+
+    cursor.execute(f"""
+        IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = '{TABLA_HISTORIAL_CORREO_OTRO_MOTIVO}')
+        CREATE TABLE {TABLA_HISTORIAL_CORREO_OTRO_MOTIVO} (
+            Id INT IDENTITY(1,1) PRIMARY KEY,
+            Fecha DATETIME NOT NULL DEFAULT GETDATE(),
+            Archivo NVARCHAR(255) NOT NULL,
+            Destinatario NVARCHAR(255) NULL,
+            Asunto NVARCHAR(500) NULL,
+            Motivo NVARCHAR(200) NOT NULL,
+            Cuerpo NVARCHAR(MAX) NOT NULL,
+            Usuario NVARCHAR(100) NOT NULL,
+            Estado NVARCHAR(20) NOT NULL,
+            MensajeError NVARCHAR(1000) NULL
+        )
+    """)
+
+
+_crear_tabla_historial_correo_otro_motivo_si_no_existe = _una_vez_por_proceso(
+    TABLA_HISTORIAL_CORREO_OTRO_MOTIVO, _crear_tabla_historial_correo_otro_motivo_si_no_existe
+)
+
+
+def registrar_historial_correo_otro_motivo_sql(archivo, destinatario, asunto, motivo, cuerpo, usuario, estado, mensaje_error=None):
+    """Deja constancia de un intento de envío de correo "otro motivo" vía
+    Power Automate (enviado o error). Igual que registrar_auditoria_sql, es
+    "best effort": si falla, se avisa por consola y no impide que el envío
+    real (o el aviso de error al usuario) siga su curso."""
+    try:
+        with _conectar() as conn:
+            cursor = conn.cursor()
+            _crear_tabla_historial_correo_otro_motivo_si_no_existe(cursor)
+            conn.commit()
+
+            cursor.execute(
+                f"INSERT INTO {TABLA_HISTORIAL_CORREO_OTRO_MOTIVO} "
+                f"(Fecha, Archivo, Destinatario, Asunto, Motivo, Cuerpo, Usuario, Estado, MensajeError) "
+                f"VALUES ({FECHA_ACTUAL_SQL}, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (archivo, destinatario, asunto, motivo, cuerpo, usuario, estado, mensaje_error),
+            )
+            conn.commit()
+
+        return True
+
+    except Exception as e:
+        print(f"AVISO: no se pudo registrar el historial de correo otro motivo ({archivo}, {MOTOR}): {e}")
+        return False
+
+
+def listar_historial_correo_otro_motivo_sql(archivo=None, limite=200):
+    """Historial de envíos de correo "otro motivo" (Power Automate), más
+    recientes primero. `archivo` filtra por coincidencia exacta si se
+    informa. Pensado para poder consultar en el futuro, desde EscanerIA, qué
+    correos se han mandado sobre una factura. Devuelve [] si la consulta
+    falla."""
+    where_sql = "WHERE Archivo = ?" if archivo else ""
+    parametros = [archivo] if archivo else []
+
+    try:
+        with _conectar() as conn:
+            cursor = conn.cursor()
+            _crear_tabla_historial_correo_otro_motivo_si_no_existe(cursor)
+            conn.commit()
+
+            columnas = "Fecha, Archivo, Destinatario, Asunto, Motivo, Cuerpo, Usuario, Estado, MensajeError"
+            if MOTOR == "sqlite":
+                cursor.execute(
+                    f"SELECT {columnas} FROM {TABLA_HISTORIAL_CORREO_OTRO_MOTIVO} "
+                    f"{where_sql} ORDER BY Id DESC LIMIT ?",
+                    (*parametros, int(limite)),
+                )
+            else:
+                cursor.execute(
+                    f"SELECT TOP (?) {columnas} FROM {TABLA_HISTORIAL_CORREO_OTRO_MOTIVO} "
+                    f"{where_sql} ORDER BY Id DESC",
+                    (int(limite), *parametros),
+                )
+            filas = cursor.fetchall()
+
+        return [list(fila) for fila in filas]
+
+    except Exception as e:
+        print(f"AVISO: no se pudo listar {TABLA_HISTORIAL_CORREO_OTRO_MOTIVO} ({MOTOR}): {e}")
+        return []

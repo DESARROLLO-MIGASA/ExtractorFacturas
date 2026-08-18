@@ -624,7 +624,9 @@ table.tabla-campos tr.fila-linea-factura {
     margin: 12px 0 6px;
 }
 
-.modal-label select {
+.modal-label select,
+.modal-label input[type="text"],
+.modal-label textarea {
     display: block;
     width: 100%;
     margin-top: 6px;
@@ -646,6 +648,11 @@ table.tabla-campos tr.fila-linea-factura {
     border-radius: 6px;
     font-size: 13px;
     font-family: inherit;
+    resize: vertical;
+}
+
+#otroMotivoCuerpo {
+    min-height: 220px;
     resize: vertical;
 }
 
@@ -1530,6 +1537,33 @@ table.tabla-historial tr.fila-reservada-mia td {
 </div>
 
 <!-- ========================================================= -->
+<!-- MODAL: ENVIAR CORREO "OTRO MOTIVO" (redactado, vía Power Automate) -->
+<!-- ========================================================= -->
+<div id="overlayCorreoOtroMotivo" class="modal-overlay" style="display:none">
+    <div class="modal-box">
+        <div class="modal-titulo">Enviar correo — Otro motivo</div>
+        <p class="help">Factura: <strong id="otroMotivoArchivoNombre"></strong></p>
+        <p class="help">Destinatario: <strong id="otroMotivoDestinatario"></strong></p>
+        <p class="help">Asunto: <strong id="otroMotivoAsunto"></strong></p>
+
+        <label class="modal-label">Motivo
+            <input type="text" id="otroMotivoMotivo" maxlength="200" placeholder="Motivo breve del contacto" oninput="actualizarAsuntoOtroMotivo()">
+        </label>
+
+        <label class="modal-label">Correo a redactar
+            <textarea id="otroMotivoCuerpo" placeholder="Escribe aquí el cuerpo del correo..."></textarea>
+        </label>
+
+        <p class="help" id="otroMotivoError" style="display:none;color:#B3261E"></p>
+
+        <div class="modal-acciones">
+            <button class="btn-secondary" onclick="cerrarModalCorreoOtroMotivo()">Cancelar</button>
+            <button class="btn-primary" id="btnOtroMotivoEnviar" onclick="confirmarEnvioCorreoOtroMotivo()">Enviar correo</button>
+        </div>
+    </div>
+</div>
+
+<!-- ========================================================= -->
 <!-- MODAL: EDITAR FACTURA (pendientes y completadas)           -->
 <!-- ========================================================= -->
 <div id="overlayEditarFactura" class="modal-overlay" style="display:none">
@@ -2322,11 +2356,7 @@ function abrirPrimeraReservada(containerId, tipo) {
     const fila = cache.slice(1).find(r => r[idxArchivo] === archivo);
     if (!fila) return;
 
-    if (tipo === "esperando_alta") {
-        abrirPanelPdf(archivo); // no tiene formulario de edición propio
-    } else {
-        abrirModalEditarFactura(fila, headers, tipo);
-    }
+    abrirModalEditarFactura(fila, headers, tipo);
 }
 
 async function liberarMiSeleccion(containerId, tipo) {
@@ -2637,11 +2667,11 @@ async function abrirModalEnviarCorreo(archivo, motivoPreseleccionado) {
 }
 
 function onCambioMotivoCorreo() {
-    const select = document.getElementById("modalCorreoMotivo");
-    const esOtro = select.value === "otros";
-
-    document.getElementById("modalCorreoTextoLibre").style.display = esOtro ? "block" : "none";
-    document.getElementById("modalCorreoAvisoOtro").style.display = esOtro ? "block" : "none";
+    // El texto libre y el aviso de Outlook eran del antiguo flujo con Graph
+    // para "otros"; ese motivo ahora abre su propio modal (ver
+    // abrirModalCorreoOtroMotivo), así que aquí ya no se muestran nunca.
+    document.getElementById("modalCorreoTextoLibre").style.display = "none";
+    document.getElementById("modalCorreoAvisoOtro").style.display = "none";
 }
 
 function cerrarModalEnviarCorreo() {
@@ -2653,14 +2683,29 @@ async function confirmarEnvioCorreo() {
     if (!archivoModalCorreo) return;
 
     const motivo = document.getElementById("modalCorreoMotivo").value;
-    const motivoOtro = document.getElementById("modalCorreoTextoLibre").value.trim();
 
-    if (motivo === "otros" && !motivoOtro) {
-        mostrarToast("Redacta el motivo antes de enviar.", "error");
+    // "otros" ya no se envía desde aquí: abre su propio modal, donde la
+    // persona redacta motivo + cuerpo y el backend hace el envío real vía
+    // Power Automate (ver abrirModalCorreoOtroMotivo). El PDF solo se mueve
+    // de cola si ese envío llega a confirmarse correctamente.
+    if (motivo === "otros") {
+        const archivo = archivoModalCorreo;
+        // Este modal también se abre desde dentro del modal de edición
+        // (revisión de lote reservado): si es el caso, hay que recordar que
+        // hay que avanzar a la siguiente factura del lote cuando el nuevo
+        // modal confirme el envío -igual que el resto de acciones del modal
+        // de edición-, calculado ahora que la fila todavía está en su tabla.
+        otroMotivoEdicionAAvanzar = (edicionFactura && edicionFactura.archivo === archivo) ? edicionFactura : null;
+        otroMotivoContenedorEdicion = otroMotivoEdicionAAvanzar ? containerIdDeTipo(otroMotivoEdicionAAvanzar.tipo) : null;
+        otroMotivoSiguienteEnEdicion = otroMotivoEdicionAAvanzar
+            ? obtenerSiguienteArchivoDeTabla(otroMotivoContenedorEdicion, archivo) : null;
+
+        cerrarModalEnviarCorreo();
+        abrirModalCorreoOtroMotivo(archivo);
         return;
     }
 
-    const mueveElPdf = motivo === "falta_pedido_cliente" || motivo === "dos_facturas_una_pagina" || motivo === "otros";
+    const mueveElPdf = motivo === "falta_pedido_cliente" || motivo === "dos_facturas_una_pagina";
 
     // Este modal también se abre desde dentro del modal de edición (revisión
     // de lote reservado). Si el motivo mueve el PDF fuera de su cola, hay
@@ -2679,23 +2724,12 @@ async function confirmarEnvioCorreo() {
     btn.textContent = "Enviando...";
 
     try {
-        // Para "otros" el correo se redacta y envía a mano desde Outlook, no
-        // hay flujo automático detrás: hay que abrir Outlook ANTES de mover
-        // el PDF, para que si Outlook no llega a abrirse (no instalado/mal
-        // configurado) la factura se quede donde estaba en vez de darse por
-        // reenviada sin que nadie haya llegado a redactar el correo.
-        if (motivo === "otros") {
-            const abierto = await abrirCorreoYPdf(archivoModalCorreo, `Factura ${archivoModalCorreo} — ${motivoOtro}`);
-            if (!abierto) return;
-        }
-
         const res = await fetch("/solicitar-envio-correo", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 archivo: archivoModalCorreo,
                 motivo,
-                motivo_otro: motivoOtro,
                 usuario: obtenerUsuarioActual(),
             })
         });
@@ -2708,24 +2742,17 @@ async function confirmarEnvioCorreo() {
 
         const data = await res.json();
 
-        mostrarToast(
-            motivo === "otros"
-                ? `✓ ${archivoModalCorreo} reenviada.`
-                : `✓ ${archivoModalCorreo} añadida a la cola de envío de correo.`,
-            "ok"
-        );
+        mostrarToast(`✓ ${archivoModalCorreo} añadida a la cola de envío de correo.`, "ok");
         if (data.aviso) {
             mostrarToast(data.aviso, "error");
         }
 
-        // Los tres motivos mueven el PDF fuera de su cola actual (los dos
-        // primeros los asume Power Automate; "otros" ya se dio por
-        // reenviado en cuanto se abrió Outlook, justo arriba), así que
-        // desaparece al instante sin recargar la página. Este modal se abre
-        // desde varias pestañas (Pendientes, Incidencias, Esperando alta,
-        // Completadas, Errores) sin decirnos de cuál venía, así que se
-        // limpia de todas: quitarDeXCache es un no-op si el archivo no
-        // estaba en esa caché.
+        // Los dos motivos mueven el PDF fuera de su cola actual (los asume
+        // Power Automate), así que desaparece al instante sin recargar la
+        // página. Este modal se abre desde varias pestañas (Pendientes,
+        // Incidencias, Esperando alta, Completadas, Errores) sin decirnos de
+        // cuál venía, así que se limpia de todas: quitarDeXCache es un no-op
+        // si el archivo no estaba en esa caché.
         if (mueveElPdf) {
             quitarDePendientesCache(archivoModalCorreo);
             quitarDeIncidenciasCache(archivoModalCorreo);
@@ -2752,6 +2779,147 @@ async function confirmarEnvioCorreo() {
     } finally {
         btn.disabled = false;
         btn.textContent = "Enviar";
+    }
+}
+
+// =========================================================
+// ENVIAR CORREO "OTRO MOTIVO" VÍA POWER AUTOMATE (modal propio)
+// =========================================================
+
+let archivoModalCorreoOtroMotivo = null;
+// Contexto del modal de edición en lote (revisión de facturas reservadas),
+// calculado en confirmarEnvioCorreo() justo antes de abrir este modal (ver
+// arriba): si no venía de ahí, los tres quedan a null y no se avanza nada.
+let otroMotivoEdicionAAvanzar = null;
+let otroMotivoContenedorEdicion = null;
+let otroMotivoSiguienteEnEdicion = null;
+// Asunto base tal cual lo devuelve datos_correo_outlook (antes de añadirle
+// el motivo): se guarda aparte para poder recalcular el texto mostrado en
+// vivo según la persona va escribiendo el motivo, con el mismo formato
+// "asunto — motivo" que usa de verdad el backend al enviar (ver
+// solicitar_correo_otro_motivo_pa en logic.py).
+let otroMotivoAsuntoBase = "";
+
+async function abrirModalCorreoOtroMotivo(archivo) {
+    archivoModalCorreoOtroMotivo = archivo;
+    otroMotivoAsuntoBase = "";
+
+    document.getElementById("otroMotivoArchivoNombre").textContent = archivo;
+    document.getElementById("otroMotivoDestinatario").textContent = "Cargando...";
+    document.getElementById("otroMotivoAsunto").textContent = "";
+    document.getElementById("otroMotivoMotivo").value = "";
+    document.getElementById("otroMotivoCuerpo").value = "";
+    document.getElementById("otroMotivoError").style.display = "none";
+
+    document.getElementById("overlayCorreoOtroMotivo").style.display = "flex";
+
+    // El destinatario, el PDF y el asunto los resuelve siempre el backend
+    // (nunca el navegador): esto es solo para que la persona vea a quién y
+    // con qué factura va a enviar antes de confirmar.
+    try {
+        const res = await fetch(`/datos-correo-otro-motivo/${encodeURIComponent(archivo)}`);
+        if (!res.ok) {
+            const err = await res.json();
+            document.getElementById("otroMotivoDestinatario").textContent = "—";
+            mostrarToast(err.detail || "No se pudieron obtener los datos de la factura.", "error");
+            return;
+        }
+        const datos = await res.json();
+        document.getElementById("otroMotivoDestinatario").textContent = datos.email || "(sin email disponible)";
+        otroMotivoAsuntoBase = datos.asunto || "";
+        actualizarAsuntoOtroMotivo();
+    } catch (e) {
+        document.getElementById("otroMotivoDestinatario").textContent = "—";
+        mostrarToast("Error de conexión al cargar los datos de la factura.", "error");
+    }
+}
+
+function actualizarAsuntoOtroMotivo() {
+    const motivo = document.getElementById("otroMotivoMotivo").value.trim();
+    document.getElementById("otroMotivoAsunto").textContent = motivo
+        ? `${otroMotivoAsuntoBase} — ${motivo}`
+        : otroMotivoAsuntoBase;
+}
+
+function cerrarModalCorreoOtroMotivo() {
+    document.getElementById("overlayCorreoOtroMotivo").style.display = "none";
+    archivoModalCorreoOtroMotivo = null;
+    otroMotivoEdicionAAvanzar = null;
+    otroMotivoContenedorEdicion = null;
+    otroMotivoSiguienteEnEdicion = null;
+}
+
+async function confirmarEnvioCorreoOtroMotivo() {
+    if (!archivoModalCorreoOtroMotivo) return;
+
+    const motivo = document.getElementById("otroMotivoMotivo").value.trim();
+    const cuerpo = document.getElementById("otroMotivoCuerpo").value.trim();
+    const avisoError = document.getElementById("otroMotivoError");
+    avisoError.style.display = "none";
+
+    if (!motivo) {
+        mostrarToast("Escribe el motivo antes de enviar.", "error");
+        return;
+    }
+    if (!cuerpo) {
+        mostrarToast("Redacta el correo antes de enviar.", "error");
+        return;
+    }
+
+    // Evita doble clic/doble envío: el botón se deshabilita antes de la
+    // petición y solo se rehabilita si el envío falla (si tiene éxito, el
+    // modal se cierra y no hace falta).
+    const btn = document.getElementById("btnOtroMotivoEnviar");
+    btn.disabled = true;
+    btn.textContent = "Enviando...";
+
+    try {
+        const res = await fetch("/enviar-correo-otro-motivo", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ archivo: archivoModalCorreoOtroMotivo, motivo, cuerpo })
+        });
+
+        if (!res.ok) {
+            const err = await res.json();
+            avisoError.textContent = err.detail || "No se ha podido enviar el correo.";
+            avisoError.style.display = "block";
+            return;
+        }
+
+        const archivoEnviado = archivoModalCorreoOtroMotivo;
+        mostrarToast("Correo enviado correctamente.", "ok");
+        cerrarModalCorreoOtroMotivo();
+
+        // El backend, tras confirmar el envío, archiva el PDF igual que el
+        // resto de motivos (ver solicitar_correo_otro_motivo_pa en logic.py),
+        // así que desaparece de sus colas igual que en confirmarEnvioCorreo().
+        quitarDePendientesCache(archivoEnviado);
+        quitarDeIncidenciasCache(archivoEnviado);
+        quitarDeEsperandoAltaCache(archivoEnviado);
+        cargarFacturasCompletadas();
+        liberarReservas([archivoEnviado]);
+        cargarErroresCompleto();
+        cargarEstadisticas();
+
+        if (otroMotivoEdicionAAvanzar) {
+            const edicionAAvanzar = otroMotivoEdicionAAvanzar;
+            const contenedorEdicion = otroMotivoContenedorEdicion;
+            const siguienteEnEdicion = otroMotivoSiguienteEnEdicion;
+            otroMotivoEdicionAAvanzar = null;
+            otroMotivoContenedorEdicion = null;
+            otroMotivoSiguienteEnEdicion = null;
+            await abrirSiguienteEnListaOTerminar(
+                contenedorEdicion, cacheDeTipoReservable(edicionAAvanzar.tipo), edicionAAvanzar.tipo,
+                siguienteEnEdicion, async () => {}
+            );
+        }
+    } catch (e) {
+        avisoError.textContent = "Error de conexión al enviar el correo.";
+        avisoError.style.display = "block";
+    } finally {
+        btn.disabled = false;
+        btn.textContent = "Enviar correo";
     }
 }
 
@@ -3485,6 +3653,20 @@ function quitarDeEsperandoAltaCache(archivo) {
     filtrarEsperandoAlta();
 }
 
+// Tras editar (p.ej. corregir el CIF del proveedor) la factura sigue en la
+// cola -no se mueve ni se completa-, así que solo hace falta refrescar su
+// fila en la caché para que la tabla muestre el dato ya corregido.
+function actualizarFilaEnCacheEsperandoAlta(archivo, filaCompleta) {
+    if (!esperandoAltaCompletoCache) return;
+    const headers = esperandoAltaCompletoCache[0];
+    const idxArchivo = headers.indexOf("Archivo");
+    esperandoAltaCompletoCache = [
+        headers,
+        ...esperandoAltaCompletoCache.slice(1).map(row => row[idxArchivo] === archivo ? filaCompleta : row),
+    ];
+    filtrarEsperandoAlta();
+}
+
 function actualizarBadgeEsperandoAlta() {
     const n = esperandoAltaCompletoCache ? Math.max(esperandoAltaCompletoCache.length - 1, 0) : 0;
     [document.getElementById("badgeEsperandoAlta"), document.getElementById("badgeEsperandoAltaTab")].forEach(b => {
@@ -3506,12 +3688,13 @@ function filtrarEsperandoAlta() {
     renderTablaGenerica(tabla, "tablaEsperandoAlta", "No hay facturas esperando alta que coincidan con el filtro.", {
         archivoClickable: true,
         seleccionable: true,
-        onClickArchivo: (row, headers) => {
-            const archivo = row[headers.indexOf("Archivo")];
-            intentarReservarUnaFactura(archivo);
-            abrirPanelPdf(archivo);
-        },
+        onClickArchivo: (row, headers) => abrirModalEditarFactura(row, headers, "esperando_alta"),
         acciones: [
+            {
+                titulo: "Editar (p.ej. corregir el CIF del proveedor)",
+                icono: () => "✏️",
+                onClick: (row, headers) => abrirModalEditarFactura(row, headers, "esperando_alta"),
+            },
             {
                 titulo: "Reprocesar (ya se dio de alta)",
                 icono: () => "🔄",
@@ -3535,7 +3718,7 @@ async function descartarEsperandoAlta(archivo) {
     const confirmado = confirm(
         `¿Mover "${archivo}" a la carpeta "No es factura"?\n\nNo se elimina el PDF, solo se aparta de la cola de "Esperando alta".`
     );
-    if (!confirmado) return;
+    if (!confirmado) return false;
 
     try {
         const res = await fetch("/descartar-pendiente", {
@@ -3547,16 +3730,18 @@ async function descartarEsperandoAlta(archivo) {
         if (!res.ok) {
             const err = await res.json();
             mostrarToast(err.detail || "Error al mover el PDF.", "error");
-            return;
+            return false;
         }
 
         mostrarToast(`✓ ${archivo} movido a "No es factura".`, "ok");
         quitarDeEsperandoAltaCache(archivo);
         cargarEstadisticas();
         liberarReservas([archivo]);
+        return true;
 
     } catch (e) {
         mostrarToast("Error de conexión.", "error");
+        return false;
     }
 }
 
@@ -3586,7 +3771,7 @@ async function reprocesarEsperandoAlta(archivo) {
         if (!res.ok) {
             const err = await res.json();
             mostrarToast(err.detail || "Error al reprocesar la factura.", "error");
-            return;
+            return false;
         }
 
         const data = await res.json();
@@ -3598,12 +3783,15 @@ async function reprocesarEsperandoAlta(archivo) {
             else await cargarPendientesCompleto();
             cargarEstadisticas();
             liberarReservas([archivo]);
-        } else {
-            mostrarToast(`${archivo} sigue sin resolverse: comprueba que el CIF ya está dado de alta.`, "error");
+            return true;
         }
+
+        mostrarToast(`${archivo} sigue sin resolverse: comprueba que el CIF ya está dado de alta.`, "error");
+        return false;
 
     } catch (e) {
         mostrarToast("Error de conexión.", "error");
+        return false;
     } finally {
         botones.forEach(b => b.disabled = false);
     }
@@ -4065,6 +4253,7 @@ function abrirModalEditarFactura(rowCompleta, headersCompletos, tipo) {
     document.getElementById("editarFacturaTitulo").textContent =
         tipo === "pendiente" ? "Completar factura pendiente" :
         tipo === "incidencia" ? "Completar factura con incidencia" :
+        tipo === "esperando_alta" ? "Editar datos (esperando alta)" :
         "Editar factura completada";
     document.getElementById("editarFacturaArchivoNombre").textContent = archivo;
     document.getElementById("estadoEdicionFactura").textContent = "";
@@ -4362,6 +4551,36 @@ function construirAccionesExtraEdicion(tipo, rowCompleta, headersCompletos) {
     const archivo = edicionFactura.archivo;
     const cont = document.getElementById("editarFacturaAccionesExtra");
     const botones = [];
+
+    if (tipo === "esperando_alta") {
+        botones.push({
+            titulo: "Ya se ha dado de alta el proveedor/empresa: reprocesar la factura",
+            texto: "🔄 Reprocesar",
+            onClick: () => ejecutarYAvanzar(tipo, archivo, () => reprocesarEsperandoAlta(archivo)),
+        });
+        botones.push({
+            titulo: "Enviar correo",
+            texto: "✉️ Enviar correo",
+            onClick: () => abrirModalEnviarCorreo(archivo),
+        });
+        botones.push({
+            titulo: "No es factura",
+            texto: "🗑️ No es factura",
+            onClick: () => ejecutarYAvanzar(tipo, archivo, () => descartarEsperandoAlta(archivo)),
+        });
+
+        cont.innerHTML = "";
+        botones.forEach(b => {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "btn-secondary";
+            btn.title = b.titulo;
+            btn.textContent = b.texto;
+            btn.onclick = b.onClick;
+            cont.appendChild(btn);
+        });
+        return;
+    }
 
     if (tipo === "completada") {
         const definitiva = rowCompleta[headersCompletos.indexOf("Definitiva")] === "Sí";
@@ -5534,6 +5753,15 @@ async function guardarEdicionFactura() {
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ archivo, fila_completa: filaFinal, usuario: obtenerUsuarioActual() }),
                 });
+            } else if (tipo === "esperando_alta") {
+                // Solo guarda el progreso (p.ej. el CIF corregido): no exige
+                // campos obligatorios ni mueve el PDF -sigue en "esperando
+                // alta" hasta que se pulse "Reprocesar"-.
+                res = await fetch("/guardar-cambios-pendiente", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ archivo, fila_completa: filaFinal, usuario: obtenerUsuarioActual() }),
+                });
             } else {
                 res = await fetch("/actualizar-factura-completada", {
                     method: "POST",
@@ -5570,6 +5798,7 @@ async function guardarEdicionFactura() {
 
             if (tipo === "pendiente") quitarDePendientesCache(archivo);
             else if (tipo === "incidencia") quitarDeIncidenciasCache(archivo);
+            else if (tipo === "esperando_alta") actualizarFilaEnCacheEsperandoAlta(archivo, filaFinal);
 
             liberarReservas([archivo]);
             return true;

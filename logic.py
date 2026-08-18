@@ -2,6 +2,7 @@ import os
 import re
 import sys
 import csv
+import html
 import json
 import time
 import base64
@@ -25,6 +26,7 @@ load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.abspath(__file__)),
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from sql_historial import (
+    COLUMNAS,
     guardar_factura_examinada_sql,
     listar_facturas_examinadas_sql,
     obtener_factura_examinada_sql,
@@ -52,6 +54,7 @@ from sql_historial import (
     listar_auditoria_sql,
     resumen_auditoria_por_archivo_sql,
     listar_archivos_auditoria_sql,
+    registrar_historial_correo_otro_motivo_sql,
 )
 
 _fallback = os.path.join(os.path.dirname(os.path.abspath(__file__)), "facturas")
@@ -3390,6 +3393,173 @@ def datos_correo_outlook(archivo, asunto=None):
         "nombre_adjunto": nombre_adjunto,
         "asunto": asunto or f"Factura {nombre_adjunto}",
     }
+
+
+def _numero_factura_de_archivo(archivo):
+    """Número de factura real (el que conoce el proveedor, p.ej. "26/1224"),
+    no el nombre del PDF en disco: se busca primero en FacturasExaminadas (si
+    ya se marcó examinada/definitiva) y si no en la caché de ColaRevision
+    (pendientes o incidencias, que es de donde sale el motivo "otros" la
+    mayoría de las veces). Devuelve None si no se encuentra en ninguna -esto
+    puede pasar con facturas muy antiguas o ya archivadas-, para que el
+    asunto pueda caer de vuelta al nombre de archivo."""
+    fila = obtener_factura_examinada_sql(archivo)
+    if fila and fila.get("NumeroFactura"):
+        return fila["NumeroFactura"]
+
+    idx_archivo = COLUMNAS.index("Archivo")
+    idx_numero = COLUMNAS.index("NumeroFactura")
+    for cola in ("pendiente", "incidencia"):
+        for fila_cola in listar_cola_revision_sql(cola):
+            if fila_cola[idx_archivo] == archivo and fila_cola[idx_numero]:
+                return fila_cola[idx_numero]
+
+    return None
+
+
+def asunto_base_correo_otro_motivo(archivo, datos=None):
+    """Asunto base "Factura {número real}" para el motivo "otros": usa
+    _numero_factura_de_archivo (no el nombre del PDF) siempre que se pueda.
+    `datos` es el resultado ya calculado de datos_correo_outlook(archivo), por
+    si el llamador ya lo tiene (evita repetir la búsqueda del PDF); si no se
+    pasa, se calcula aquí. Se usa tanto para la vista previa del modal como
+    para el asunto real que se manda, así que ambos coinciden siempre."""
+    datos = datos or datos_correo_outlook(archivo)
+    numero_factura = _numero_factura_de_archivo(archivo) or datos["nombre_adjunto"]
+    return f"Factura {numero_factura}"
+
+
+def _texto_a_html_seguro(texto):
+    """Escapa el texto libre que escribe la persona (motivo "otros" vía Power
+    Automate) antes de mandarlo como cuerpo_html: sin esto, cualquier HTML
+    que alguien teclee (a propósito o sin querer) se interpretaría tal cual
+    en el correo del destinatario. html.escape() neutraliza < > & " ', y los
+    saltos de línea se reconstruyen como párrafos/<br> porque, una vez
+    escapado, el texto pierde su maquetación original en texto plano."""
+    texto = (texto or "").strip()
+    parrafos = re.split(r"\n\s*\n", texto)
+    html_parrafos = [
+        "<p>" + html.escape(p).replace("\n", "<br>") + "</p>"
+        for p in parrafos if p.strip()
+    ]
+    return "".join(html_parrafos)
+
+
+# El correo del motivo "otros" se enviaba antes como borrador vía Microsoft
+# Graph (crear_borrador_outlook_graph, más abajo), que sigue disponible y sin
+# tocar. Desde que existe este flujo de Power Automate, "otros" pasa por aquí:
+# la persona redacta motivo+cuerpo en un modal propio de EscanerIA y el
+# backend hace el envío real llamando a un flujo de Power Automate por HTTP,
+# adjuntando el PDF en Base64. La URL del flujo NUNCA se expone al navegador
+# ni se escribe en los logs -solo vive en POWER_AUTOMATE_CORREO_URL (.env)-.
+
+def _power_automate_correo_configurado():
+    return bool(os.getenv("POWER_AUTOMATE_CORREO_URL", "").strip())
+
+
+def enviar_correo_power_automate(destinatario, asunto, cuerpo_html, motivo, nombre_archivo, ruta_pdf, usuario, archivo):
+    """Envía el correo del motivo "otros" llamando al flujo de Power Automate
+    configurado en POWER_AUTOMATE_CORREO_URL: adjunta el PDF en Base64 y
+    manda un POST JSON con el resto de datos ya resueltos por el backend.
+    Lanza RuntimeError (con un mensaje genérico, sin URL ni detalle interno)
+    ante cualquier fallo -no configurado, PDF ilegible, timeout, error HTTP,
+    error de conexión o cualquier excepción inesperada-."""
+    url = os.getenv("POWER_AUTOMATE_CORREO_URL", "").strip()
+    if not url:
+        raise RuntimeError(
+            "El envío de correo por Power Automate no está configurado todavía "
+            "(falta POWER_AUTOMATE_CORREO_URL en .env)."
+        )
+
+    try:
+        with open(ruta_pdf, "rb") as f:
+            pdf_base64 = base64.b64encode(f.read()).decode("ascii")
+    except OSError as e:
+        print(f"AVISO: no se pudo leer el PDF para enviarlo por Power Automate ({archivo}): {e}")
+        raise RuntimeError("No se pudo leer el PDF de la factura para adjuntarlo al correo.") from e
+
+    payload = {
+        "destinatario": destinatario,
+        "asunto": asunto,
+        "cuerpo_html": cuerpo_html,
+        "motivo": motivo,
+        "nombre_archivo": nombre_archivo,
+        "pdf_base64": pdf_base64,
+        "usuario": usuario,
+        "archivo": archivo,
+    }
+
+    try:
+        resp = httpx.post(url, json=payload, timeout=30)
+        resp.raise_for_status()
+    except httpx.TimeoutException as e:
+        print(f"AVISO: timeout llamando a Power Automate (correo otro motivo, archivo={archivo}): {e}")
+        raise RuntimeError("Power Automate no respondió a tiempo. Inténtalo de nuevo en unos minutos.") from e
+    except httpx.HTTPStatusError as e:
+        print(f"AVISO: Power Automate devolvió un error (correo otro motivo, archivo={archivo}): {e.response.status_code}")
+        raise RuntimeError("Power Automate rechazó el envío del correo.") from e
+    except httpx.RequestError as e:
+        print(f"AVISO: error de conexión con Power Automate (correo otro motivo, archivo={archivo}): {e}")
+        raise RuntimeError("No se pudo conectar con Power Automate.") from e
+    except Exception as e:
+        print(f"AVISO: error inesperado enviando correo por Power Automate (archivo={archivo}): {e}")
+        raise RuntimeError("No se pudo enviar el correo por un error inesperado.") from e
+
+    return True
+
+
+def solicitar_correo_otro_motivo_pa(archivo, motivo, cuerpo, usuario):
+    """Orquesta el envío del correo del motivo "otros" vía Power Automate:
+    resuelve en el propio backend (nunca confiando en lo que mande el
+    navegador) el destinatario, el PDF y el asunto -reutilizando
+    datos_correo_outlook()-, valida motivo/cuerpo, escapa el cuerpo a HTML
+    seguro, llama a Power Automate y deja constancia en el histórico
+    (HistorialCorreoOtroMotivo) tanto si se envía como si falla. Si el envío
+    tiene éxito, archiva el PDF igual que el resto de motivos (reutilizando
+    solicitar_envio_correo); si falla, la factura se queda donde estaba para
+    que se pueda reintentar."""
+    motivo = (motivo or "").strip()
+    cuerpo = (cuerpo or "").strip()
+
+    if not motivo:
+        raise ValueError("El motivo no puede estar vacío.")
+    if not cuerpo:
+        raise ValueError("El cuerpo del correo no puede estar vacío.")
+
+    datos = datos_correo_outlook(archivo)
+    if not datos["email"]:
+        raise ValueError("No se pudo determinar el destinatario de esta factura.")
+
+    ruta_pdf = buscar_pdf_por_nombre(archivo)
+    if ruta_pdf is None:
+        raise FileNotFoundError(archivo)
+
+    asunto = f"{asunto_base_correo_otro_motivo(archivo, datos)} — {motivo}"
+    cuerpo_html = _texto_a_html_seguro(cuerpo)
+
+    try:
+        enviar_correo_power_automate(
+            destinatario=datos["email"],
+            asunto=asunto,
+            cuerpo_html=cuerpo_html,
+            motivo=motivo,
+            nombre_archivo=datos["nombre_adjunto"],
+            ruta_pdf=ruta_pdf,
+            usuario=usuario,
+            archivo=archivo,
+        )
+    except RuntimeError as e:
+        registrar_historial_correo_otro_motivo_sql(
+            archivo, datos["email"], asunto, motivo, cuerpo, usuario,
+            "error", mensaje_error=str(e),
+        )
+        raise
+
+    registrar_historial_correo_otro_motivo_sql(
+        archivo, datos["email"], asunto, motivo, cuerpo, usuario, "enviado",
+    )
+    solicitar_envio_correo(archivo, "otros", usuario, motivo_otro=motivo)
+    return True
 
 
 # El correo del motivo "otros" se crea como borrador vía Microsoft Graph

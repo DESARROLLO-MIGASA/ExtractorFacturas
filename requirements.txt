@@ -10,3 +10,5 @@ pyodbc
 PyMuPDF
 pytesseract
 pywin32
+requests
+requests_ntlm
